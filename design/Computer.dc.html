@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Карточка компьютера</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width:100%; min-height:1000px; box-sizing:border-box; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Sans',system-ui,sans-serif; display:flex; flex-wrap:wrap; align-items:stretch">
+
+  <nav style="flex:0 0 232px; box-sizing:border-box; background:#10151C; border-right:1px solid #263040; padding:20px 12px; display:flex; flex-direction:column; gap:4px">
+    <div style="display:flex; align-items:center; gap:10px; padding:0 8px 18px 8px">
+      <div style="width:22px; height:22px; box-sizing:border-box; border:2px solid #5AA9FF; border-radius:6px"></div>
+      <div style="display:flex; flex-direction:column">
+        <div style="font-size:15px; font-weight:600">Аудит сети</div>
+        <div style="font-size:11px; color:#9AA6B5">личная система</div>
+      </div>
+    </div>
+    <sc-for list="{{nav}}" as="item" hint-placeholder-count="6">
+      <a href="{{item.href}}" style="display:block; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:6px; {{item.style}}">{{item.label}}</a>
+    </sc-for>
+    <div style="flex:1 1 auto; min-height:24px"></div>
+    <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; color:#9AA6B5">Сервер</div>
+      <div style="font-size:13px; font-family:'IBM Plex Mono',monospace">ADMIN-PC</div>
+      <div style="font-size:12px; color:#9AA6B5">Агентов в сети: 5 из 6</div>
+      <div style="border-top:1px solid #263040; padding-top:8px; font-size:12px; line-height:1.4; color:#9AA6B5">ИИ видит только текст отчётов. Доступа к сети и компьютерам нет.</div>
+    </div>
+  </nav>
+
+  <main style="flex:999 1 560px; min-width:0; box-sizing:border-box; padding:24px 28px; display:flex; flex-direction:column; gap:20px">
+
+    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px">
+      <div>
+        <a href="Main.dc.html" style="font-size:13px; color:#9AA6B5">← Карта сети</a>
+        <div style="display:flex; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap">
+          <h1 style="margin:0; font-size:24px; font-weight:600">БУХ-02</h1>
+          <span style="font-size:12px; padding:3px 9px; border-radius:999px; color:#FF7A7A; background:rgba(255,122,122,.14)">■ Проблема</span>
+          <span style="font-size:12px; color:#9AA6B5; font-family:'IBM Plex Mono',monospace">192.168.1.22 · агент 1.0.3 · отклик 14:32</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <a href="Reports.dc.html" style="padding:10px 14px; border-radius:6px; background:#5AA9FF; color:#0A1220; font-size:14px; font-weight:600">Сформировать отчёт для ИИ</a>
+        <a href="Scripts.dc.html" style="padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Проверенные действия</a>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:4px; border-bottom:1px solid #263040; flex-wrap:wrap">
+      <div style="padding:10px 16px; font-size:14px; border-bottom:2px solid #5AA9FF; margin-bottom:-1px">Железо</div>
+      <div style="padding:10px 16px; font-size:14px; color:#9AA6B5">Программы</div>
+      <div style="padding:10px 16px; font-size:14px; color:#9AA6B5">Драйверы</div>
+      <div style="padding:10px 16px; font-size:14px; color:#9AA6B5">События</div>
+      <div style="padding:10px 16px; font-size:14px; color:#9AA6B5">История измерений</div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start">
+
+      <section style="flex:999 1 480px; min-width:0; display:flex; flex-direction:column; gap:20px">
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px">
+          <sc-for list="{{parts}}" as="p" hint-placeholder-count="6">
+            <div style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:8px">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
+                <div style="font-size:12px; color:#9AA6B5">{{p.title}}</div>
+                <div style="font-size:11px; padding:2px 8px; border-radius:999px; white-space:nowrap; color:{{p.color}}; background:{{p.chip}}">{{p.glyph}} {{p.state}}</div>
+              </div>
+              <div style="font-size:15px; font-weight:600">{{p.main}}</div>
+              <div style="font-size:12px; line-height:1.5; color:#9AA6B5; font-family:'IBM Plex Mono',monospace">{{p.detail}}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:14px; font-weight:600; margin-bottom:8px">Драйверы</div>
+          <div style="display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap:12px; font-size:12px; color:#9AA6B5; padding:6px 0; border-bottom:1px solid #263040">
+            <div>Устройство</div><div>Установлен</div><div>Дата</div><div>Состояние</div>
+          </div>
+          <sc-for list="{{drivers}}" as="d" hint-placeholder-count="4">
+            <div style="display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap:12px; font-size:13px; padding:9px 0; border-bottom:1px solid #1F2733; align-items:center">
+              <div>{{d.name}}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px">{{d.ver}}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px">{{d.date}}</div>
+              <div style="font-size:12px; color:{{d.color}}">{{d.glyph}} {{d.state}}</div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <aside style="flex:1 1 320px; max-width:400px; min-width:0; box-sizing:border-box; display:flex; flex-direction:column; gap:20px">
+        <div style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:10px">
+          <div style="font-size:14px; font-weight:600">Что требует внимания</div>
+          <div style="font-size:12px; color:#9AA6B5; line-height:1.45">Факты вычислены правилами по данным агента, без участия ИИ.</div>
+          <sc-for list="{{issues}}" as="i" hint-placeholder-count="4">
+            <div style="display:flex; gap:10px; background:#1B2430; border-radius:6px; padding:10px 12px; font-size:13px; line-height:1.45">
+              <span style="color:{{i.color}}; font-size:11px; padding-top:2px">{{i.glyph}}</span>
+              <span>{{i.t}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:10px">
+          <div style="font-size:14px; font-weight:600">План модернизации (по правилам)</div>
+          <sc-for list="{{plan}}" as="u" hint-placeholder-count="3">
+            <div style="border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; justify-content:space-between; gap:8px; align-items:center">
+                <div style="font-size:13px; font-weight:600">{{u.title}}</div>
+                <div style="font-size:11px; color:#9AA6B5; white-space:nowrap">{{u.prio}}</div>
+              </div>
+              <div style="font-size:12px; line-height:1.5; color:#9AA6B5">{{u.why}}</div>
+            </div>
+          </sc-for>
+          <div style="font-size:12px; color:#9AA6B5; line-height:1.45">Формулировки и обоснование для заказчика можно получить от ИИ на экране «Отчёты для ИИ».</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const COL = { ok: '#5FD38D', warn: '#F5B83D', bad: '#FF7A7A' };
+    const CHIP = { ok: 'rgba(95,211,141,.14)', warn: 'rgba(245,184,61,.14)', bad: 'rgba(255,122,122,.14)' };
+    const GLY = { ok: '●', warn: '▲', bad: '■' };
+    const TXT = { ok: 'Норма', warn: 'Внимание', bad: 'Проблема' };
+
+    const nav = [
+      { label: 'Карта сети', href: 'Main.dc.html' },
+      { label: 'Компьютеры', href: 'Computer.dc.html' },
+      { label: 'Диски', href: 'Storage.dc.html' },
+      { label: 'Качество сети', href: 'Metrics.dc.html' },
+      { label: 'Безопасность', href: 'Security.dc.html' },
+      { label: 'Активность', href: 'Activity.dc.html' },
+      { label: 'Отчёты для ИИ', href: 'Reports.dc.html' },
+      { label: 'Скрипты и тесты', href: 'Scripts.dc.html' }
+    ].map((it, i) => ({
+      ...it,
+      style: i === 1
+        ? 'background:#1B2430; color:#E6EAF0; border-left:3px solid #5AA9FF'
+        : 'color:#9AA6B5; border-left:3px solid transparent'
+    }));
+
+    const parts = [
+      { title: 'Процессор', main: 'Intel Core i5-7400', detail: '4 ядра · 3.0 ГГц · 7-е поколение (2017)', st: 'warn' },
+      { title: 'Оперативная память', main: '8 ГБ DDR4', detail: 'занято 1 из 2 слотов · максимум платы 32 ГБ · загрузка 87%', st: 'warn' },
+      { title: 'Накопитель', main: 'HDD 500 ГБ', detail: 'занято 78% (390 из 500 ГБ) · SMART: переназначенные секторы 12 · наработка 31 400 ч', st: 'bad' },
+      { title: 'Сетевая карта', main: 'Ethernet 1 Гбит/с', detail: 'ошибок приёма 1 240 за сутки · драйвер 2018 года', st: 'bad' },
+      { title: 'Материнская плата и BIOS', main: 'BIOS от 2019 года', detail: 'есть более новая версия у производителя', st: 'warn' },
+      { title: 'Операционная система', main: 'Windows 10 22H2', detail: 'поддержка завершена · процессор не подходит для Windows 11', st: 'bad' }
+    ].map((p) => ({
+      title: p.title, main: p.main, detail: p.detail,
+      color: COL[p.st], chip: CHIP[p.st], glyph: GLY[p.st], state: TXT[p.st]
+    }));
+
+    const drivers = [
+      { name: 'Сетевая карта Realtek', ver: '10.31.0.2018', date: '2018-09', st: 'bad' },
+      { name: 'Принтер HP (локальный порт)', ver: '15.0.2019', date: '2019-03', st: 'warn' },
+      { name: 'Графика Intel', ver: '27.20.100', date: '2021-06', st: 'warn' },
+      { name: 'Чипсет Intel', ver: '10.1.18', date: '2020-02', st: 'ok' }
+    ].map((d) => ({
+      name: d.name, ver: d.ver, date: d.date,
+      color: COL[d.st], glyph: GLY[d.st],
+      state: d.st === 'ok' ? 'актуален' : d.st === 'warn' ? 'есть новее' : 'нужна проверка'
+    }));
+
+    const issues = [
+      { st: 'bad', t: 'Потери пакетов 4% до шлюза с 14:00; на порту 14 коммутатора-1 растут ошибки CRC.' },
+      { st: 'bad', t: 'SMART диска: 12 переназначенных секторов. Риск потери данных.' },
+      { st: 'warn', t: 'Принтер периодически не виден: драйвер 2019 года, прошивка принтера устарела.' },
+      { st: 'warn', t: 'Windows 10 вне поддержки; обновление до Windows 11 недоступно для этого процессора.' }
+    ].map((i) => ({ t: i.t, color: COL[i.st], glyph: GLY[i.st] }));
+
+    const plan = [
+      { title: 'Заменить HDD на SSD и сделать резервную копию', prio: 'приоритет 1', why: 'Диск показывает признаки износа. Заодно заметно ускорит запуск и работу программ.' },
+      { title: 'Проверить кабель и порт 14, затем драйвер сетевой карты', prio: 'приоритет 2', why: 'Ошибки CRC на стороне коммутатора чаще всего указывают на кабель или разъём.' },
+      { title: 'Заменить компьютер или перейти на поддерживаемую ОС', prio: 'приоритет 3', why: 'Процессор 2017 года не проходит по требованиям Windows 11; ОЗУ 8 ГБ на пределе.' }
+    ];
+
+    return { nav, parts, drivers, issues, plan };
+  }
+}
+</script>
+</body>
+</html>

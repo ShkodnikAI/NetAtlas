@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Отчёт для ИИ</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width:100%; min-height:1000px; box-sizing:border-box; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Sans',system-ui,sans-serif; display:flex; flex-wrap:wrap; align-items:stretch">
+
+  <nav style="flex:0 0 232px; box-sizing:border-box; background:#10151C; border-right:1px solid #263040; padding:20px 12px; display:flex; flex-direction:column; gap:4px">
+    <div style="display:flex; align-items:center; gap:10px; padding:0 8px 18px 8px">
+      <div style="width:22px; height:22px; box-sizing:border-box; border:2px solid #5AA9FF; border-radius:6px"></div>
+      <div style="display:flex; flex-direction:column">
+        <div style="font-size:15px; font-weight:600">Аудит сети</div>
+        <div style="font-size:11px; color:#9AA6B5">личная система</div>
+      </div>
+    </div>
+    <sc-for list="{{nav}}" as="item" hint-placeholder-count="6">
+      <a href="{{item.href}}" style="display:block; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:6px; {{item.style}}">{{item.label}}</a>
+    </sc-for>
+    <div style="flex:1 1 auto; min-height:24px"></div>
+    <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; color:#9AA6B5">Сервер</div>
+      <div style="font-size:13px; font-family:'IBM Plex Mono',monospace">ADMIN-PC</div>
+      <div style="font-size:12px; color:#9AA6B5">Агентов в сети: 5 из 6</div>
+      <div style="border-top:1px solid #263040; padding-top:8px; font-size:12px; line-height:1.4; color:#9AA6B5">ИИ видит только текст отчётов. Доступа к сети и компьютерам нет.</div>
+    </div>
+  </nav>
+
+  <main style="flex:999 1 560px; min-width:0; box-sizing:border-box; padding:24px 28px; display:flex; flex-direction:column; gap:20px">
+
+    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px">
+      <div>
+        <h1 style="margin:0; font-size:24px; font-weight:600">Отчёт для ИИ</h1>
+        <div style="margin-top:4px; font-size:13px; color:#9AA6B5">Тема: потери пакетов на БУХ-02 · отчёт №14 · сформирован кодом в 14:44</div>
+      </div>
+      <div style="font-size:12px; color:#F5B83D; border:1px solid #5A4A1E; background:rgba(245,184,61,.10); padding:6px 10px; border-radius:6px">Демонстрационные данные</div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:stretch">
+      <div style="flex:1 1 220px; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:4px">
+        <div style="font-size:12px; color:#5FD38D">Зона сети</div>
+        <div style="font-size:13px; line-height:1.4">Агенты, сервер, исполнение команд. ИИ сюда не имеет доступа.</div>
+      </div>
+      <div style="align-self:center; color:#9AA6B5; font-size:18px">→</div>
+      <div style="flex:1 1 220px; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:4px">
+        <div style="font-size:12px; color:#5AA9FF">Зона отчёта</div>
+        <div style="font-size:13px; line-height:1.4">Обычный код собирает факты и очищает данные. Здесь вы проверяете текст.</div>
+      </div>
+      <div style="align-self:center; color:#9AA6B5; font-size:18px">→</div>
+      <div style="flex:1 1 220px; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:4px">
+        <div style="font-size:12px; color:#F5B83D">Зона ИИ</div>
+        <div style="font-size:13px; line-height:1.4">На входе текст, на выходе текст. Ни ключей, ни вызовов в сеть. Мост между зонами только вы.</div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start">
+
+      <section style="flex:1 1 380px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:14px">
+        <div style="display:flex; justify-content:space-between; gap:8px; align-items:baseline">
+          <div style="font-size:14px; font-weight:600">Что уйдёт в ИИ</div>
+          <div style="font-size:12px; color:#9AA6B5">единая форма отчёта</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">1. Что наблюдается</div>
+          <div style="font-size:13px; line-height:1.55">ПК-A теряет около 4% пакетов до ШЛЮЗА с 14:00. Остальные устройства за тем же коммутатором в норме.</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">2. Контекст</div>
+          <div style="font-size:13px; line-height:1.55">Компьютер, Windows 10 22H2, Intel Core 7-го поколения, HDD. Проводное подключение через КОММУТАТОР-A, порт 14. Недавних изменений нет. Драйвер сетевой карты 2018 года.</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">3. Измерения: сейчас и норма</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:1.7; background:#0E1116; border-radius:6px; padding:10px 12px">
+            <div style="display:flex; justify-content:space-between; gap:8px"><span>Потери пакетов</span><span>4% (норма 0%)</span></div>
+            <div style="display:flex; justify-content:space-between; gap:8px"><span>Задержка до шлюза</span><span>3,4 мс (норма 1,1)</span></div>
+            <div style="display:flex; justify-content:space-between; gap:8px"><span>Ошибки CRC на порту</span><span>+1 240 за сутки (норма 0)</span></div>
+            <div style="display:flex; justify-content:space-between; gap:8px"><span>Скорость линка</span><span>1 Гбит/с</span></div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">4. Ключевые строки логов</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; line-height:1.7; background:#0E1116; border-radius:6px; padding:10px 12px; color:#C5CEDA">
+            <div>14:02:11 сетевой адаптер: связь потеряна</div>
+            <div>14:02:13 сетевой адаптер: связь восстановлена, 1000 Мбит/с</div>
+            <div>14:41:50 сетевой адаптер: сброс соединения (6 раз за час)</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">5. Уже проверено</div>
+          <div style="font-size:13px; line-height:1.55">Другие ПК пингуют шлюз без потерь. DHCP отвечает. Настройки антивируса и файрвола не менялись.</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">6. Вопрос к ИИ</div>
+          <div style="font-size:13px; line-height:1.55">Назвать вероятные причины по убыванию, что проверять в каждом случае, безопасный план исправления, риски и способ отката. Ответ только текстом.</div>
+        </div>
+      </section>
+
+      <section style="flex:0 1 280px; min-width:240px; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:14px">
+        <div style="font-size:14px; font-weight:600">Очистка перед отправкой</div>
+        <div style="display:flex; flex-direction:column; gap:10px">
+          <div style="display:flex; gap:10px; font-size:13px; line-height:1.45"><span style="color:#5FD38D; font-size:11px; padding-top:3px">●</span><span>Имена и адреса заменены на псевдонимы: 14</span></div>
+          <div style="display:flex; gap:10px; font-size:13px; line-height:1.45"><span style="color:#5FD38D; font-size:11px; padding-top:3px">●</span><span>Пароли, токены и ключи вырезаны: 2</span></div>
+          <div style="display:flex; gap:10px; font-size:13px; line-height:1.45"><span style="color:#5FD38D; font-size:11px; padding-top:3px">●</span><span>Учётные записи пользователей скрыты: 3</span></div>
+          <div style="display:flex; gap:10px; font-size:13px; line-height:1.45"><span style="color:#5FD38D; font-size:11px; padding-top:3px">●</span><span>Строк логов оставлено: 3 из 340</span></div>
+        </div>
+        <div style="border-top:1px solid #263040; padding-top:12px; display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:12px; color:#9AA6B5">Таблица соответствий (только у вас)</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:1.8; background:#0E1116; border-radius:6px; padding:8px 10px">
+            <div>ПК-A = БУХ-02</div>
+            <div>КОММУТАТОР-A = Коммутатор-1</div>
+            <div>ШЛЮЗ = Роутер</div>
+          </div>
+        </div>
+        <div style="font-size:12px; line-height:1.5; color:#9AA6B5">Логи считаются недоверенным текстом. Ответ ИИ всегда только предложение, а не команда.</div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <div style="text-align:center; padding:10px 14px; border-radius:6px; background:#5AA9FF; color:#0A1220; font-size:14px; font-weight:600">Отправить в ИИ</div>
+          <div style="text-align:center; padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Скопировать текст отчёта</div>
+        </div>
+      </section>
+
+      <section style="flex:1 1 380px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:14px">
+        <div style="display:flex; justify-content:space-between; gap:8px; align-items:baseline">
+          <div style="font-size:14px; font-weight:600">Ответ ИИ (только текст)</div>
+          <div style="font-size:12px; color:#9AA6B5">получен в 14:48</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <div style="font-size:12px; color:#9AA6B5">Гипотезы по вероятности</div>
+          <div style="border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:4px">
+            <div style="display:flex; justify-content:space-between; gap:8px"><span style="font-size:13px; font-weight:600">1. Дефект кабеля или разъёма</span><span style="font-size:12px; color:#5FD38D">высокая</span></div>
+            <div style="font-size:12.5px; line-height:1.5; color:#C5CEDA">Ошибки CRC на порту и потери только у одного ПК. Проверить: заменить патч-корд, переключить в другой порт, посмотреть счётчики через час.</div>
+          </div>
+          <div style="border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:4px">
+            <div style="display:flex; justify-content:space-between; gap:8px"><span style="font-size:13px; font-weight:600">2. Драйвер или сбой сетевой карты</span><span style="font-size:12px; color:#F5B83D">средняя</span></div>
+            <div style="font-size:12.5px; line-height:1.5; color:#C5CEDA">Драйвер 2018 года и повторяющиеся сбросы связи. Проверить: подключить через USB-адаптер для сравнения.</div>
+          </div>
+          <div style="border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:4px">
+            <div style="display:flex; justify-content:space-between; gap:8px"><span style="font-size:13px; font-weight:600">3. Согласование скорости и дуплекса</span><span style="font-size:12px; color:#9AA6B5">низкая</span></div>
+            <div style="font-size:12.5px; line-height:1.5; color:#C5CEDA">Проверить, что в свойствах адаптера стоит автоопределение.</div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:12px; color:#9AA6B5">План, риски, откат</div>
+          <div style="font-size:12.5px; line-height:1.6; color:#C5CEDA">Сначала физическая замена кабеля. Драйвер обновлять только после проверки на пробной машине. Риск: при обновлении драйвера связь может пропасть, понадобится локальный доступ. Откат: сохранить текущий драйвер и создать точку восстановления.</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:12px; color:#9AA6B5">Черновик диагностического скрипта (только чтение)</div>
+<pre style="margin:0; font-family:'IBM Plex Mono',monospace; font-size:11.5px; line-height:1.6; background:#0E1116; border-radius:6px; padding:10px 12px; overflow:auto; color:#C5CEDA">Get-NetAdapter | Format-Table Name, Status, LinkSpeed,
+  FullDuplex, DriverVersionString, DriverDate
+Get-NetAdapterStatistics | Format-Table Name,
+  ReceivedPacketErrors, OutboundPacketErrors</pre>
+          <div style="font-size:12px; color:#9AA6B5; line-height:1.5">Скрипт не выполняется. Он попадёт на конвейер проверки как черновик.</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <a href="Scripts.dc.html" style="display:block; text-align:center; padding:10px 14px; border-radius:6px; background:#5AA9FF; color:#0A1220; font-size:14px; font-weight:600">Передать как черновик в «Скрипты и тесты»</a>
+          <div style="text-align:center; padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Сохранить рекомендацию</div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const nav = [
+      { label: 'Карта сети', href: 'Main.dc.html' },
+      { label: 'Компьютеры', href: 'Computer.dc.html' },
+      { label: 'Диски', href: 'Storage.dc.html' },
+      { label: 'Качество сети', href: 'Metrics.dc.html' },
+      { label: 'Безопасность', href: 'Security.dc.html' },
+      { label: 'Активность', href: 'Activity.dc.html' },
+      { label: 'Отчёты для ИИ', href: 'Reports.dc.html' },
+      { label: 'Скрипты и тесты', href: 'Scripts.dc.html' }
+    ].map((it, i) => ({
+      ...it,
+      style: i === 6
+        ? 'background:#1B2430; color:#E6EAF0; border-left:3px solid #5AA9FF'
+        : 'color:#9AA6B5; border-left:3px solid transparent'
+    }));
+    return { nav };
+  }
+}
+</script>
+</body>
+</html>

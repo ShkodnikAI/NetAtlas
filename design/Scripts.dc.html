@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Скрипты, тесты и подпись</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width:100%; min-height:1000px; box-sizing:border-box; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Sans',system-ui,sans-serif; display:flex; flex-wrap:wrap; align-items:stretch">
+
+  <nav style="flex:0 0 232px; box-sizing:border-box; background:#10151C; border-right:1px solid #263040; padding:20px 12px; display:flex; flex-direction:column; gap:4px">
+    <div style="display:flex; align-items:center; gap:10px; padding:0 8px 18px 8px">
+      <div style="width:22px; height:22px; box-sizing:border-box; border:2px solid #5AA9FF; border-radius:6px"></div>
+      <div style="display:flex; flex-direction:column">
+        <div style="font-size:15px; font-weight:600">Аудит сети</div>
+        <div style="font-size:11px; color:#9AA6B5">личная система</div>
+      </div>
+    </div>
+    <sc-for list="{{nav}}" as="item" hint-placeholder-count="6">
+      <a href="{{item.href}}" style="display:block; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:6px; {{item.style}}">{{item.label}}</a>
+    </sc-for>
+    <div style="flex:1 1 auto; min-height:24px"></div>
+    <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; color:#9AA6B5">Сервер</div>
+      <div style="font-size:13px; font-family:'IBM Plex Mono',monospace">ADMIN-PC</div>
+      <div style="font-size:12px; color:#9AA6B5">Агентов в сети: 5 из 6</div>
+      <div style="border-top:1px solid #263040; padding-top:8px; font-size:12px; line-height:1.4; color:#9AA6B5">ИИ видит только текст отчётов. Доступа к сети и компьютерам нет.</div>
+    </div>
+  </nav>
+
+  <main style="flex:999 1 560px; min-width:0; box-sizing:border-box; padding:24px 28px; display:flex; flex-direction:column; gap:20px">
+
+    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px">
+      <div>
+        <h1 style="margin:0; font-size:24px; font-weight:600">Скрипты, тесты и подпись</h1>
+        <div style="margin-top:4px; font-size:13px; color:#9AA6B5">Путь любого действия: черновик, проверка, тест на виртуальной машине, подпись, один компьютер, группа.</div>
+      </div>
+      <div style="font-size:12px; color:#F5B83D; border:1px solid #5A4A1E; background:rgba(245,184,61,.10); padding:6px 10px; border-radius:6px">Демонстрационные данные</div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:stretch">
+      <sc-for list="{{stages}}" as="s" hint-placeholder-count="6">
+        <div style="flex:1 1 150px; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-top:3px solid {{s.line}}; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; gap:8px; align-items:center">
+          <div style="display:flex; flex-direction:column; gap:2px">
+            <div style="font-size:11px; color:#9AA6B5">Этап {{s.n}}</div>
+            <div style="font-size:13px; font-weight:600">{{s.name}}</div>
+          </div>
+          <div style="font-size:20px; font-weight:600; font-family:'IBM Plex Mono',monospace">{{s.count}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start">
+
+      <section style="flex:1 1 320px; max-width:420px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:4px">
+        <div style="font-size:14px; font-weight:600; padding:6px 8px">Репозиторий скриптов</div>
+        <sc-for list="{{scripts}}" as="x" hint-placeholder-count="6">
+          <div style="display:flex; flex-direction:column; gap:4px; padding:10px 12px; border-radius:8px; border:1px solid {{x.border}}; background:{{x.bg}}">
+            <div style="display:flex; justify-content:space-between; gap:8px; align-items:baseline">
+              <div style="font-size:13px; font-weight:600">{{x.name}}</div>
+              <div style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#9AA6B5">{{x.ver}}</div>
+            </div>
+            <div style="font-size:12px; color:{{x.color}}">{{x.glyph}} {{x.stage}}</div>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="flex:999 1 480px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:baseline">
+          <div style="font-size:18px; font-weight:600">Диагностика сетевого адаптера <span style="font-size:12px; font-family:'IBM Plex Mono',monospace; color:#9AA6B5">v3</span></div>
+          <a href="Reports.dc.html" style="font-size:12px; color:#9AA6B5">из отчёта №14 →</a>
+        </div>
+
+        <div style="display:flex; flex-direction:column">
+          <sc-for list="{{steps}}" as="t" hint-placeholder-count="6">
+            <div style="display:flex; gap:14px; padding:12px 0; border-top:1px solid #1F2733">
+              <div style="flex:0 0 18px; font-size:12px; padding-top:2px; color:{{t.color}}">{{t.glyph}}</div>
+              <div style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:3px">
+                <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap">
+                  <div style="font-size:14px; font-weight:600">{{t.name}}</div>
+                  <div style="font-size:12px; color:{{t.color}}">{{t.state}}</div>
+                </div>
+                <div style="font-size:12.5px; line-height:1.5; color:#9AA6B5">{{t.note}}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#10151C; border:1px solid #2E3A4C; border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:13px; font-weight:600">Правило сервера</div>
+          <div style="font-size:12.5px; line-height:1.55; color:#C5CEDA">Скрипт без статуса «протестирован» и вашей подписи не отправляется ни на один агент. Агент выполняет только подписанное.</div>
+          <div style="font-size:12.5px; line-height:1.55; color:#9AA6B5">Виртуальная машина не воспроизводит физическое железо. Для драйверов и сетевых карт этап «Один ПК» обязателен, после него сравниваются метрики до и после. Если лучше не стало, изменение откатывается.</div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:8px">
+          <div style="padding:10px 14px; border-radius:6px; background:#5AA9FF; color:#0A1220; font-size:14px; font-weight:600">Подписать и разрешить запуск на БУХ-02</div>
+          <div style="padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Посмотреть код</div>
+          <div style="padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Вернуть на доработку</div>
+        </div>
+      </section>
+    </div>
+
+    <section style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:4px">
+      <div style="font-size:14px; font-weight:600; margin-bottom:8px">Журнал действий</div>
+      <sc-for list="{{log}}" as="e" hint-placeholder-count="5">
+        <div style="display:flex; flex-wrap:wrap; gap:6px 16px; padding:9px 0; border-top:1px solid #1F2733; font-size:13px; align-items:baseline">
+          <div style="flex:0 0 84px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9AA6B5">{{e.time}}</div>
+          <div style="flex:0 0 72px; font-size:12px; color:#9AA6B5">{{e.who}}</div>
+          <div style="flex:1 1 280px; min-width:0">{{e.what}}</div>
+          <div style="flex:0 1 220px; font-size:12px; color:{{e.color}}">{{e.result}}</div>
+        </div>
+      </sc-for>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const COL = { ok: '#5FD38D', wait: '#F5B83D', todo: '#7C8798', cur: '#5AA9FF' };
+    const GLY = { ok: '●', wait: '▲', todo: '○', cur: '◆' };
+
+    const nav = [
+      { label: 'Карта сети', href: 'Main.dc.html' },
+      { label: 'Компьютеры', href: 'Computer.dc.html' },
+      { label: 'Диски', href: 'Storage.dc.html' },
+      { label: 'Качество сети', href: 'Metrics.dc.html' },
+      { label: 'Безопасность', href: 'Security.dc.html' },
+      { label: 'Активность', href: 'Activity.dc.html' },
+      { label: 'Отчёты для ИИ', href: 'Reports.dc.html' },
+      { label: 'Скрипты и тесты', href: 'Scripts.dc.html' }
+    ].map((it, i) => ({
+      ...it,
+      style: i === 7
+        ? 'background:#1B2430; color:#E6EAF0; border-left:3px solid #5AA9FF'
+        : 'color:#9AA6B5; border-left:3px solid transparent'
+    }));
+
+    const stages = [
+      { name: 'Черновик', count: '1', line: '#7C8798' },
+      { name: 'Проверка кода', count: '1', line: '#7C8798' },
+      { name: 'Тест на ВМ', count: '0', line: '#7C8798' },
+      { name: 'Подпись', count: '1', line: '#F5B83D' },
+      { name: 'Один ПК', count: '1', line: '#5AA9FF' },
+      { name: 'Раскатка', count: '2', line: '#5FD38D' }
+    ].map((s, i) => ({ n: String(i + 1), name: s.name, count: s.count, line: s.line }));
+
+    const scripts = [
+      { name: 'Диагностика сетевого адаптера', ver: 'v3', k: 'wait', stage: 'Ждёт вашей подписи', sel: true },
+      { name: 'Обновление драйвера принтера HP', ver: 'v2', k: 'cur', stage: 'Пробный запуск на одном ПК', sel: false },
+      { name: 'Отключение SMBv1', ver: 'v1', k: 'cur', stage: 'Проверка кода', sel: false },
+      { name: 'Включение BitLocker', ver: 'v1', k: 'todo', stage: 'Черновик', sel: false },
+      { name: 'Перезапуск службы печати и очистка очереди', ver: 'v5', k: 'ok', stage: 'Раскатан', sel: false },
+      { name: 'Очистка временных файлов', ver: 'v4', k: 'ok', stage: 'Раскатан', sel: false }
+    ].map((x) => ({
+      name: x.name, ver: x.ver, stage: x.stage,
+      color: COL[x.k], glyph: GLY[x.k],
+      border: x.sel ? '#5AA9FF' : 'transparent',
+      bg: x.sel ? '#1B2430' : 'transparent'
+    }));
+
+    const steps = [
+      { k: 'ok', name: '1. Черновик', state: 'готово', note: 'Создан из отчёта ИИ №14 и отредактирован вами. Скрипт только читает данные адаптера, настроек не меняет.' },
+      { k: 'ok', name: '2. Проверка кода', state: 'готово', note: 'Статический анализ PSScriptAnalyzer: 0 ошибок, 0 предупреждений. Пробный режим -WhatIf: изменений не вносит.' },
+      { k: 'ok', name: '3. Тест на виртуальной машине', state: 'готово', note: 'Hyper-V, снимок «win10-эталон» восстановлен после прогона. Выполнено за 12 секунд, результат совпал с ожидаемым.' },
+      { k: 'wait', name: '4. Подпись', state: 'ждёт вас', note: 'Сервер подпишет скрипт вашим ключом только после вашего подтверждения.' },
+      { k: 'todo', name: '5. Один компьютер', state: 'не начато', note: 'Запуск на БУХ-02, затем сравнение «до и после» за час: потери пакетов и ошибки CRC.' },
+      { k: 'todo', name: '6. Раскатка на группу', state: 'не начато', note: 'Только если на шаге 5 метрики улучшились. Иначе откат и пометка «неэффективно» в истории рекомендаций.' }
+    ].map((t) => ({ name: t.name, state: t.state, note: t.note, color: COL[t.k], glyph: GLY[t.k] }));
+
+    const log = [
+      { time: 'сегодня 14:49', who: 'сервер', what: 'Скрипт «Диагностика сетевого адаптера v3» прошёл тест на ВМ «win10-эталон»', result: 'успешно', k: 'ok' },
+      { time: 'сегодня 14:21', who: 'admin', what: 'Запуск «Перезапуск службы печати и очистка очереди v5» на ОФИС-02', result: 'выполнено', k: 'ok' },
+      { time: 'сегодня 13:58', who: 'сервер', what: 'Агент БУХ-03 ушёл из сети', result: 'в очереди 2 задачи', k: 'wait' },
+      { time: 'сегодня 11:03', who: 'admin', what: 'Подписан «Очистка временных файлов v4», раскатка на группу «Офис»', result: 'выполнено', k: 'ok' },
+      { time: 'сегодня 10:40', who: 'admin', what: 'Отчёт №13 отправлен в ИИ, ответ сохранён', result: 'получен', k: 'ok' }
+    ].map((e) => ({ time: e.time, who: e.who, what: e.what, result: e.result, color: COL[e.k] }));
+
+    return { nav, stages, scripts, steps, log };
+  }
+}
+</script>
+</body>
+</html>

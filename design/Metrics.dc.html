@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Качество сети</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width:100%; min-height:1000px; box-sizing:border-box; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Sans',system-ui,sans-serif; display:flex; flex-wrap:wrap; align-items:stretch">
+
+  <nav style="flex:0 0 232px; box-sizing:border-box; background:#10151C; border-right:1px solid #263040; padding:20px 12px; display:flex; flex-direction:column; gap:4px">
+    <div style="display:flex; align-items:center; gap:10px; padding:0 8px 18px 8px">
+      <div style="width:22px; height:22px; box-sizing:border-box; border:2px solid #5AA9FF; border-radius:6px"></div>
+      <div style="display:flex; flex-direction:column">
+        <div style="font-size:15px; font-weight:600">Аудит сети</div>
+        <div style="font-size:11px; color:#9AA6B5">личная система</div>
+      </div>
+    </div>
+    <sc-for list="{{nav}}" as="item" hint-placeholder-count="6">
+      <a href="{{item.href}}" style="display:block; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:6px; {{item.style}}">{{item.label}}</a>
+    </sc-for>
+    <div style="flex:1 1 auto; min-height:24px"></div>
+    <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; color:#9AA6B5">Сервер</div>
+      <div style="font-size:13px; font-family:'IBM Plex Mono',monospace">ADMIN-PC</div>
+      <div style="font-size:12px; color:#9AA6B5">Агентов в сети: 5 из 6</div>
+      <div style="border-top:1px solid #263040; padding-top:8px; font-size:12px; line-height:1.4; color:#9AA6B5">ИИ видит только текст отчётов. Доступа к сети и компьютерам нет.</div>
+    </div>
+  </nav>
+
+  <main style="flex:999 1 560px; min-width:0; box-sizing:border-box; padding:24px 28px; display:flex; flex-direction:column; gap:20px">
+
+    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px">
+      <div>
+        <h1 style="margin:0; font-size:24px; font-weight:600">Качество сети</h1>
+        <div style="margin-top:4px; font-size:13px; color:#9AA6B5">Агенты измеряют связь друг с другом, с шлюзом и с интернетом. Тяжёлые замеры идут в окна простоя.</div>
+      </div>
+      <div style="font-size:12px; color:#F5B83D; border:1px solid #5A4A1E; background:rgba(245,184,61,.10); padding:6px 10px; border-radius:6px">Демонстрационные данные</div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px">
+      <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+        <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:12px; color:#9AA6B5">{{k.label}}</div>
+          <div style="font-size:22px; font-weight:600; font-family:'IBM Plex Mono',monospace">{{k.value}}</div>
+          <div style="font-size:12px; color:#9AA6B5">{{k.note}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start">
+
+      <section style="flex:999 1 520px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:baseline">
+          <div style="font-size:14px; font-weight:600">Матрица связи: кто с кем</div>
+          <div style="font-size:12px; color:#9AA6B5">задержка, мс · потери, если есть</div>
+        </div>
+        <div style="overflow:auto">
+          <div style="min-width:560px; display:grid; grid-template-columns:92px repeat(7, minmax(56px, 1fr)); gap:3px; align-items:stretch">
+            <div></div>
+            <sc-for list="{{cols}}" as="c" hint-placeholder-count="7">
+              <div style="font-size:11px; color:#9AA6B5; text-align:center; padding:4px 0; white-space:nowrap">{{c.name}}</div>
+            </sc-for>
+            <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+              <div style="display:contents">
+                <div style="font-size:11px; color:#9AA6B5; display:flex; align-items:center; white-space:nowrap">{{r.name}}</div>
+                <sc-for list="{{r.cells}}" as="cell" hint-placeholder-count="7">
+                  <div style="border-radius:4px; min-height:40px; box-sizing:border-box; padding:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; background:{{cell.bg}}; color:{{cell.fg}}">
+                    <span>{{cell.text}}</span>
+                    <span style="font-size:10px">{{cell.sub}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:#9AA6B5">
+          <span><span style="color:#5FD38D">●</span> норма</span>
+          <span><span style="color:#F5B83D">▲</span> повышенная задержка или единичные потери</span>
+          <span><span style="color:#FF7A7A">■</span> потери 2% и выше</span>
+          <span><span style="color:#7C8798">○</span> нет данных</span>
+        </div>
+      </section>
+
+      <section style="flex:1 1 380px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:baseline">
+          <div style="font-size:14px; font-weight:600">Скорость интернета за сутки</div>
+          <div style="font-size:12px; color:#9AA6B5">вниз, Мбит/с</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:flex-end">
+          <div style="display:flex; flex-direction:column; justify-content:space-between; height:150px; font-size:10px; color:#9AA6B5; font-family:'IBM Plex Mono',monospace; text-align:right">
+            <span>450</span><span>225</span><span>0</span>
+          </div>
+          <div style="flex:1 1 auto; min-width:0; display:flex; align-items:flex-end; gap:3px; height:150px; border-bottom:1px solid #2E3A4C">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="24">
+              <div style="flex:1 1 0; min-width:0; border-radius:2px 2px 0 0; background:{{b.color}}; height:{{b.h}}px"></div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:#9AA6B5; font-family:'IBM Plex Mono',monospace; padding-left:34px">
+          <span>00</span><span>06</span><span>12</span><span>18</span><span>23 ч</span>
+        </div>
+        <div style="font-size:12px; line-height:1.5; color:#9AA6B5"><span style="color:#F5B83D">▲</span> Жёлтые столбцы: скорость ниже 300 Мбит/с. Просадка с 18 до 21 часа повторяется несколько дней подряд.</div>
+      </section>
+    </div>
+
+    <section style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:10px">
+      <div style="font-size:14px; font-weight:600">Узкие и слабые места</div>
+      <sc-for list="{{spots}}" as="s" hint-placeholder-count="3">
+        <div style="display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; justify-content:space-between; border:1px solid #263040; border-radius:8px; padding:12px 14px">
+          <div style="display:flex; gap:12px; flex:1 1 360px; min-width:0">
+            <span style="font-size:11px; padding-top:3px; color:{{s.color}}">{{s.glyph}}</span>
+            <div style="display:flex; flex-direction:column; gap:4px; min-width:0">
+              <div style="font-size:14px; font-weight:600">{{s.title}}</div>
+              <div style="font-size:12.5px; line-height:1.5; color:#9AA6B5">{{s.note}}</div>
+            </div>
+          </div>
+          <a href="Reports.dc.html" style="padding:8px 12px; border-radius:6px; border:1px solid #2E3A4C; font-size:13px; white-space:nowrap">В отчёт для ИИ</a>
+        </div>
+      </sc-for>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const nav = [
+      { label: 'Карта сети', href: 'Main.dc.html' },
+      { label: 'Компьютеры', href: 'Computer.dc.html' },
+      { label: 'Диски', href: 'Storage.dc.html' },
+      { label: 'Качество сети', href: 'Metrics.dc.html' },
+      { label: 'Безопасность', href: 'Security.dc.html' },
+      { label: 'Активность', href: 'Activity.dc.html' },
+      { label: 'Отчёты для ИИ', href: 'Reports.dc.html' },
+      { label: 'Скрипты и тесты', href: 'Scripts.dc.html' }
+    ].map((it, i) => ({
+      ...it,
+      style: i === 3
+        ? 'background:#1B2430; color:#E6EAF0; border-left:3px solid #5AA9FF'
+        : 'color:#9AA6B5; border-left:3px solid transparent'
+    }));
+
+    const kpis = [
+      { label: 'Интернет сейчас', value: '412 / 96', note: 'Мбит/с вниз / вверх' },
+      { label: 'Задержка DNS', value: '24 мс', note: 'в норме' },
+      { label: 'Потери до шлюза', value: '4%', note: 'максимум: БУХ-02' },
+      { label: 'Порты с ошибками', value: '1', note: 'порт 14, коммутатор-1' }
+    ];
+
+    const names = ['Шлюз', 'ADMIN', 'БУХ-02', 'БУХ-03', 'ОФИС-01', 'ОФИС-02', 'НОУТ-01'];
+    const n = names.length;
+    const ms = [
+      [null, 0.8, 3.1, null, 1.0, 1.1, 4.2],
+      [0.8, null, 3.4, null, 1.4, 1.5, 4.6],
+      [3.1, 3.4, null, null, 3.6, 3.7, 6.9],
+      [null, null, null, null, null, null, null],
+      [1.0, 1.4, 3.6, null, null, 0.9, 4.5],
+      [1.1, 1.5, 3.7, null, 0.9, null, 4.6],
+      [4.2, 4.6, 6.9, null, 4.5, 4.6, null]
+    ];
+    const lossBad = 2; // %
+    const lossOf = (i, j) => ((i === 2 || j === 2) ? 4 : 0);
+    const cols = names.map((name) => ({ name }));
+    const rows = names.map((name, i) => ({
+      name,
+      cells: names.map((_, j) => {
+        if (i === j) return { text: '—', sub: '', bg: '#0E1116', fg: '#4A5568' };
+        if (i === 3 || j === 3) return { text: '○', sub: 'нет данных', bg: 'rgba(124,135,152,.14)', fg: '#9AA6B5' };
+        const v = ms[i][j];
+        const loss = lossOf(i, j);
+        const sub = loss ? loss + '% потерь' : '';
+        if (loss >= lossBad) return { text: '■ ' + v.toFixed(1), sub, bg: 'rgba(255,122,122,.20)', fg: '#FFB0B0' };
+        if (v > 4) return { text: '▲ ' + v.toFixed(1), sub, bg: 'rgba(245,184,61,.16)', fg: '#F5C970' };
+        return { text: '● ' + v.toFixed(1), sub, bg: 'rgba(95,211,141,.12)', fg: '#8EE3B0' };
+      })
+    }));
+
+    const speed = [412, 415, 418, 420, 418, 416, 410, 405, 398, 380, 372, 365, 360, 358, 362, 370, 355, 340, 290, 262, 255, 280, 340, 395];
+    const bars = speed.map((v) => ({
+      h: Math.round(v / 450 * 150),
+      color: v < 300 ? '#F5B83D' : '#5AA9FF'
+    }));
+
+    const spots = [
+      { glyph: '■', color: '#FF7A7A', title: 'БУХ-02 теряет 4% пакетов',
+        note: 'Потери только на этом компьютере, остальные за тем же коммутатором в норме. На порту 14 растут ошибки CRC. Вероятная причина: кабель, разъём или сетевая карта.' },
+      { glyph: '▲', color: '#F5B83D', title: 'Вечерняя просадка скорости интернета',
+        note: 'С 18 до 21 часа скорость падает почти вдвое, задержка DNS растёт. Нужно сравнить с загрузкой канала и проверить, не виноват ли провайдер.' },
+      { glyph: '▲', color: '#F5B83D', title: 'Принтер подключён на 100 Мбит/с вместо 1 Гбит/с',
+        note: 'Порт коммутатора-2 согласовал пониженную скорость. Возможна плохая жила в кабеле. Печать больших файлов идёт медленно.' }
+    ];
+
+    return { nav, kpis, cols, rows, bars, spots };
+  }
+}
+</script>
+</body>
+</html>

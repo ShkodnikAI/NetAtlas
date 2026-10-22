@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Безопасность</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width:100%; min-height:1000px; box-sizing:border-box; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Sans',system-ui,sans-serif; display:flex; flex-wrap:wrap; align-items:stretch">
+
+  <nav style="flex:0 0 232px; box-sizing:border-box; background:#10151C; border-right:1px solid #263040; padding:20px 12px; display:flex; flex-direction:column; gap:4px">
+    <div style="display:flex; align-items:center; gap:10px; padding:0 8px 18px 8px">
+      <div style="width:22px; height:22px; box-sizing:border-box; border:2px solid #5AA9FF; border-radius:6px"></div>
+      <div style="display:flex; flex-direction:column">
+        <div style="font-size:15px; font-weight:600">Аудит сети</div>
+        <div style="font-size:11px; color:#9AA6B5">личная система</div>
+      </div>
+    </div>
+    <sc-for list="{{nav}}" as="item" hint-placeholder-count="6">
+      <a href="{{item.href}}" style="display:block; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:6px; {{item.style}}">{{item.label}}</a>
+    </sc-for>
+    <div style="flex:1 1 auto; min-height:24px"></div>
+    <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; color:#9AA6B5">Сервер</div>
+      <div style="font-size:13px; font-family:'IBM Plex Mono',monospace">ADMIN-PC</div>
+      <div style="font-size:12px; color:#9AA6B5">Агентов в сети: 5 из 6</div>
+      <div style="border-top:1px solid #263040; padding-top:8px; font-size:12px; line-height:1.4; color:#9AA6B5">ИИ видит только текст отчётов. Доступа к сети и компьютерам нет.</div>
+    </div>
+  </nav>
+
+  <main style="flex:999 1 560px; min-width:0; box-sizing:border-box; padding:24px 28px; display:flex; flex-direction:column; gap:20px">
+
+    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px">
+      <div>
+        <h1 style="margin:0; font-size:24px; font-weight:600">Безопасность</h1>
+        <div style="margin-top:4px; font-size:13px; color:#9AA6B5">Проверка изнутри сети силами агентов: настройки ОС, службы и порты, шифрование, устаревший софт, сетевые устройства.</div>
+      </div>
+      <div style="font-size:12px; color:#F5B83D; border:1px solid #5A4A1E; background:rgba(245,184,61,.10); padding:6px 10px; border-radius:6px">Демонстрационные данные</div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:stretch">
+      <div style="flex:1 1 260px; max-width:360px; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:10px">
+        <div style="font-size:12px; color:#9AA6B5">Общая оценка</div>
+        <div style="display:flex; align-items:baseline; gap:6px">
+          <span style="font-size:44px; font-weight:600; font-family:'IBM Plex Mono',monospace">78</span>
+          <span style="font-size:16px; color:#9AA6B5">/ 100</span>
+        </div>
+        <div style="height:8px; border-radius:4px; background:#263040; overflow:hidden">
+          <div style="width:78%; height:100%; background:#F5B83D"></div>
+        </div>
+        <div style="font-size:12px; line-height:1.5; color:#9AA6B5">Оценка считается по правилам и весам замечаний. Она не зависит от ИИ.</div>
+      </div>
+      <div style="flex:999 1 480px; min-width:0; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px">
+        <sc-for list="{{counts}}" as="c" hint-placeholder-count="4">
+          <div style="background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:6px; justify-content:center">
+            <div style="font-size:12px; color:{{c.color}}">{{c.glyph}} {{c.label}}</div>
+            <div style="font-size:30px; font-weight:600; font-family:'IBM Plex Mono',monospace">{{c.value}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start">
+
+      <aside style="flex:1 1 220px; max-width:260px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:2px">
+        <div style="font-size:12px; color:#9AA6B5; padding:6px 10px">Категории</div>
+        <sc-for list="{{cats}}" as="k" hint-placeholder-count="6">
+          <div style="display:flex; justify-content:space-between; padding:9px 10px; border-radius:6px; font-size:13px; {{k.style}}">
+            <span>{{k.name}}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:12px">{{k.n}}</span>
+          </div>
+        </sc-for>
+      </aside>
+
+      <section style="flex:999 1 520px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:4px">
+        <div style="font-size:14px; font-weight:600; margin-bottom:8px">Замечания</div>
+        <sc-for list="{{findings}}" as="f" hint-placeholder-count="8">
+          <div style="display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; padding:12px 0; border-top:1px solid #1F2733">
+            <div style="flex:0 0 112px; font-size:12px; color:{{f.color}}">{{f.glyph}} {{f.sev}}</div>
+            <div style="flex:1 1 260px; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:14px">{{f.title}}</div>
+              <div style="font-size:12px; color:#9AA6B5">{{f.base}}</div>
+            </div>
+            <div style="flex:0 1 200px; font-size:12px; font-family:'IBM Plex Mono',monospace; color:#C5CEDA">{{f.where}}</div>
+            <a href="Reports.dc.html" style="flex:0 0 auto; padding:7px 12px; border-radius:6px; border:1px solid #2E3A4C; font-size:12.5px; white-space:nowrap">В отчёт для ИИ</a>
+          </div>
+        </sc-for>
+        <div style="margin-top:8px; font-size:12px; line-height:1.5; color:#9AA6B5">Известные уязвимости ищутся по списку установленного ПО в базе NVD. Исправления проходят общий путь: рекомендация, скрипт, тест на виртуальной машине, подпись.</div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const COL = { crit: '#FF7A7A', imp: '#F5B83D', min: '#8FB8E8', ok: '#5FD38D' };
+    const GLY = { crit: '■', imp: '▲', min: '◆', ok: '●' };
+
+    const nav = [
+      { label: 'Карта сети', href: 'Main.dc.html' },
+      { label: 'Компьютеры', href: 'Computer.dc.html' },
+      { label: 'Диски', href: 'Storage.dc.html' },
+      { label: 'Качество сети', href: 'Metrics.dc.html' },
+      { label: 'Безопасность', href: 'Security.dc.html' },
+      { label: 'Активность', href: 'Activity.dc.html' },
+      { label: 'Отчёты для ИИ', href: 'Reports.dc.html' },
+      { label: 'Скрипты и тесты', href: 'Scripts.dc.html' }
+    ].map((it, i) => ({
+      ...it,
+      style: i === 4
+        ? 'background:#1B2430; color:#E6EAF0; border-left:3px solid #5AA9FF'
+        : 'color:#9AA6B5; border-left:3px solid transparent'
+    }));
+
+    const counts = [
+      { label: 'Критичные', value: '1', k: 'crit' },
+      { label: 'Важные', value: '4', k: 'imp' },
+      { label: 'Прочие', value: '3', k: 'min' },
+      { label: 'Исправлено за 30 дней', value: '9', k: 'ok' }
+    ].map((c) => ({ label: c.label, value: c.value, color: COL[c.k], glyph: GLY[c.k] }));
+
+    const cats = [
+      ['Все замечания', '8'],
+      ['ОС и обновления', '1'],
+      ['Службы и порты', '2'],
+      ['Шифрование', '1'],
+      ['Сетевые устройства', '2'],
+      ['ПО и съёмные носители', '2']
+    ].map(([name, n], i) => ({
+      name, n,
+      style: i === 0 ? 'background:#1B2430; color:#E6EAF0' : 'color:#9AA6B5'
+    }));
+
+    const SEV = { crit: 'Критичное', imp: 'Важное', min: 'Прочее' };
+    const findings = [
+      { k: 'crit', title: 'Включён устаревший протокол SMBv1', base: 'Основание: рекомендации CIS и Microsoft', where: 'БУХ-02, БУХ-03' },
+      { k: 'imp', title: 'Windows 10: поддержка завершена, обновления безопасности не приходят', base: 'Основание: жизненный цикл ОС', where: 'БУХ-02' },
+      { k: 'imp', title: 'Шифрование диска (BitLocker) выключено', base: 'Основание: рекомендации CIS', where: 'БУХ-02, БУХ-03, ОФИС-02, НОУТ-01' },
+      { k: 'imp', title: 'Удалённый рабочий стол включён без проверки на уровне сети (NLA)', base: 'Основание: рекомендации CIS', where: 'ОФИС-01' },
+      { k: 'imp', title: 'Принтер: пароль администратора остался заводским', base: 'Основание: общая практика защиты устройств', where: 'Принтер HP' },
+      { k: 'min', title: 'Прошивка принтера устарела', base: 'Основание: сравнение с версией производителя', where: 'Принтер HP' },
+      { k: 'min', title: 'Автозапуск со съёмных носителей не ограничен', base: 'Основание: рекомендации CIS', where: 'ОФИС-01, ОФИС-02, НОУТ-01' },
+      { k: 'min', title: 'Устаревший просмотрщик PDF с известными уязвимостями', base: 'Основание: список ПО и база NVD', where: 'БУХ-02, ОФИС-02' }
+    ].map((f) => ({ title: f.title, base: f.base, where: f.where, sev: SEV[f.k], color: COL[f.k], glyph: GLY[f.k] }));
+
+    return { nav, counts, cats, findings };
+  }
+}
+</script>
+</body>
+</html>

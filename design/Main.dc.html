@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Карта сети</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#FFFFFF}
+</style>
+</helmet>
+<div style="width:100%; min-height:1000px; box-sizing:border-box; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Sans',system-ui,sans-serif; display:flex; flex-wrap:wrap; align-items:stretch">
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="ic-inet" viewBox="0 0 24 24"><path d="M6.5 18h11a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.2 4.4 4.4 0 0 0 6.5 18z"/></symbol>
+    <symbol id="ic-router" viewBox="0 0 24 24"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h.01M11 16.5h.01M8 13V8M16 13V8"/></symbol>
+    <symbol id="ic-switch" viewBox="0 0 24 24"><rect x="2.5" y="8" width="19" height="8" rx="2"/><path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/></symbol>
+    <symbol id="ic-ap" viewBox="0 0 24 24"><path d="M3 9a13 13 0 0 1 18 0M6 12.5a8.5 8.5 0 0 1 12 0M9 16a4 4 0 0 1 6 0M12 19.5h.01"/></symbol>
+    <symbol id="ic-server" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="6" rx="1.5"/><rect x="3.5" y="14" width="17" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="ic-pc" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></symbol>
+    <symbol id="ic-laptop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="10" rx="1.2"/><path d="M2.5 19h19"/></symbol>
+    <symbol id="ic-printer" viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M7 14h10v6H7z"/></symbol>
+    <symbol id="ic-other" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 12h6"/></symbol>
+    <symbol id="ro-acc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01"/></symbol>
+    <symbol id="ro-mgr" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/></symbol>
+    <symbol id="ro-adm" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.3 8-8 9-4.7-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="ro-guest" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></symbol>
+  </svg>
+
+  <nav style="flex:0 0 232px; box-sizing:border-box; background:#10151C; border-right:1px solid #263040; padding:20px 12px; display:flex; flex-direction:column; gap:4px">
+    <div style="display:flex; align-items:center; gap:10px; padding:0 8px 18px 8px">
+      <div style="width:22px; height:22px; box-sizing:border-box; border:2px solid #5AA9FF; border-radius:6px"></div>
+      <div style="display:flex; flex-direction:column">
+        <div style="font-size:15px; font-weight:600">Аудит сети</div>
+        <div style="font-size:11px; color:#9AA6B5">личная система</div>
+      </div>
+    </div>
+    <sc-for list="{{nav}}" as="item" hint-placeholder-count="8">
+      <a href="{{item.href}}" style="display:block; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:6px; {{item.style}}">{{item.label}}</a>
+    </sc-for>
+    <div style="flex:1 1 auto; min-height:24px"></div>
+    <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; color:#9AA6B5">Сервер</div>
+      <div style="font-size:13px; font-family:'IBM Plex Mono',monospace">ADMIN-PC</div>
+      <div style="font-size:12px; color:#9AA6B5">Агентов в сети: 5 из 6</div>
+      <div style="border-top:1px solid #263040; padding-top:8px; font-size:12px; line-height:1.4; color:#9AA6B5">ИИ видит только текст отчётов. Доступа к сети и компьютерам нет.</div>
+    </div>
+  </nav>
+
+  <main style="flex:999 1 560px; min-width:0; box-sizing:border-box; padding:24px 28px; display:flex; flex-direction:column; gap:20px">
+
+    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px">
+      <div>
+        <h1 style="margin:0; font-size:24px; font-weight:600">Карта сети</h1>
+        <div style="margin-top:4px; font-size:13px; color:#9AA6B5">Обновлено 14:32 · агентов в сети 5 из 6 · нажмите на значок устройства, чтобы открыть вкладку с подробностями</div>
+      </div>
+      <div style="font-size:12px; color:#F5B83D; border:1px solid #5A4A1E; background:rgba(245,184,61,.10); padding:6px 10px; border-radius:6px">Демонстрационные данные</div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px">
+      <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+        <div style="background:#151A22; border:1px solid #263040; border-radius:8px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:12px; color:#9AA6B5">{{k.label}}</div>
+          <div style="font-size:22px; font-weight:600; font-family:'IBM Plex Mono',monospace">{{k.value}}</div>
+          <div style="font-size:12px; color:#9AA6B5">{{k.note}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start">
+
+      <section style="flex:999 1 520px; min-width:0; background:#151A22; border:1px solid #263040; border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; box-sizing:border-box">
+
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <div style="font-size:12px; color:#9AA6B5">Добавить элемент на карту вручную</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px">
+            <sc-for list="{{addKinds}}" as="k" hint-placeholder-count="8">
+              <button onClick="{{k.go}}" style="display:flex; align-items:center; gap:6px; padding:7px 10px; border-radius:6px; border:1px solid #2E3A4C; background:#10151C; color:#E6EAF0; font-family:inherit; font-size:12.5px; cursor:pointer">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="{{k.icon}}"></use></svg>
+                <span>{{k.label}}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{connecting}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; background:rgba(90,169,255,.12); border:1px solid #2F5C8F; border-radius:8px; padding:10px 12px; font-size:13px">
+            <span>Выберите на карте устройство, с которым соединить «{{connectName}}»</span>
+            <button onClick="{{cancelConnect}}" style="padding:6px 10px; border-radius:6px; border:1px solid #2E3A4C; background:transparent; color:#E6EAF0; font-family:inherit; font-size:12.5px; cursor:pointer">Отмена</button>
+          </div>
+        </sc-if>
+
+        <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:#9AA6B5; align-items:center">
+          <span style="color:#5FD38D">●</span><span>В сети</span>
+          <span style="color:#F5B83D">▲</span><span>Внимание</span>
+          <span style="color:#FF7A7A">■</span><span>Проблема</span>
+          <span style="color:#7C8798">○</span><span>Не в сети</span>
+          <span style="color:#8FB8E8">◇</span><span>Не проверен</span>
+          <span style="margin-left:auto">Пунктир: Wi‑Fi, нет связи или ручная связь</span>
+        </div>
+
+        <div style="overflow:auto; border:1px solid #263040; border-radius:8px; background:#0E1116">
+          <div style="position:relative; width:860px; height:640px; background-image:radial-gradient(#243044 1px, transparent 1px); background-size:24px 24px">
+            <div style="position:absolute; left:12px; top:500px; font-size:11px; color:#7C8798">Добавленные вручную</div>
+            <sc-for list="{{lines}}" as="l" hint-placeholder-count="11">
+              <div style="position:absolute; {{l.geo}}"></div>
+            </sc-for>
+            <sc-for list="{{labels}}" as="t" hint-placeholder-count="5">
+              <div style="position:absolute; z-index:3; transform:translate(-50%,-50%); background:#0E1116; border:1px solid #2E3A4C; border-radius:4px; padding:2px 6px; font-size:10.5px; font-family:'IBM Plex Mono',monospace; white-space:nowrap; {{t.geo}}">{{t.text}}</div>
+            </sc-for>
+            <sc-for list="{{nodes}}" as="n" hint-placeholder-count="12">
+              <button onClick="{{n.pick}}" aria-label="{{n.aria}}" style="position:absolute; z-index:2; box-sizing:border-box; width:112px; height:56px; padding:6px 8px 6px 10px; border-radius:8px; text-align:left; cursor:pointer; display:flex; flex-direction:column; justify-content:center; gap:3px; font-family:inherit; color:inherit; {{n.geo}}">
+                <span style="display:flex; align-items:center; gap:6px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 16px; color:#C5CEDA"><use href="{{n.icon}}"></use></svg>
+                  <span style="flex:1 1 auto; min-width:0; font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{n.name}}</span>
+                  <span style="flex:0 0 auto; font-size:10px; color:{{n.color}}">{{n.glyph}}</span>
+                </span>
+                <span style="font-size:10px; color:#9AA6B5; font-family:'IBM Plex Mono',monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{n.sub}}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="font-size:12px; color:#9AA6B5; line-height:1.5">Карта строится автоматически по данным агентов и SNMP. Элементы, добавленные вручную, помечены как «не проверен», пока вы не запустите проверку на вкладке «Правка».</div>
+      </section>
+
+      <sc-if value="{{hasSel}}" hint-placeholder-val="{{ true }}">
+        <aside style="flex:1 1 320px; max-width:400px; min-width:0; box-sizing:border-box; background:#151A22; border:1px solid #263040; border-radius:10px; display:flex; flex-direction:column">
+
+          <div style="display:flex; align-items:flex-start; gap:12px; padding:16px 16px 12px 16px">
+            <div style="flex:0 0 40px; height:40px; border-radius:8px; background:#1B2430; border:1px solid #2E3A4C; display:flex; align-items:center; justify-content:center; color:#C5CEDA">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="{{sel.icon}}"></use></svg>
+            </div>
+            <div style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:4px">
+              <div style="font-size:12px; color:#9AA6B5">{{sel.type}}</div>
+              <div style="font-size:18px; font-weight:600; overflow-wrap:anywhere">{{sel.name}}</div>
+              <div style="align-self:flex-start; font-size:12px; padding:2px 9px; border-radius:999px; color:{{sel.color}}; background:{{sel.chip}}">{{sel.glyph}} {{sel.statusText}}</div>
+            </div>
+            <button onClick="{{closeSel}}" aria-label="Закрыть вкладку" style="flex:0 0 auto; width:32px; height:32px; border-radius:6px; border:1px solid #2E3A4C; background:transparent; color:#E6EAF0; font-size:16px; cursor:pointer; font-family:inherit">×</button>
+          </div>
+
+          <div style="display:flex; flex-wrap:wrap; gap:2px; padding:0 12px; border-bottom:1px solid #263040">
+            <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+              <button onClick="{{t.go}}" style="padding:9px 10px; background:transparent; border:0; font-family:inherit; font-size:13px; cursor:pointer; margin-bottom:-1px; {{t.style}}">{{t.label}}</button>
+            </sc-for>
+          </div>
+
+          <div style="padding:16px; display:flex; flex-direction:column; gap:14px">
+
+            <sc-if value="{{showInfo}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:14px">
+                <div style="display:flex; flex-direction:column; border-top:1px solid #263040">
+                  <sc-for list="{{sel.rows}}" as="r" hint-placeholder-count="5">
+                    <div style="display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #1F2733; font-size:13px">
+                      <span style="color:#9AA6B5">{{r.k}}</span>
+                      <span style="text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px">{{r.v}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{sel.hasIssues}}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex; flex-direction:column; gap:8px">
+                    <div style="font-size:12px; color:#9AA6B5">Найдено правилами</div>
+                    <sc-for list="{{sel.issues}}" as="is" hint-placeholder-count="2">
+                      <div style="font-size:13px; line-height:1.45; background:#1B2430; border-radius:6px; padding:8px 10px">{{is.t}}</div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{sel.noIssues}}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px; color:#9AA6B5">Замечаний нет.</div>
+                </sc-if>
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <a href="Computer.dc.html" style="display:block; text-align:center; padding:10px 14px; border-radius:6px; background:#5AA9FF; color:#0A1220; font-size:14px; font-weight:600">Открыть полную карточку</a>
+                  <a href="Reports.dc.html" style="display:block; text-align:center; padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Сформировать отчёт для ИИ</a>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{showDisks}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:12px">
+                <sc-if value="{{sel.noDisks}}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px; color:#9AA6B5; line-height:1.5">На этом устройстве диски не опрашиваются.</div>
+                </sc-if>
+                <sc-for list="{{sel.disks}}" as="d" hint-placeholder-count="1">
+                  <div style="border:1px solid #263040; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px">
+                    <div style="display:flex; justify-content:space-between; gap:8px; align-items:baseline">
+                      <div style="font-size:14px; font-weight:600">Диск {{d.n}} <span style="font-size:12px; font-weight:400; color:#9AA6B5">{{d.type}} · {{d.size}}</span></div>
+                      <div style="font-size:12px; color:{{d.color}}">{{d.glyph}} {{d.state}}</div>
+                    </div>
+                    <div style="height:10px; border-radius:5px; background:#263040; overflow:hidden">
+                      <div style="height:100%; background:{{d.color}}; width:{{d.w}}"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; gap:8px; font-size:12px; font-family:'IBM Plex Mono',monospace"><span>занято {{d.pct}}%</span><span>{{d.used}} из {{d.size}}</span></div>
+                    <div style="font-size:12px; color:#9AA6B5">Здоровье: {{d.health}}</div>
+                  </div>
+                </sc-for>
+                <a href="Storage.dc.html" style="display:block; text-align:center; padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Все диски и прогноз заполнения</a>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{showNet}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; border-top:1px solid #263040">
+                <sc-for list="{{sel.net}}" as="r" hint-placeholder-count="4">
+                  <div style="display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #1F2733; font-size:13px">
+                    <span style="color:#9AA6B5">{{r.k}}</span>
+                    <span style="text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px">{{r.v}}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{sel.noNet}}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:10px 0; font-size:13px; color:#9AA6B5">Данных пока нет: устройство не проверено.</div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{showUser}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:12px">
+                <sc-if value="{{sel.hasUser}}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex; flex-direction:column; gap:12px">
+                    <div style="display:flex; gap:12px; align-items:center">
+                      <div style="flex:0 0 40px; height:40px; border-radius:999px; background:#1B2430; border:1px solid #2E3A4C; display:flex; align-items:center; justify-content:center; color:#C5CEDA">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="{{sel.roleIcon}}"></use></svg>
+                      </div>
+                      <div style="display:flex; flex-direction:column; gap:2px">
+                        <div style="font-size:15px; font-weight:600">{{sel.userName}}</div>
+                        <div style="font-size:12px; color:#9AA6B5">{{sel.roleLabel}}</div>
+                      </div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; border-top:1px solid #263040">
+                      <sc-for list="{{sel.userRows}}" as="r" hint-placeholder-count="3">
+                        <div style="display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #1F2733; font-size:13px">
+                          <span style="color:#9AA6B5">{{r.k}}</span>
+                          <span style="text-align:right; font-size:12.5px">{{r.v}}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <a href="Activity.dc.html" style="display:block; text-align:center; padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; font-size:14px">Журнал активности сотрудника</a>
+                  </div>
+                </sc-if>
+                <sc-if value="{{sel.noUser}}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px; color:#9AA6B5; line-height:1.5">К этому устройству не привязан пользователь.</div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{showEdit}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:14px">
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <label for="ed-name" style="font-size:12px; color:#9AA6B5">Название</label>
+                  <input id="ed-name" type="text" value="{{ed.name}}" onChange="{{ed.setName}}" style="box-sizing:border-box; width:100%; padding:9px 10px; border-radius:6px; border:1px solid #2E3A4C; background:#0E1116; color:#E6EAF0; font-family:inherit; font-size:14px">
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <label for="ed-ip" style="font-size:12px; color:#9AA6B5">IP-адрес или подпись</label>
+                  <input id="ed-ip" type="text" value="{{ed.ip}}" onChange="{{ed.setIp}}" style="box-sizing:border-box; width:100%; padding:9px 10px; border-radius:6px; border:1px solid #2E3A4C; background:#0E1116; color:#E6EAF0; font-family:'IBM Plex Mono',monospace; font-size:13px">
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <div style="font-size:12px; color:#9AA6B5">Тип значка</div>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px">
+                    <sc-for list="{{setKinds}}" as="k" hint-placeholder-count="8">
+                      <button onClick="{{k.go}}" aria-label="{{k.label}}" style="display:flex; align-items:center; gap:5px; padding:6px 8px; border-radius:6px; font-family:inherit; font-size:12px; cursor:pointer; color:#E6EAF0; {{k.style}}">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="{{k.icon}}"></use></svg>
+                        <span>{{k.label}}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <div style="font-size:12px; color:#9AA6B5">Положение на карте</div>
+                  <div style="display:flex; gap:6px">
+                    <button onClick="{{ed.left}}" aria-label="Сдвинуть влево" style="width:40px; height:36px; border-radius:6px; border:1px solid #2E3A4C; background:#10151C; color:#E6EAF0; font-size:15px; cursor:pointer">←</button>
+                    <button onClick="{{ed.up}}" aria-label="Сдвинуть вверх" style="width:40px; height:36px; border-radius:6px; border:1px solid #2E3A4C; background:#10151C; color:#E6EAF0; font-size:15px; cursor:pointer">↑</button>
+                    <button onClick="{{ed.down}}" aria-label="Сдвинуть вниз" style="width:40px; height:36px; border-radius:6px; border:1px solid #2E3A4C; background:#10151C; color:#E6EAF0; font-size:15px; cursor:pointer">↓</button>
+                    <button onClick="{{ed.right}}" aria-label="Сдвинуть вправо" style="width:40px; height:36px; border-radius:6px; border:1px solid #2E3A4C; background:#10151C; color:#E6EAF0; font-size:15px; cursor:pointer">→</button>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <button onClick="{{ed.check}}" style="padding:10px 14px; border-radius:6px; border:0; background:#5AA9FF; color:#0A1220; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer">{{ed.checkLabel}}</button>
+                  <div style="font-size:12px; line-height:1.5; color:#9AA6B5">В рабочей версии проверка выполнит ping, запрос SNMP и проверку портов. Здесь показан упрощённый результат.</div>
+                  <sc-if value="{{ed.hasNote}}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:13px; line-height:1.45; background:#1B2430; border-radius:6px; padding:8px 10px">{{ed.note}}</div>
+                  </sc-if>
+                  <button onClick="{{ed.connect}}" style="padding:10px 14px; border-radius:6px; border:1px solid #2E3A4C; background:transparent; color:#E6EAF0; font-family:inherit; font-size:14px; cursor:pointer">Соединить с другим устройством</button>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <div style="font-size:12px; color:#9AA6B5">Связи</div>
+                  <sc-for list="{{ed.conns}}" as="c" hint-placeholder-count="2">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:#1B2430; border-radius:6px; padding:6px 6px 6px 10px; font-size:13px">
+                      <span>{{c.text}}</span>
+                      <button onClick="{{c.drop}}" aria-label="Разорвать связь" style="padding:4px 8px; border-radius:6px; border:1px solid #2E3A4C; background:transparent; color:#E6EAF0; font-family:inherit; font-size:12px; cursor:pointer">Разорвать</button>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ed.noConns}}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:13px; color:#9AA6B5">Связей нет.</div>
+                  </sc-if>
+                </div>
+
+                <button onClick="{{ed.remove}}" style="padding:10px 14px; border-radius:6px; border:1px solid #6B3A3A; background:transparent; color:#FF9C9C; font-family:inherit; font-size:14px; cursor:pointer">Удалить с карты</button>
+              </div>
+            </sc-if>
+
+          </div>
+        </aside>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      nodes: this.seedNodes(),
+      links: this.seedLinks(),
+      sel: null,
+      tab: 'info',
+      connectFrom: null,
+      checking: null,
+      seq: 1
+    };
+  }
+
+  seedNodes() {
+    return [
+      { id: 'inet', kind: 'inet', name: 'Интернет', sub: '412 / 96 Мбит/с', x: 430, y: 44, st: 'ok',
+        rows: [['Скорость вниз / вверх', '412 / 96 Мбит/с'], ['Задержка до внешней точки', '18 мс'], ['DNS-ответ', '24 мс'], ['Последний замер', '14:05']],
+        issues: [], disks: [], net: [['Замер провайдера, 14:05', '412 / 96 Мбит/с'], ['DNS-ответ', '24 мс']], user: null },
+      { id: 'router', kind: 'router', name: 'Роутер', sub: '192.168.1.1', x: 430, y: 150, st: 'ok',
+        rows: [['Адрес', '192.168.1.1'], ['Аптайм', '41 день'], ['Клиентов', '11'], ['Прошивка', 'актуальная']],
+        issues: [], disks: [], net: [['Загрузка WAN', 'низкая'], ['Таблица ARP', '11 записей']], user: null },
+      { id: 'sw1', kind: 'switch', name: 'Коммутатор-1', sub: '24 порта', x: 200, y: 270, st: 'warn',
+        rows: [['Порты в работе', '3 из 24'], ['Ошибки на портах', 'порт 14'], ['Аптайм', '41 день']],
+        issues: ['Порт 14 (БУХ-02): растут ошибки CRC.'], disks: [],
+        net: [['Загрузка uplink', '12%'], ['Ошибки CRC', 'порт 14: +1 240 за сутки'], ['Порты 1 Гбит/с', '3 из 3']], user: null },
+      { id: 'ap', kind: 'ap', name: 'Wi‑Fi точка', sub: '1 клиент', x: 430, y: 270, st: 'ok',
+        rows: [['Клиентов', '1'], ['Диапазон', '5 ГГц'], ['Загрузка эфира', 'низкая']],
+        issues: [], disks: [], net: [['Канал', '36, 5 ГГц'], ['Клиентов', '1'], ['Средний сигнал', '−58 дБм']], user: null },
+      { id: 'sw2', kind: 'switch', name: 'Коммутатор-2', sub: '8 портов', x: 660, y: 270, st: 'ok',
+        rows: [['Порты в работе', '3 из 8'], ['Ошибки на портах', 'нет'], ['Аптайм', '41 день']],
+        issues: [], disks: [],
+        net: [['Загрузка uplink', '8%'], ['Ошибки CRC', 'нет'], ['Порт 4 (принтер)', '100 Мбит/с']], user: null },
+      { id: 'admin', kind: 'server', name: 'ADMIN-PC', sub: '192.168.1.10', x: 70, y: 410, st: 'ok',
+        rows: [['ОС', 'Windows 11 Pro'], ['Процессор', 'Intel Core i7'], ['ОЗУ', '32 ГБ'], ['Агент', 'онлайн']],
+        issues: [], disks: [{ n: 'C:', type: 'SSD', gb: 1000, pct: 62, health: 'исправен' }],
+        net: [['Порт коммутатора', 'Коммутатор-1, порт 1'], ['Скорость линка', '1 Гбит/с'], ['Потери пакетов', '0%'], ['Трафик за сутки', 'вниз 9,8 / вверх 3,1 ГБ']],
+        user: { name: 'Администратор (вы)', role: 'adm', today: 'весь день', active: '—', top: 'консоль управления' } },
+      { id: 'pc2', kind: 'pc', name: 'БУХ-02', sub: '192.168.1.22', x: 190, y: 440, st: 'bad',
+        rows: [['ОС', 'Windows 10 22H2'], ['Процессор', 'Intel Core i5-7400'], ['ОЗУ', '8 ГБ'], ['Потери пакетов', '4%'], ['Задержка до шлюза', '3 мс'], ['Агент', 'онлайн, 14:32']],
+        issues: ['Потери пакетов 4% до шлюза с 14:00.', 'Растут ошибки CRC на порту 14 коммутатора-1.', 'SMART диска: найдены переназначенные секторы.'],
+        disks: [{ n: 'C:', type: 'HDD', gb: 500, pct: 78, health: 'SMART: внимание (12 переназначенных секторов)' }],
+        net: [['Порт коммутатора', 'Коммутатор-1, порт 14'], ['Скорость линка', '1 Гбит/с'], ['Потери пакетов', '4%'], ['Трафик за сутки', 'вниз 4,2 / вверх 0,6 ГБ']],
+        user: { name: 'Иванова А.', role: 'acc', today: '6 ч 20 м', active: '5 ч 10 м', top: '1С, браузер, Excel' } },
+      { id: 'pc3', kind: 'pc', name: 'БУХ-03', sub: '192.168.1.23', x: 310, y: 410, st: 'off',
+        rows: [['Последний отклик', 'вчера, 18:47'], ['ОС', 'Windows 11 Pro'], ['Очередь задач', '2 ожидают включения']],
+        issues: ['Не в сети. Задачи в очереди выполнятся при включении.'],
+        disks: [{ n: 'C:', type: 'SSD', gb: 256, pct: 54, health: 'исправен (данные от вчера)' }],
+        net: [['Последние данные', 'вчера, 18:47'], ['Порт коммутатора', 'Коммутатор-1, порт 8'], ['Скорость линка', '1 Гбит/с']],
+        user: { name: 'Петров С.', role: 'acc', today: 'нет данных', active: '—', top: '—' } },
+      { id: 'lap', kind: 'laptop', name: 'НОУТ-01', sub: '192.168.1.45', x: 430, y: 440, st: 'ok',
+        rows: [['Сигнал', '−58 дБм'], ['Скорость канала', '866 Мбит/с'], ['ОС', 'Windows 11 Pro'], ['ОЗУ', '16 ГБ'], ['Задержка до шлюза', '4 мс']],
+        issues: [], disks: [{ n: 'C:', type: 'SSD', gb: 512, pct: 55, health: 'исправен' }],
+        net: [['Подключение', 'Wi‑Fi точка, 5 ГГц'], ['Скорость линка', '866 Мбит/с'], ['Потери пакетов', '0%'], ['Трафик за сутки', 'вниз 1,2 / вверх 0,2 ГБ']],
+        user: { name: 'Гость', role: 'guest', today: '1 ч 10 м', active: '40 м', top: 'браузер' } },
+      { id: 'pc4', kind: 'pc', name: 'ОФИС-01', sub: '192.168.1.31', x: 550, y: 410, st: 'ok',
+        rows: [['ОС', 'Windows 11 Pro'], ['Процессор', 'Intel Core i5-12400'], ['ОЗУ', '16 ГБ'], ['Потери пакетов', '0%'], ['Задержка до шлюза', '1 мс']],
+        issues: [], disks: [{ n: 'C:', type: 'SSD', gb: 512, pct: 41, health: 'исправен' }],
+        net: [['Порт коммутатора', 'Коммутатор-2, порт 2'], ['Скорость линка', '1 Гбит/с'], ['Потери пакетов', '0%'], ['Трафик за сутки', 'вниз 3,0 / вверх 0,4 ГБ']],
+        user: { name: 'Сидорова Е.', role: 'mgr', today: '7 ч 05 м', active: '5 ч 40 м', top: 'почта, браузер, Word' } },
+      { id: 'pc5', kind: 'pc', name: 'ОФИС-02', sub: '192.168.1.32', x: 670, y: 440, st: 'warn',
+        rows: [['ОС', 'Windows 11 Pro'], ['Процессор', 'Intel Core i5-10400'], ['ОЗУ', '16 ГБ'], ['Задержка до шлюза', '1 мс']],
+        issues: ['Драйвер принтера 2019 года, есть новая версия.', 'Диск почти заполнен: 91%.'],
+        disks: [{ n: 'C:', type: 'SSD', gb: 256, pct: 91, health: 'исправен' }],
+        net: [['Порт коммутатора', 'Коммутатор-2, порт 3'], ['Скорость линка', '1 Гбит/с'], ['Потери пакетов', '0%'], ['Трафик за сутки', 'вниз 5,1 / вверх 1,0 ГБ']],
+        user: { name: 'Козлов Д.', role: 'mgr', today: '6 ч 50 м', active: '4 ч 55 м', top: 'браузер, мессенджер, Excel' } },
+      { id: 'prn', kind: 'printer', name: 'Принтер HP', sub: '192.168.1.60', x: 790, y: 410, st: 'warn',
+        rows: [['Порт коммутатора', '100 Мбит/с'], ['Ожидается', '1 Гбит/с'], ['Тонер', '34%'], ['Счётчик страниц', '48 210'], ['Прошивка', 'устарела']],
+        issues: ['Порт согласован на 100 Мбит/с вместо 1 Гбит/с.', 'Прошивка устарела.'],
+        disks: [], net: [['Порт коммутатора', 'Коммутатор-2, порт 4'], ['Скорость линка', '100 Мбит/с (ожидается 1 Гбит/с)']], user: null }
+    ];
+  }
+
+  seedLinks() {
+    return [
+      { a: 'inet', b: 'router', q: 'ok', text: '18 мс' },
+      { a: 'router', b: 'sw1', q: 'ok', text: '' },
+      { a: 'router', b: 'sw2', q: 'ok', text: '' },
+      { a: 'router', b: 'ap', q: 'ok', text: '' },
+      { a: 'sw1', b: 'admin', q: 'ok', text: '' },
+      { a: 'sw1', b: 'pc2', q: 'bad', text: '4% потерь' },
+      { a: 'sw1', b: 'pc3', q: 'off', text: 'нет связи' },
+      { a: 'ap', b: 'lap', q: 'wifi', text: 'Wi‑Fi −58 дБм' },
+      { a: 'sw2', b: 'pc4', q: 'ok', text: '' },
+      { a: 'sw2', b: 'pc5', q: 'ok', text: '' },
+      { a: 'sw2', b: 'prn', q: 'warn', text: 'порт 100 Мбит/с' }
+    ];
+  }
+
+  pick(id) {
+    const s = this.state;
+    if (s.connectFrom && s.connectFrom !== id) {
+      const from = s.connectFrom;
+      const exists = s.links.some((l) => (l.a === from && l.b === id) || (l.a === id && l.b === from));
+      const links = exists ? s.links : s.links.concat([{ a: from, b: id, q: 'new', text: 'вручную' }]);
+      this.setState({ links, connectFrom: null, sel: from, tab: 'edit' });
+      return;
+    }
+    this.setState({ sel: id, connectFrom: null, tab: s.sel === id ? s.tab : 'info' });
+  }
+
+  renderVals() {
+    const S = this.state;
+    const nodes = S.nodes;
+    const links = S.links;
+    const byId = {};
+    nodes.forEach((n) => { byId[n.id] = n; });
+
+    const COL = { ok: '#5FD38D', warn: '#F5B83D', bad: '#FF7A7A', off: '#7C8798', new: '#8FB8E8', wifi: '#5AA9FF' };
+    const CHIP = { ok: 'rgba(95,211,141,.14)', warn: 'rgba(245,184,61,.14)', bad: 'rgba(255,122,122,.14)', off: 'rgba(124,135,152,.18)', new: 'rgba(143,184,232,.16)' };
+    const GLY = { ok: '●', warn: '▲', bad: '■', off: '○', new: '◇' };
+    const TXT = { ok: 'В сети', warn: 'Внимание', bad: 'Проблема', off: 'Не в сети', new: 'Не проверен' };
+    const ICON = { inet: '#ic-inet', router: '#ic-router', switch: '#ic-switch', ap: '#ic-ap', server: '#ic-server', pc: '#ic-pc', laptop: '#ic-laptop', printer: '#ic-printer', other: '#ic-other' };
+    const KIND = { inet: 'Внешняя сеть', router: 'Роутер', switch: 'Коммутатор', ap: 'Точка доступа', server: 'Сервер', pc: 'Компьютер', laptop: 'Ноутбук', printer: 'Принтер', other: 'Устройство' };
+    const ROLE = { acc: 'Бухгалтер', mgr: 'Менеджер', adm: 'Администратор', guest: 'Гость' };
+    const ROLEICON = { acc: '#ro-acc', mgr: '#ro-mgr', adm: '#ro-adm', guest: '#ro-guest' };
+    const ADDABLE = ['pc', 'laptop', 'server', 'switch', 'router', 'ap', 'printer', 'other'];
+
+    const nav = [
+      { label: 'Карта сети', href: 'Main.dc.html' },
+      { label: 'Компьютеры', href: 'Computer.dc.html' },
+      { label: 'Диски', href: 'Storage.dc.html' },
+      { label: 'Качество сети', href: 'Metrics.dc.html' },
+      { label: 'Безопасность', href: 'Security.dc.html' },
+      { label: 'Активность', href: 'Activity.dc.html' },
+      { label: 'Отчёты для ИИ', href: 'Reports.dc.html' },
+      { label: 'Скрипты и тесты', href: 'Scripts.dc.html' }
+    ].map((it, i) => ({
+      ...it,
+      style: i === 0
+        ? 'background:#1B2430; color:#E6EAF0; border-left:3px solid #5AA9FF'
+        : 'color:#9AA6B5; border-left:3px solid transparent'
+    }));
+
+    // добавление вручную
+    const add = (kind) => {
+      const s = this.state;
+      const idx = s.nodes.filter((n) => n.manual).length;
+      const k = s.seq;
+      const label = KIND[kind];
+      const node = {
+        id: 'm' + k, kind, name: label + ' ' + k, sub: '', x: 70 + 120 * (idx % 7), y: 548 + 60 * Math.min(1, Math.floor(idx / 7)),
+        st: 'new', manual: true, rows: [], issues: [], disks: [], net: [], user: null
+      };
+      this.setState({ nodes: s.nodes.concat([node]), seq: k + 1, sel: node.id, tab: 'edit', connectFrom: null });
+    };
+    const addKinds = ADDABLE.map((k) => ({ label: KIND[k], icon: ICON[k], go: () => add(k) }));
+
+    // линии и подписи
+    const LC = { ok: COL.ok, warn: COL.warn, bad: COL.bad, off: COL.off, wifi: COL.wifi, new: COL.new };
+    const lines = [];
+    const labels = [];
+    links.forEach((l) => {
+      const a = byId[l.a];
+      const b = byId[l.b];
+      if (!a || !b) return;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+      const t = l.q === 'bad' ? 3 : 2;
+      const dash = (l.q === 'wifi' || l.q === 'off' || l.q === 'new') ? 'dashed' : 'solid';
+      lines.push({
+        geo: 'left:' + a.x + 'px; top:' + (a.y - t / 2) + 'px; width:' + len.toFixed(1) + 'px; height:0; border-top:' + t + 'px ' + dash + ' ' + LC[l.q] + '; transform-origin:0 50%; transform:rotate(' + ang.toFixed(2) + 'deg); z-index:1;'
+      });
+      if (l.text) {
+        labels.push({ text: l.text, geo: 'left:' + ((a.x + b.x) / 2) + 'px; top:' + ((a.y + b.y) / 2) + 'px; color:' + LC[l.q] + ';' });
+      }
+    });
+
+    // узлы на карте
+    const nodeViews = nodes.map((n) => {
+      const on = n.id === S.sel;
+      const from = n.id === S.connectFrom;
+      const bw = on || from ? '#5AA9FF' : '#2E3A4C';
+      return {
+        name: n.name,
+        sub: n.sub || 'адрес не задан',
+        glyph: GLY[n.st],
+        color: COL[n.st],
+        icon: ICON[n.kind],
+        aria: n.name + ', ' + TXT[n.st],
+        geo: 'left:' + (n.x - 56) + 'px; top:' + (n.y - 28) + 'px; background:#1B2430; border:1px ' + (n.manual ? 'dashed' : 'solid') + ' ' + bw + '; border-left:4px solid ' + COL[n.st] + '; box-shadow:' + (on ? '0 0 0 2px rgba(90,169,255,.35)' : 'none') + ';',
+        pick: () => this.pick(n.id)
+      };
+    });
+
+    // выбранное устройство
+    const sn = S.sel ? byId[S.sel] : null;
+    const hasSel = !!sn;
+    const blank = { name: '', type: '', icon: '#ic-other', st: 'off', rows: [], issues: [], disks: [], net: [], user: null, kind: 'other' };
+    const n0 = sn || blank;
+
+    const rows = n0.manual
+      ? [['Источник', 'добавлен вручную'], ['Адрес', n0.sub || 'не задан'], ['Проверка', n0.checkNote || 'не выполнялась']]
+      : n0.rows;
+    const disks = n0.disks.map((d) => {
+      const used = Math.round(d.gb * d.pct / 100);
+      const fmt = (v) => (v >= 1000 ? (v / 1000).toString().replace('.', ',') + ' ТБ' : v + ' ГБ');
+      const lvl = d.pct >= 90 ? 'bad' : d.pct >= 75 ? 'warn' : 'ok';
+      return {
+        n: d.n, type: d.type, size: fmt(d.gb), used: fmt(used), pct: d.pct, w: d.pct + '%',
+        color: COL[lvl], glyph: GLY[lvl], health: d.health,
+        state: lvl === 'bad' ? 'почти заполнен' : lvl === 'warn' ? 'заполняется' : 'норма'
+      };
+    });
+    const u = n0.user;
+    const sel = {
+      name: n0.name, type: KIND[n0.kind], icon: ICON[n0.kind],
+      color: COL[n0.st], chip: CHIP[n0.st], glyph: GLY[n0.st], statusText: TXT[n0.st],
+      rows: rows.map(([k, v]) => ({ k, v })),
+      issues: n0.issues.map((t) => ({ t })),
+      hasIssues: n0.issues.length > 0, noIssues: n0.issues.length === 0,
+      disks, noDisks: disks.length === 0,
+      net: n0.net.map(([k, v]) => ({ k, v })), noNet: n0.net.length === 0,
+      hasUser: !!u, noUser: !u,
+      userName: u ? u.name : '', roleLabel: u ? ROLE[u.role] : '', roleIcon: u ? ROLEICON[u.role] : '#ro-guest',
+      userRows: u ? [{ k: 'На ПК сегодня', v: u.today }, { k: 'Активное время', v: u.active }, { k: 'Чаще всего', v: u.top }] : []
+    };
+
+    const TABS = [['info', 'Обзор'], ['disks', 'Диски'], ['net', 'Сеть'], ['user', 'Пользователь'], ['edit', 'Правка']];
+    const tabs = TABS.map(([id, label]) => ({
+      label,
+      style: S.tab === id ? 'color:#E6EAF0; border-bottom:2px solid #5AA9FF' : 'color:#9AA6B5; border-bottom:2px solid transparent',
+      go: () => this.setState({ tab: id })
+    }));
+
+    // правка
+    const upd = (id, patch) => this.setState({ nodes: this.state.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
+    const mv = (dx, dy) => () => {
+      if (!sn) return;
+      const n = this.state.nodes.find((x) => x.id === sn.id);
+      if (!n) return;
+      upd(n.id, { x: Math.max(56, Math.min(804, n.x + dx)), y: Math.max(28, Math.min(612, n.y + dy)) });
+    };
+    const setKinds = ADDABLE.map((k) => ({
+      label: KIND[k], icon: ICON[k],
+      style: n0.kind === k ? 'background:#1B2430; border:1px solid #5AA9FF' : 'background:#10151C; border:1px solid #2E3A4C',
+      go: () => { if (sn) upd(sn.id, { kind: k }); }
+    }));
+    const conns = sn ? links.filter((l) => l.a === sn.id || l.b === sn.id).map((l) => {
+      const other = byId[l.a === sn.id ? l.b : l.a];
+      return {
+        text: other ? other.name : '',
+        drop: () => this.setState({ links: this.state.links.filter((x) => x !== l) })
+      };
+    }) : [];
+    const checking = !!sn && S.checking === sn.id;
+    const ed = {
+      name: n0.name,
+      ip: n0.sub || '',
+      setName: (e) => { if (sn) upd(sn.id, { name: e.target.value }); },
+      setIp: (e) => { if (sn) upd(sn.id, { sub: e.target.value }); },
+      left: mv(-20, 0), right: mv(20, 0), up: mv(0, -20), down: mv(0, 20),
+      checkLabel: checking ? 'Проверяю…' : 'Проверить',
+      hasNote: !!n0.checkNote, note: n0.checkNote || '',
+      check: () => {
+        if (!sn) return;
+        const id = sn.id;
+        this.setState({ checking: id });
+        setTimeout(() => {
+          const s = this.state;
+          const n = s.nodes.find((x) => x.id === id);
+          if (!n) { this.setState({ checking: null }); return; }
+          let patch;
+          if (n.manual) {
+            patch = /\d/.test(n.sub)
+              ? { st: 'ok', checkNote: 'Устройство ответило на ping. Результат демонстрационный.' }
+              : { checkNote: 'Адрес не задан: укажите IP-адрес и повторите проверку.' };
+          } else {
+            patch = { checkNote: 'Проверено только что: устройство отвечает.' };
+          }
+          this.setState({ nodes: s.nodes.map((x) => (x.id === id ? { ...x, ...patch } : x)), checking: null });
+        }, 900);
+      },
+      connect: () => { if (sn) this.setState({ connectFrom: sn.id }); },
+      conns, noConns: conns.length === 0,
+      remove: () => {
+        if (!sn) return;
+        const id = sn.id;
+        const s = this.state;
+        this.setState({ nodes: s.nodes.filter((n) => n.id !== id), links: s.links.filter((l) => l.a !== id && l.b !== id), sel: null, connectFrom: null });
+      }
+    };
+
+    const devices = nodes.filter((n) => n.kind !== 'inet').length;
+    const attn = nodes.filter((n) => n.st === 'warn' || n.st === 'bad').length;
+    const unchecked = nodes.filter((n) => n.st === 'new').length;
+    const kpis = [
+      { label: 'Устройств в сети', value: String(devices), note: unchecked ? 'не проверено вручную добавленных: ' + unchecked : 'ПК с агентом: 5 из 6' },
+      { label: 'Требуют внимания', value: String(attn), note: 'предупреждения и проблемы' },
+      { label: 'Интернет', value: '412 / 96', note: 'Мбит/с, замер в 14:05' },
+      { label: 'Диски заполнены от 85%', value: '1 из 6', note: 'ОФИС-02: занято 91%' }
+    ];
+
+    const from = S.connectFrom ? byId[S.connectFrom] : null;
+
+    return {
+      nav, nodes: nodeViews, lines, labels, kpis, addKinds, setKinds, tabs, sel, ed, hasSel,
+      showInfo: S.tab === 'info', showDisks: S.tab === 'disks', showNet: S.tab === 'net', showUser: S.tab === 'user', showEdit: S.tab === 'edit',
+      connecting: !!from, connectName: from ? from.name : '',
+      cancelConnect: () => this.setState({ connectFrom: null }),
+      closeSel: () => this.setState({ sel: null, connectFrom: null })
+    };
+  }
+}
+</script>
+</body>
+</html>
