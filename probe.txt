@@ -1,0 +1,5 @@
+# Фиктивный ключ для проверки secret-scan (не реальный, тело случайно)
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACBmYWtla2V5ZmFraWtleWZha2VrZXlmYWtla2V5ZmFraWtleQ==
+-----END OPENSSH PRIVATE KEY-----
