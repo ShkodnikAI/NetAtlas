@@ -82,7 +82,7 @@
 ## Документы
 
 - [docs/DECISIONS.md](docs/DECISIONS.md): принятые решения и инварианты безопасности
-- [nariady/README.md](nariady/README.md): наряды на реализацию, правила работы, классификация риска и неприкасаемые зоны
+- [nariady/README.md](nariady/README.md): заготовки нарядов и правила (источник истины: GitHub issues, порядок ведёт [диспатч #2](https://github.com/ShkodnikAI/NetAtlas/issues/2))
 
 ## Статус
 
