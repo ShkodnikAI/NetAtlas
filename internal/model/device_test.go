@@ -28,6 +28,9 @@ func TestNewDevice(t *testing.T) {
 	if d.Observations == nil || len(d.Observations) != 0 {
 		t.Errorf("Observations должен быть пустым срезом, не nil: %#v", d.Observations)
 	}
+	if d.Names == nil || len(d.Names) != 0 {
+		t.Errorf("Names должен быть пустым срезом, не nil: %#v", d.Names)
+	}
 
 	if _, err := NewDevice("01:00:5e:00:00:16"); err == nil {
 		t.Error("NewDevice с групповым MAC: ожидалась ошибка")
@@ -88,5 +91,8 @@ func TestDeviceJSONNoNull(t *testing.T) {
 	}
 	if !strings.Contains(s, `"observations":[]`) {
 		t.Errorf("JSON должен содержать observations: [], получил: %s", s)
+	}
+	if !strings.Contains(s, `"names":[]`) {
+		t.Errorf("JSON должен содержать names: [], получил: %s", s)
 	}
 }

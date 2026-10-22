@@ -19,12 +19,13 @@ type Device struct {
 	IPs          []netip.Addr  `json:"ips"`
 	Hostname     string        `json:"hostname,omitempty"`
 	Class        Class         `json:"class"`
+	Names        []Name        `json:"names"`
 	Observations []Observation `json:"observations"`
 }
 
 // NewDevice создаёт устройство по MAC-адресу: MAC нормализуется,
 // ID равен нормализованному MAC, класс — «неизвестное».
-// Срезы IPs и Observations пустые, но не nil, чтобы в JSON были [].
+// Срезы IPs, Names и Observations пустые, но не nil, чтобы в JSON были [].
 func NewDevice(mac string) (Device, error) {
 	m, err := NormalizeMAC(mac)
 	if err != nil {
@@ -35,6 +36,7 @@ func NewDevice(mac string) (Device, error) {
 		MAC:          m,
 		IPs:          []netip.Addr{},
 		Class:        ClassUnknown,
+		Names:        []Name{},
 		Observations: []Observation{},
 	}, nil
 }
