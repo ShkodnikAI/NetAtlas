@@ -1,7 +1,7 @@
 // Command netatlas-scan — точка входа сканера: читает ARP-таблицу
-// этой машины и печатает найденные устройства в JSON на stdout.
-// Активных сетевых запросов нет: только локальная ARP-таблица
-// и границы из флага --subnets.
+// этой машины, при флагах --ping и --names выполняет активный
+// ping-sweep (ICMP) и разрешение имён (NetBIOS, mDNS, SSDP) строго
+// внутри границ из флага --subnets, и печатает результат в JSON.
 package main
 
 import (
@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
+	"github.com/ShkodnikAI/NetAtlas/scanner/names"
+	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 )
 
 func main() {
@@ -23,7 +26,9 @@ func main() {
 
 func run() int {
 	subnets := flag.String("subnets", "", "список CIDR через запятую (обязателен)")
-	allowLarge := flag.Bool("allow-large", false, "разрешить подсети шире /22 (более 1024 адресов)")
+	allowLarge := flag.Bool("allow-large", false, "разрешить подсеть шире /22 (более 1024 адресов)")
+	pingFlag := flag.Bool("ping", false, "активный ping-sweep подсети (ICMP; нужны права на raw-сокет)")
+	namesFlag := flag.Bool("names", false, "разрешение имён (NetBIOS, mDNS, SSDP)")
 	flag.Parse()
 
 	if *subnets == "" {
@@ -36,14 +41,50 @@ func run() int {
 		return 2
 	}
 
+	limiter, err := scanner.NewLimiter(scanner.DefaultParallel, scanner.DefaultPerSecond, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		return 1
+	}
+
 	entries, err := arp.ReadSystem(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
 		return 1
 	}
 
-	devices := scanner.FromARP(entries, scope, time.Now())
-	out, err := json.MarshalIndent(devices, "", "  ")
+	opt := scanner.Options{Now: time.Now()}
+
+	if *pingFlag {
+		p, err := ping.NewICMPProber()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+			return 1
+		}
+		defer p.Close()
+		opt.Ping = true
+		opt.Prober = p
+	}
+
+	if *namesFlag {
+		conn, err := net.ListenPacket("udp4", ":0")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ошибка: не удалось открыть UDP-сокет: %v\n", err)
+			return 1
+		}
+		client := names.NewClient(conn)
+		defer client.Close()
+		opt.Names = true
+		opt.NameClient = client
+	}
+
+	result, err := scanner.Run(context.Background(), entries, scope, limiter, opt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		return 1
+	}
+
+	out, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
 		return 1

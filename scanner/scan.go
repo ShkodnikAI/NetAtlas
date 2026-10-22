@@ -1,0 +1,197 @@
+package scanner
+
+import (
+	"context"
+	"fmt"
+	"net/netip"
+	"sort"
+	"time"
+
+	"github.com/ShkodnikAI/NetAtlas/internal/model"
+	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
+	"github.com/ShkodnikAI/NetAtlas/scanner/names"
+	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
+)
+
+// Options — что включает конвейер сканирования. Ping требует Prober,
+// Names требует NameClient; несоответствие — ошибка Run.
+type Options struct {
+	Ping       bool
+	Names      bool
+	Now        time.Time
+	Prober     ping.Prober   // обязателен при Ping
+	NameClient *names.Client // обязателен при Names
+}
+
+// Result — итог сканирования: устройства (с MAC) и хосты без MAC.
+// Оба среза пустые, но не nil, чтобы в JSON были [].
+type Result struct {
+	Devices []model.Device `json:"devices"`
+	Hosts   []model.Host   `json:"hosts"`
+}
+
+// Run исполняет конвейер: ARP-таблица → устройства; при Ping — опрос
+// адресов границ (живой IP устройства получает наблюдение «ping»,
+// живой IP без устройства становится хостом); при Names — имена по
+// NetBIOS и mDNS для каждого IP, затем один SSDP-запрос (ответы вне
+// границ отбрасываются). Все unicast-запросы — только адресам внутри
+// scope. Отмена контекста возвращает собранное и ошибку.
+func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limiter, opt Options) (Result, error) {
+	now := opt.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	devices := FromARP(entries, scope, now)
+	hosts := make([]model.Host, 0)
+
+	if opt.Ping {
+		if opt.Prober == nil {
+			return Result{}, fmt.Errorf("scanner: ping включён, но пробер не задан")
+		}
+		alive, err := Sweep(ctx, scope, limiter, opt.Prober, Hosts(scope), now)
+		if err != nil {
+			return Result{}, err
+		}
+		for _, h := range alive {
+			matched := false
+			for i := range devices {
+				if containsAddr(devices[i].IPs, h.IP) {
+					matched = true
+					if !hasSource(devices[i].Observations, "ping") {
+						devices[i].Observations = append(devices[i].Observations,
+							model.Observation{Source: "ping", Seen: now})
+					}
+					break
+				}
+			}
+			if !matched {
+				hosts = append(hosts, h)
+			}
+		}
+	}
+
+	if opt.Names {
+		if opt.NameClient == nil {
+			return Result{}, fmt.Errorf("scanner: names включён, но клиент имён не задан")
+		}
+		for i := range devices {
+			d := &devices[i]
+			for _, ip := range d.IPs {
+				n, ok, err := resolveName(ctx, opt.NameClient, ip, scope)
+				if err != nil {
+					return Result{}, err
+				}
+				if !ok {
+					continue
+				}
+				name, err := model.NewName(n.Source, n.Name, now)
+				if err != nil {
+					continue // парсер не выдаёт недопустимых имён; страховка
+				}
+				d.Names = append(d.Names, name)
+				break // достаточно одного имени из NetBIOS/mDNS
+			}
+		}
+		for i := range hosts {
+			h := &hosts[i]
+			n, ok, err := resolveName(ctx, opt.NameClient, h.IP, scope)
+			if err != nil {
+				return Result{}, err
+			}
+			if !ok {
+				continue
+			}
+			name, err := model.NewName(n.Source, n.Name, now)
+			if err != nil {
+				continue
+			}
+			h.Names = append(h.Names, name)
+		}
+		if err := attachSSDP(ctx, opt.NameClient, scope, now, devices, hosts); err != nil {
+			return Result{}, err
+		}
+	}
+
+	sort.Slice(hosts, func(i, j int) bool { return hosts[i].IP.Less(hosts[j].IP) })
+	return Result{Devices: devices, Hosts: hosts}, nil
+}
+
+// resolveName спрашивает имя по NetBIOS, при пустом результате — mDNS.
+// unicast разрешён только адресам внутри границ; nil-Scope никого
+// не пропускает (fail closed, как во всём сканере).
+func resolveName(ctx context.Context, c *names.Client, ip netip.Addr, scope *Scope) (model.Name, bool, error) {
+	if scope == nil || !scope.Contains(ip) {
+		return model.Name{}, false, nil
+	}
+	if n, ok, err := c.NetBIOSName(ctx, ip); err != nil {
+		return model.Name{}, false, err
+	} else if ok {
+		return model.Name{Source: model.NameSourceNetBIOS, Name: n}, true, nil
+	}
+	if n, ok, err := c.MDNSName(ctx, ip); err != nil {
+		return model.Name{}, false, err
+	} else if ok {
+		return model.Name{Source: model.NameSourceMDNS, Name: n}, true, nil
+	}
+	return model.Name{}, false, nil
+}
+
+// attachSSDP выполняет один M-SEARCH и прикрепляет имена (источник
+// ssdp) устройствам и хостам по адресу отправителя. Ответы от адресов
+// вне границ отбрасываются (fail closed).
+func attachSSDP(ctx context.Context, c *names.Client, scope *Scope, now time.Time, devices []model.Device, hosts []model.Host) error {
+	infos, err := c.SSDP(ctx)
+	if err != nil {
+		return err
+	}
+	// Детерминированный порядок обхода ответов.
+	addrs := make([]netip.Addr, 0, len(infos))
+	for ip := range infos {
+		addrs = append(addrs, ip)
+	}
+	sort.Slice(addrs, func(i, j int) bool { return addrs[i].Less(addrs[j]) })
+
+	for _, ip := range addrs {
+		if scope == nil || !scope.Contains(ip) {
+			continue // ответ вне границ не принимается
+		}
+		info := infos[ip]
+		name := info.Server
+		if name == "" {
+			name = info.Location
+		}
+		if name == "" {
+			continue
+		}
+		n, err := model.NewName(model.NameSourceSSDP, name, now)
+		if err != nil {
+			continue // заголовки ограничены парсером SSDP; страховка
+		}
+		matched := false
+		for i := range devices {
+			if containsAddr(devices[i].IPs, ip) {
+				devices[i].Names = append(devices[i].Names, n)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			for i := range hosts {
+				if hosts[i].IP == ip {
+					hosts[i].Names = append(hosts[i].Names, n)
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func hasSource(observations []model.Observation, source string) bool {
+	for _, o := range observations {
+		if o.Source == source {
+			return true
+		}
+	}
+	return false
+}
