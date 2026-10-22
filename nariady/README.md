@@ -44,8 +44,11 @@
 
 | Наряд | Название | Риск | Статус |
 |---|---|---|---|
-| NR-001 | Скелет проекта и CI | low | issue [#1](https://github.com/ShkodnikAI/NetAtlas/issues/1) |
-| [NR-002](NR-002.md) | Безагентный сканер сети | medium | заготовка |
+| NR-001 | Скелет проекта и CI | low | принято, issue [#1](https://github.com/ShkodnikAI/NetAtlas/issues/1) |
+| NR-002 | Основа сканера: модель, границы безопасности, ARP-таблица | medium | issue [#6](https://github.com/ShkodnikAI/NetAtlas/issues/6) |
+| NR-014 | Активный ping-sweep и имена (NetBIOS, mDNS, SSDP) | medium | запланирован, часть заготовки [NR-002](NR-002.md) |
+| NR-015 | SNMP: таблица MAC по портам, LLDP/CDP, топология | medium | запланирован, часть заготовки [NR-002](NR-002.md) |
+| NR-016 | Wi‑Fi клиенты, DHCP-аренды, производитель по MAC | medium | запланирован, часть заготовки [NR-002](NR-002.md) |
 | [NR-003](NR-003.md) | Хранилище и журнал аудита | high | заготовка |
 | [NR-004](NR-004.md) | Сервер и экран «Карта сети» | medium | заготовка |
 | [NR-005](NR-005.md) | Мастер сканирования и «Найденные устройства» | medium | заготовка |
