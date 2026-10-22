@@ -1,0 +1,15 @@
+*.key
+*.pem
+*.pfx
+*.p12
+.env
+.env.*
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+/bin/
+/dist/
+*.exe
+/secrets/
+/pki/private/
