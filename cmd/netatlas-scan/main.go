@@ -30,7 +30,7 @@ func main() {
 }
 
 func run() int {
-	return runWith(os.Args[1:], os.Getenv, os.Stdout, os.Stderr)
+	return runWith(os.Args[1:], os.Getenv, os.Stdout, os.Stderr, realWalker)
 }
 
 // scanOutput — JSON-вывод: результат сканера плюс SNMP-сбор, если он
@@ -40,9 +40,23 @@ type scanOutput struct {
 	Snmp []snmp.TargetResult `json:"snmp"`
 }
 
+// walkerFactory — фабрика Walker'а для одной цели: настоящая
+// реализация открывает UDP-сокет и говорит по SNMP, в тестах
+// подменяется подставной, чтобы тесты не отправляли реальных пакетов.
+type walkerFactory func(netip.Addr, snmp.Auth) (snmp.Walker, error)
+
+// realWalker — настоящая фабрика: walker поверх gosnmp.
+func realWalker(target netip.Addr, auth snmp.Auth) (snmp.Walker, error) {
+	return snmp.NewGoWalker(target, auth)
+}
+
 // runWith — исполнимая часть CLI: аргументы, источник переменных
-// окружения и выводы выделены для герметичных тестов.
-func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
+// окружения, выводы и фабрика walker'ов выделены для герметичных
+// тестов; nil-фабрика означает настоящую реализацию.
+func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer, newWalker walkerFactory) int {
+	if newWalker == nil {
+		newWalker = realWalker
+	}
 	fs := flag.NewFlagSet("netatlas-scan", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	subnets := fs.String("subnets", "", "список CIDR через запятую (обязателен)")
@@ -125,7 +139,7 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 			fmt.Fprintf(stderr, "ошибка: не хватает переменных окружения: %s\n", strings.Join(missing, ", "))
 			return 2
 		}
-		out.Snmp = collectSNMP(ctx, targets, auth, limiter)
+		out.Snmp = collectSNMP(ctx, targets, auth, limiter, newWalker)
 	}
 
 	enc := json.NewEncoder(stdout)
@@ -187,11 +201,12 @@ func snmpAuth(getenv func(string) string, v2c bool) (snmp.Auth, []string) {
 
 // collectSNMP опрашивает цели по очереди; неответившая цель даёт
 // запись с полем error, остальные цели обрабатываются дальше.
-func collectSNMP(ctx context.Context, targets []netip.Addr, auth snmp.Auth, limiter *scanner.Limiter) []snmp.TargetResult {
+// Walker для каждой цели создаёт фабрика newWalker.
+func collectSNMP(ctx context.Context, targets []netip.Addr, auth snmp.Auth, limiter *scanner.Limiter, newWalker walkerFactory) []snmp.TargetResult {
 	out := make([]snmp.TargetResult, 0, len(targets))
 	for _, t := range targets {
 		tr := snmp.NewTargetResult(t)
-		w, err := snmp.NewGoWalker(t, auth)
+		w, err := newWalker(t, auth)
 		if err == nil {
 			res, cerr := snmp.Collect(ctx, snmp.NewLimitedWalker(w, limiter))
 			_ = w.Close()
