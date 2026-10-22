@@ -35,7 +35,10 @@ type Result struct {
 // живой IP без устройства становится хостом); при Names — имена по
 // NetBIOS и mDNS для каждого IP, затем один SSDP-запрос (ответы вне
 // границ отбрасываются). Все unicast-запросы — только адресам внутри
-// scope. Отмена контекста возвращает собранное и ошибку.
+// scope, и весь активный трафик (ping, имена, SSDP) идёт под
+// лимитером: каждый запрос берёт слот перед отправкой и отпускает
+// после ответа или таймаута. nil-лимитер при Names — ошибка, как
+// и в Sweep. Отмена контекста возвращает собранное и ошибку.
 func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limiter, opt Options) (Result, error) {
 	now := opt.Now
 	if now.IsZero() {
@@ -74,10 +77,13 @@ func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limite
 		if opt.NameClient == nil {
 			return Result{}, fmt.Errorf("scanner: names включён, но клиент имён не задан")
 		}
+		if limiter == nil {
+			return Result{}, fmt.Errorf("scanner: names включён, но ограничитель не задан")
+		}
 		for i := range devices {
 			d := &devices[i]
 			for _, ip := range d.IPs {
-				n, ok, err := resolveName(ctx, opt.NameClient, ip, scope)
+				n, ok, err := resolveName(ctx, opt.NameClient, ip, scope, limiter)
 				if err != nil {
 					return Result{}, err
 				}
@@ -94,7 +100,7 @@ func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limite
 		}
 		for i := range hosts {
 			h := &hosts[i]
-			n, ok, err := resolveName(ctx, opt.NameClient, h.IP, scope)
+			n, ok, err := resolveName(ctx, opt.NameClient, h.IP, scope, limiter)
 			if err != nil {
 				return Result{}, err
 			}
@@ -107,7 +113,7 @@ func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limite
 			}
 			h.Names = append(h.Names, name)
 		}
-		if err := attachSSDP(ctx, opt.NameClient, scope, now, devices, hosts); err != nil {
+		if err := attachSSDP(ctx, opt.NameClient, limiter, scope, now, devices, hosts); err != nil {
 			return Result{}, err
 		}
 	}
@@ -116,19 +122,37 @@ func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limite
 	return Result{Devices: devices, Hosts: hosts}, nil
 }
 
+// nameQuery выполняет один запрос имени под слотом лимитера: слот
+// берётся перед отправкой и отпускается после ответа или таймаута,
+// так что параллельность и частота запросов имён ограничены так же,
+// как ping-sweep.
+func nameQuery(ctx context.Context, limiter *Limiter, q func(context.Context) (string, bool, error)) (string, bool, error) {
+	release, err := limiter.Acquire(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	defer release()
+	return q(ctx)
+}
+
 // resolveName спрашивает имя по NetBIOS, при пустом результате — mDNS.
-// unicast разрешён только адресам внутри границ; nil-Scope никого
-// не пропускает (fail closed, как во всём сканере).
-func resolveName(ctx context.Context, c *names.Client, ip netip.Addr, scope *Scope) (model.Name, bool, error) {
+// Каждый unicast-запрос берёт слот лимитера. unicast разрешён только
+// адресам внутри границ; nil-Scope никого не пропускает (fail closed,
+// как во всём сканере).
+func resolveName(ctx context.Context, c *names.Client, ip netip.Addr, scope *Scope, limiter *Limiter) (model.Name, bool, error) {
 	if scope == nil || !scope.Contains(ip) {
 		return model.Name{}, false, nil
 	}
-	if n, ok, err := c.NetBIOSName(ctx, ip); err != nil {
+	if n, ok, err := nameQuery(ctx, limiter, func(ctx context.Context) (string, bool, error) {
+		return c.NetBIOSName(ctx, ip)
+	}); err != nil {
 		return model.Name{}, false, err
 	} else if ok {
 		return model.Name{Source: model.NameSourceNetBIOS, Name: n}, true, nil
 	}
-	if n, ok, err := c.MDNSName(ctx, ip); err != nil {
+	if n, ok, err := nameQuery(ctx, limiter, func(ctx context.Context) (string, bool, error) {
+		return c.MDNSName(ctx, ip)
+	}); err != nil {
 		return model.Name{}, false, err
 	} else if ok {
 		return model.Name{Source: model.NameSourceMDNS, Name: n}, true, nil
@@ -137,12 +161,18 @@ func resolveName(ctx context.Context, c *names.Client, ip netip.Addr, scope *Sco
 }
 
 // attachSSDP выполняет один M-SEARCH и прикрепляет имена (источник
-// ssdp) устройствам и хостам по адресу отправителя. Ответы от адресов
-// вне границ отбрасываются (fail closed).
-func attachSSDP(ctx context.Context, c *names.Client, scope *Scope, now time.Time, devices []model.Device, hosts []model.Host) error {
-	infos, err := c.SSDP(ctx)
+// ssdp) устройствам и хостам по адресу отправителя. Единственный
+// M-SEARCH берёт один слот лимитера на время отправки и окна сбора
+// ответов. Ответы от адресов вне границ отбрасываются (fail closed).
+func attachSSDP(ctx context.Context, c *names.Client, limiter *Limiter, scope *Scope, now time.Time, devices []model.Device, hosts []model.Host) error {
+	release, err := limiter.Acquire(ctx)
 	if err != nil {
 		return err
+	}
+	infos, ssdpErr := c.SSDP(ctx)
+	release()
+	if ssdpErr != nil {
+		return ssdpErr
 	}
 	// Детерминированный порядок обхода ответов.
 	addrs := make([]netip.Addr, 0, len(infos))
