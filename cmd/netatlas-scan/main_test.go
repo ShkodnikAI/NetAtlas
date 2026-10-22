@@ -2,9 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 )
 
 func noEnv(key string) string { return "" }
@@ -23,19 +32,144 @@ func secretEnv(key string) string {
 	return ""
 }
 
-func runForTest(t *testing.T, args []string, getenv func(string) string) (int, string, string) {
+// runForTest исполняет runWith с подставной фабрикой walker'ов, так
+// что тесты CLI не открывают SNMP-сокетов и не отправляют пакетов.
+func runForTest(t *testing.T, args []string, getenv func(string) string, newWalker walkerFactory) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := runWith(args, getenv, &stdout, &stderr)
+	code := runWith(args, getenv, &stdout, &stderr, newWalker)
 	return code, stdout.String(), stderr.String()
 }
 
+// refuseFactory — фабрика для тестов без SNMP-целей: если CLI всё же
+// вызвал её, значит пытался опросить цель там, где не должен.
+func refuseFactory(t *testing.T) walkerFactory {
+	t.Helper()
+	return func(target netip.Addr, _ snmp.Auth) (snmp.Walker, error) {
+		t.Errorf("фабрика walker'а вызвана для %v, хотя SNMP не запрашивался", target)
+		return nil, errors.New("snmp: не ожидался")
+	}
+}
+
+// testWalker — подставной Walker, обслуживаемый текстовыми фикстурами
+// из scanner/snmp/testdata (тот же формат, что в пакетных тестах:
+// «OID|kind|значение», kind: i — число, s — строка, x — hex-байты,
+// o — OID). Get отдаёт точные OID, Walk — поддерево по префиксу;
+// отсутствующие OID — KindNoSuch. Сеть не используется.
+type testWalker struct {
+	table      map[string]snmp.PDU
+	order      []string
+	getCalls   int
+	walkCalls  int
+	closeCalls int
+}
+
+// loadFixtureWalker читает фикстуры scanner/snmp/testdata.
+func loadFixtureWalker(t *testing.T, files ...string) *testWalker {
+	t.Helper()
+	w := &testWalker{table: make(map[string]snmp.PDU)}
+	for _, name := range files {
+		data, err := os.ReadFile(filepath.Join("..", "..", "scanner", "snmp", "testdata", name))
+		if err != nil {
+			t.Fatalf("фикстура %s: %v", name, err)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "|", 3)
+			if len(parts) != 3 {
+				t.Fatalf("фикстура %s: строка без трёх полей: %q", name, line)
+			}
+			oid, kind, val := parts[0], parts[1], parts[2]
+			var pdu snmp.PDU
+			switch kind {
+			case "i":
+				n, err := strconv.ParseInt(val, 10, 64)
+				if err != nil {
+					t.Fatalf("фикстура %s: %q: %v", name, line, err)
+				}
+				pdu = snmp.PDU{OID: oid, Kind: snmp.KindInt, Value: n}
+			case "s":
+				pdu = snmp.PDU{OID: oid, Kind: snmp.KindBytes, Value: []byte(val)}
+			case "x":
+				b, err := hex.DecodeString(val)
+				if err != nil {
+					t.Fatalf("фикстура %s: %q: %v", name, line, err)
+				}
+				pdu = snmp.PDU{OID: oid, Kind: snmp.KindBytes, Value: b}
+			case "o":
+				pdu = snmp.PDU{OID: oid, Kind: snmp.KindOID, Value: val}
+			default:
+				t.Fatalf("фикстура %s: неизвестный вид %q", name, kind)
+			}
+			if _, dup := w.table[oid]; !dup {
+				w.order = append(w.order, oid)
+			}
+			w.table[oid] = pdu
+		}
+	}
+	return w
+}
+
+func (w *testWalker) Get(_ context.Context, oids ...string) ([]snmp.PDU, error) {
+	w.getCalls++
+	out := make([]snmp.PDU, 0, len(oids))
+	for _, oid := range oids {
+		if p, ok := w.table[oid]; ok {
+			out = append(out, p)
+		} else {
+			out = append(out, snmp.PDU{OID: oid, Kind: snmp.KindNoSuch, Value: nil})
+		}
+	}
+	return out, nil
+}
+
+func (w *testWalker) Walk(_ context.Context, root string, fn func(snmp.PDU) error) error {
+	w.walkCalls++
+	for _, oid := range w.order {
+		if !strings.HasPrefix(oid, root+".") {
+			continue
+		}
+		if err := fn(w.table[oid]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *testWalker) Close() error {
+	w.closeCalls++
+	return nil
+}
+
+// fakeFactory — подставная фабрика walker'ов: считает вызовы и
+// запоминает, какие цели и учётные данные до неё дошли. По err
+// имитирует цель, которая не отвечает; по walker — успешную цель.
+type fakeFactory struct {
+	err     error
+	walker  snmp.Walker
+	targets []netip.Addr
+	auths   []snmp.Auth
+}
+
+func (f *fakeFactory) new(target netip.Addr, a snmp.Auth) (snmp.Walker, error) {
+	f.targets = append(f.targets, target)
+	f.auths = append(f.auths, a)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.walker, nil
+}
+
 // TestCLIMissingV3Env — без --snmp-v2c нужен SNMPv3: код 2, в
-// сообщении — имена нехватнувших переменных, не значения.
+// сообщении — имена нехватнувших переменных, не значения; до фабрики
+// walker'ов дело не доходит.
 func TestCLIMissingV3Env(t *testing.T) {
 	code, _, stderr := runForTest(t, []string{
 		"--subnets", "192.168.1.0/29", "--snmp-targets", "192.168.1.2",
-	}, noEnv)
+	}, noEnv, refuseFactory(t))
 	if code != 2 {
 		t.Fatalf("код = %d, хочу 2", code)
 	}
@@ -46,11 +180,12 @@ func TestCLIMissingV3Env(t *testing.T) {
 	}
 }
 
-// TestCLIMissingCommunity — v2c без сообщества: код 2 и имя переменной.
+// TestCLIMissingCommunity — v2c без сообщества: код 2 и имя
+// переменной; до фабрики walker'ов дело не доходит.
 func TestCLIMissingCommunity(t *testing.T) {
 	code, _, stderr := runForTest(t, []string{
 		"--subnets", "192.168.1.0/29", "--snmp-targets", "192.168.1.2", "--snmp-v2c",
-	}, noEnv)
+	}, noEnv, refuseFactory(t))
 	if code != 2 {
 		t.Fatalf("код = %d, хочу 2", code)
 	}
@@ -59,11 +194,12 @@ func TestCLIMissingCommunity(t *testing.T) {
 	}
 }
 
-// TestCLITargetOutsideScope — цель вне границ: код 2 до любых запросов.
+// TestCLITargetOutsideScope — цель вне границ: код 2 до любых запросов
+// и до создания walker'а.
 func TestCLITargetOutsideScope(t *testing.T) {
 	code, _, stderr := runForTest(t, []string{
 		"--subnets", "192.168.1.0/29", "--snmp-targets", "10.9.9.9",
-	}, secretEnv)
+	}, secretEnv, refuseFactory(t))
 	if code != 2 {
 		t.Fatalf("код = %d, хочу 2", code)
 	}
@@ -72,25 +208,27 @@ func TestCLITargetOutsideScope(t *testing.T) {
 	}
 }
 
-// TestCLIInvalidTarget — не-IP в списке целей: код 2.
+// TestCLIInvalidTarget — не-IP в списке целей: код 2, без walker'а.
 func TestCLIInvalidTarget(t *testing.T) {
 	code, _, _ := runForTest(t, []string{
 		"--subnets", "192.168.1.0/29", "--snmp-targets", "192.168.1.2,not-an-ip",
-	}, secretEnv)
+	}, secretEnv, refuseFactory(t))
 	if code != 2 {
 		t.Fatalf("код = %d, хочу 2", code)
 	}
 }
 
 // TestCLISecretsNotPrinted — с заведомо известными тестовыми значениями
-// в переменных окружения ни JSON, ни ошибки не содержат их. Цель —
-// 192.0.2.1 из TEST-NET-1 (RFC 5737): диапазон для документации,
-// не маршрутизируется ни в сеть владельца, ни в интернет — соединение
-// не отвечает, цель даёт запись с error, код 0.
+// в переменных окружения ни JSON, ни ошибки не содержат их. Walker
+// подменён фабрикой, имитирующей цель без ответа: сеть не используется,
+// пакеты никуда не уходят. Цель 192.0.2.1 из TEST-NET-1 (RFC 5737)
+// сохранена как маркер немаршрутизируемого адреса. Учётные данные
+// доходят до фабрики (это проверяется), но не попадают в вывод.
 func TestCLISecretsNotPrinted(t *testing.T) {
+	ff := &fakeFactory{err: errors.New("snmp: система: request timeout (after 2 retries)")}
 	code, stdout, stderr := runForTest(t, []string{
 		"--subnets", "192.0.2.0/29", "--snmp-targets", "192.0.2.1", "--snmp-v2c",
-	}, secretEnv)
+	}, secretEnv, ff.new)
 	if code != 0 {
 		t.Fatalf("код = %d, хочу 0 (неответившая цель — запись с error): %s", code, stderr)
 	}
@@ -106,12 +244,102 @@ func TestCLISecretsNotPrinted(t *testing.T) {
 	if len(out.Snmp) != 1 || out.Snmp[0].Target.String() != "192.0.2.1" || out.Snmp[0].Error == "" {
 		t.Fatalf("snmp-запись = %+v, хочу цель 192.0.2.1 с error", out.Snmp)
 	}
+	// фабрика вызвана один раз, с правильной целью и сообществом из env
+	if len(ff.targets) != 1 || ff.targets[0].String() != "192.0.2.1" {
+		t.Errorf("фабрика вызвана %d раз(а) для %v, хочу 1 вызов для 192.0.2.1", len(ff.targets), ff.targets)
+	}
+	if len(ff.auths) != 1 || ff.auths[0].Community != "v2c-secret-community-42" {
+		t.Errorf("до фабрики не дошло сообщество из окружения: %+v", ff.auths)
+	}
+}
+
+// TestCLISNMPFixtureData — успешный сбор по фикстурам
+// scanner/snmp/testdata: код 0, без error, JSON содержит sys_name,
+// sys_descr, порты, FDB и LLDP. Walker использован и закрыт ровно
+// один раз — ресурс без утечек, сеть не тронута.
+func TestCLISNMPFixtureData(t *testing.T) {
+	w := loadFixtureWalker(t, "sys.txt", "ifname.txt", "qbridge.txt",
+		"lldp_chassis_subtype.txt", "lldp_chassis_id.txt", "lldp_port_subtype.txt",
+		"lldp_port_id.txt", "lldp_sysname.txt")
+	ff := &fakeFactory{walker: w}
+	code, stdout, stderr := runForTest(t, []string{
+		"--subnets", "192.0.2.0/29", "--snmp-targets", "192.0.2.1", "--snmp-v2c",
+	}, secretEnv, ff.new)
+	if code != 0 {
+		t.Fatalf("код = %d, хочу 0: %s", code, stderr)
+	}
+	if stderr != "" {
+		t.Errorf("stderr не пуст: %s", stderr)
+	}
+	var out scanOutput
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("JSON: %v\n%s", err, stdout)
+	}
+	if len(out.Snmp) != 1 {
+		t.Fatalf("записей snmp = %d, хочу 1", len(out.Snmp))
+	}
+	tr := out.Snmp[0]
+	if tr.Target.String() != "192.0.2.1" {
+		t.Errorf("target = %s, хочу 192.0.2.1", tr.Target)
+	}
+	if tr.Error != "" {
+		t.Errorf("error = %q, хочу пусто", tr.Error)
+	}
+	if tr.SysName != "sw-core" || tr.SysDescr != "Cisco IOS Software, C2960" {
+		t.Errorf("система = %q / %q", tr.SysName, tr.SysDescr)
+	}
+	if len(tr.Ports) != 3 {
+		t.Errorf("портов = %d, хочу 3: %+v", len(tr.Ports), tr.Ports)
+	}
+	if len(tr.FDB) != 2 {
+		t.Errorf("fdb = %d, хочу 2: %+v", len(tr.FDB), tr.FDB)
+	}
+	if len(tr.LLDP) != 2 {
+		t.Errorf("lldp = %d, хочу 2: %+v", len(tr.LLDP), tr.LLDP)
+	}
+	// фабрика вызвана один раз с правильной целью
+	if len(ff.targets) != 1 || ff.targets[0].String() != "192.0.2.1" {
+		t.Errorf("фабрика вызвана %d раз(а) для %v, хочу 1 вызов для 192.0.2.1", len(ff.targets), ff.targets)
+	}
+	if w.getCalls == 0 || w.walkCalls == 0 {
+		t.Errorf("walker не использован: get=%d walk=%d", w.getCalls, w.walkCalls)
+	}
+	if w.closeCalls != 1 {
+		t.Errorf("walker закрыт %d раз(а), хочу 1", w.closeCalls)
+	}
+}
+
+// TestCLISNMPFactoryCalledPerTarget — тест на сокет: при
+// --snmp-targets CLI строит walker только через фабрику, по одному
+// вызову на цель; настоящий NewGoWalker из тестов недостижим — ни
+// один тест не передаёт realWalker. Цель без ответа не мешает
+// обработке следующей: обе записи с error, код 0.
+func TestCLISNMPFactoryCalledPerTarget(t *testing.T) {
+	ff := &fakeFactory{err: errors.New("snmp: нет ответа (подставной walker)")}
+	code, stdout, _ := runForTest(t, []string{
+		"--subnets", "192.0.2.0/29", "--snmp-targets", "192.0.2.1,192.0.2.2", "--snmp-v2c",
+	}, secretEnv, ff.new)
+	if code != 0 {
+		t.Fatalf("код = %d, хочу 0", code)
+	}
+	if len(ff.targets) != 2 || ff.targets[0].String() != "192.0.2.1" || ff.targets[1].String() != "192.0.2.2" {
+		t.Fatalf("фабрика вызвана %d раз(а) для %v, хочу 2 вызова — по цели на каждую", len(ff.targets), ff.targets)
+	}
+	var out scanOutput
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("JSON: %v\n%s", err, stdout)
+	}
+	for i, want := range []string{"192.0.2.1", "192.0.2.2"} {
+		if len(out.Snmp) <= i || out.Snmp[i].Target.String() != want || out.Snmp[i].Error == "" {
+			t.Errorf("запись %d = %+v, хочу цель %s с error", i, out.Snmp[i], want)
+		}
+	}
 }
 
 // TestCLINoSNMPKeyByDefault — без --snmp-targets ключ snmp пустой [],
-// код 0.
+// код 0; до фабрики walker'ов дело не доходит.
 func TestCLINoSNMPKeyByDefault(t *testing.T) {
-	code, stdout, _ := runForTest(t, []string{"--subnets", "192.168.1.0/29"}, noEnv)
+	code, stdout, _ := runForTest(t, []string{"--subnets", "192.168.1.0/29"}, noEnv, refuseFactory(t))
 	if code != 0 {
 		t.Fatalf("код = %d, хочу 0", code)
 	}
