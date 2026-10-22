@@ -1,0 +1,3 @@
+# ifDescr — запасной источник имён
+1.3.6.1.2.1.2.2.1.2.1|s|GigabitEthernet0/1
+1.3.6.1.2.1.2.2.1.2.2|s|GigabitEthernet0/2

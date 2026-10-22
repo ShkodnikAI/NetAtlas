@@ -1,7 +1,9 @@
 // Command netatlas-scan — точка входа сканера: читает ARP-таблицу
 // этой машины, при флагах --ping и --names выполняет активный
-// ping-sweep (ICMP) и разрешение имён (NetBIOS, mDNS, SSDP) строго
-// внутри границ из флага --subnets, и печатает результат в JSON.
+// ping-sweep (ICMP) и разрешение имён (NetBIOS, mDNS, SSDP), при
+// --snmp-targets опрашивает перечисленные цели по SNMP (только
+// чтение) — всё строго внутри границ из флага --subnets, и печатает
+// результат в JSON.
 package main
 
 import (
@@ -9,7 +11,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +22,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/names"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
+	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 )
 
 func main() {
@@ -25,40 +30,60 @@ func main() {
 }
 
 func run() int {
-	subnets := flag.String("subnets", "", "список CIDR через запятую (обязателен)")
-	allowLarge := flag.Bool("allow-large", false, "разрешить подсеть шире /22 (более 1024 адресов)")
-	pingFlag := flag.Bool("ping", false, "активный ping-sweep подсети (ICMP; нужны права на raw-сокет)")
-	namesFlag := flag.Bool("names", false, "разрешение имён (NetBIOS, mDNS, SSDP)")
-	flag.Parse()
+	return runWith(os.Args[1:], os.Getenv, os.Stdout, os.Stderr)
+}
+
+// scanOutput — JSON-вывод: результат сканера плюс SNMP-сбор, если он
+// запрашивался. Ключ snmp присутствует всегда (пустой [] без целей).
+type scanOutput struct {
+	scanner.Result
+	Snmp []snmp.TargetResult `json:"snmp"`
+}
+
+// runWith — исполнимая часть CLI: аргументы, источник переменных
+// окружения и выводы выделены для герметичных тестов.
+func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("netatlas-scan", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	subnets := fs.String("subnets", "", "список CIDR через запятую (обязателен)")
+	allowLarge := fs.Bool("allow-large", false, "разрешить подсеть шире /22 (более 1024 адресов)")
+	pingFlag := fs.Bool("ping", false, "активный ping-sweep подсети (ICMP; нужны права на raw-сокет)")
+	namesFlag := fs.Bool("names", false, "разрешение имён (NetBIOS, mDNS, SSDP)")
+	snmpTargets := fs.String("snmp-targets", "", "цели SNMP (только чтение) через запятую; каждая обязана быть внутри --subnets")
+	snmpV2C := fs.Bool("snmp-v2c", false, "SNMPv2c вместо SNMPv3 authPriv (SHA/AES)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	if *subnets == "" {
-		fmt.Fprintln(os.Stderr, "ошибка: нужен флаг --subnets (список CIDR через запятую)")
+		fmt.Fprintln(stderr, "ошибка: нужен флаг --subnets (список CIDR через запятую)")
 		return 2
 	}
 	scope, err := scanner.NewScope(strings.Split(*subnets, ","), *allowLarge)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 2
 	}
 
 	limiter, err := scanner.NewLimiter(scanner.DefaultParallel, scanner.DefaultPerSecond, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 1
 	}
 
 	entries, err := arp.ReadSystem(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 1
 	}
 
+	ctx := context.Background()
 	opt := scanner.Options{Now: time.Now()}
 
 	if *pingFlag {
 		p, err := ping.NewICMPProber()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+			fmt.Fprintf(stderr, "ошибка: %v\n", err)
 			return 1
 		}
 		defer p.Close()
@@ -69,7 +94,7 @@ func run() int {
 	if *namesFlag {
 		conn, err := net.ListenPacket("udp4", ":0")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ошибка: не удалось открыть UDP-сокет: %v\n", err)
+			fmt.Fprintf(stderr, "ошибка: не удалось открыть UDP-сокет: %v\n", err)
 			return 1
 		}
 		client := names.NewClient(conn)
@@ -78,17 +103,107 @@ func run() int {
 		opt.NameClient = client
 	}
 
-	result, err := scanner.Run(context.Background(), entries, scope, limiter, opt)
+	result, err := scanner.Run(ctx, entries, scope, limiter, opt)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 1
 	}
 
-	out, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+	out := scanOutput{Result: result, Snmp: []snmp.TargetResult{}}
+	if *snmpTargets != "" {
+		targets, err := parseTargets(*snmpTargets)
+		if err != nil {
+			fmt.Fprintf(stderr, "ошибка: %v\n", err)
+			return 2
+		}
+		if err := snmp.CheckTargets(scope, targets); err != nil {
+			fmt.Fprintf(stderr, "ошибка: %v\n", err)
+			return 2
+		}
+		auth, missing := snmpAuth(getenv, *snmpV2C)
+		if len(missing) > 0 {
+			fmt.Fprintf(stderr, "ошибка: не хватает переменных окружения: %s\n", strings.Join(missing, ", "))
+			return 2
+		}
+		out.Snmp = collectSNMP(ctx, targets, auth, limiter)
+	}
+
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 1
 	}
-	fmt.Println(string(out))
 	return 0
+}
+
+// parseTargets разбирает список целей --snmp-targets.
+func parseTargets(s string) ([]netip.Addr, error) {
+	parts := strings.Split(s, ",")
+	targets := make([]netip.Addr, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		a, err := netip.ParseAddr(p)
+		if err != nil {
+			return nil, fmt.Errorf("цель %q не IPv4-адрес", p)
+		}
+		targets = append(targets, a)
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("список целей пуст")
+	}
+	return targets, nil
+}
+
+// snmpAuth собирает учётные данные из переменных окружения. Значения
+// не попадают ни в ошибки, ни в вывод — только имена переменных.
+func snmpAuth(getenv func(string) string, v2c bool) (snmp.Auth, []string) {
+	if v2c {
+		c := getenv("NETATLAS_SNMP_COMMUNITY")
+		if c == "" {
+			return snmp.Auth{}, []string{"NETATLAS_SNMP_COMMUNITY"}
+		}
+		return snmp.Auth{V2C: true, Community: c}, nil
+	}
+	var missing []string
+	user, authPass, privPass := getenv("NETATLAS_SNMP_USER"), getenv("NETATLAS_SNMP_AUTH_PASS"), getenv("NETATLAS_SNMP_PRIV_PASS")
+	if user == "" {
+		missing = append(missing, "NETATLAS_SNMP_USER")
+	}
+	if authPass == "" {
+		missing = append(missing, "NETATLAS_SNMP_AUTH_PASS")
+	}
+	if privPass == "" {
+		missing = append(missing, "NETATLAS_SNMP_PRIV_PASS")
+	}
+	if len(missing) > 0 {
+		return snmp.Auth{}, missing
+	}
+	return snmp.Auth{User: user, AuthPass: authPass, PrivPass: privPass}, nil
+}
+
+// collectSNMP опрашивает цели по очереди; неответившая цель даёт
+// запись с полем error, остальные цели обрабатываются дальше.
+func collectSNMP(ctx context.Context, targets []netip.Addr, auth snmp.Auth, limiter *scanner.Limiter) []snmp.TargetResult {
+	out := make([]snmp.TargetResult, 0, len(targets))
+	for _, t := range targets {
+		tr := snmp.NewTargetResult(t)
+		w, err := snmp.NewGoWalker(t, auth)
+		if err == nil {
+			res, cerr := snmp.Collect(ctx, snmp.NewLimitedWalker(w, limiter))
+			_ = w.Close()
+			if cerr == nil {
+				tr.Fill(res)
+			} else {
+				tr.Error = cerr.Error()
+			}
+		} else {
+			tr.Error = err.Error()
+		}
+		out = append(out, tr)
+	}
+	return out
 }
