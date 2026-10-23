@@ -1,0 +1,11 @@
+# Конфигурация секрет-скана (gitleaks, CI job secret-scan):
+# базовые правила по умолчанию плюс единственное исключение —
+# фиктивное значение тестового токена в тестах авторизации (не секрет).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "фиктивные тестовые токены авторизации"
+regexTarget = "match"
+regexes = ['''^0123456789abcdef01234567$''']
+paths = ['''server/api/api_test\.go''', '''cmd/netatlas-server/config_test\.go''']
