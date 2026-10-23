@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ShkodnikAI/NetAtlas/internal/model"
+	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 )
 
@@ -345,5 +347,112 @@ func TestCLINoSNMPKeyByDefault(t *testing.T) {
 	}
 	if !strings.Contains(stdout, `"snmp": []`) {
 		t.Errorf("ключ snmp должен быть пустым массивом: %s", stdout)
+	}
+}
+
+// --- NR-016: DHCP-аренды ---
+
+func TestCLILeasesFlagsTogether(t *testing.T) {
+	// --leases без --leases-format — код 2.
+	code, _, stderr := runForTest(t, []string{
+		"--subnets", "192.0.2.0/24",
+		"--leases", "testdata/leases_cli_isc.txt",
+	}, noEnv, refuseFactory(t))
+	if code != 2 {
+		t.Errorf("--leases без --leases-format: код = %d, ждём 2; stderr: %s", code, stderr)
+	}
+	// --leases-format без --leases — код 2.
+	code, _, stderr = runForTest(t, []string{
+		"--subnets", "192.0.2.0/24",
+		"--leases-format", "isc",
+	}, noEnv, refuseFactory(t))
+	if code != 2 {
+		t.Errorf("--leases-format без --leases: код = %d, ждём 2; stderr: %s", code, stderr)
+	}
+}
+
+func TestCLILeasesBadFormat(t *testing.T) {
+	code, _, stderr := runForTest(t, []string{
+		"--subnets", "192.0.2.0/24",
+		"--leases", "testdata/leases_cli_isc.txt",
+		"--leases-format", "xml",
+	}, noEnv, refuseFactory(t))
+	if code != 2 {
+		t.Errorf("формат xml: код = %d, ждём 2; stderr: %s", code, stderr)
+	}
+}
+
+func TestCLILeasesNoSuchFile(t *testing.T) {
+	code, _, stderr := runForTest(t, []string{
+		"--subnets", "192.0.2.0/24",
+		"--leases", "testdata/no_such_leases.txt",
+		"--leases-format", "isc",
+	}, noEnv, refuseFactory(t))
+	if code != 1 {
+		t.Errorf("несуществующий файл: код = %d, ждём 1; stderr: %s", code, stderr)
+	}
+}
+
+func TestCLILeasesMerged(t *testing.T) {
+	cases := []struct {
+		name, file, format, mac, vendor, ssid string
+	}{
+		{"isc", "testdata/leases_cli_isc.txt", "isc", "00:00:0c:11:22:33", "Cisco Systems, Inc", ""},
+		{"csv", "testdata/leases_cli_csv.csv", "csv", "aa:bb:cc:dd:ee:f0", "", "HomeWiFi"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, stdout, stderr := runForTest(t, []string{
+				"--subnets", "192.0.2.0/24",
+				"--leases", tc.file,
+				"--leases-format", tc.format,
+			}, noEnv, refuseFactory(t))
+			if code != 0 {
+				t.Fatalf("код = %d, ждём 0; stderr: %s", code, stderr)
+			}
+			if !strings.Contains(stderr, "аренды: получено 1, пропущено 0") {
+				t.Errorf("stderr без счётчика аренд: %q", stderr)
+			}
+			var out struct {
+				scanner.Result
+				Snmp []snmp.TargetResult `json:"snmp"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+				t.Fatalf("JSON: %v\nвывод: %s", err, stdout)
+			}
+			var found *model.Device
+			for i := range out.Devices {
+				if out.Devices[i].ID == tc.mac {
+					found = &out.Devices[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("устройство %s не найдено в выводе; устройства: %+v", tc.mac, out.Devices)
+			}
+			if found.Vendor != tc.vendor {
+				t.Errorf("vendor = %q, ждём %q", found.Vendor, tc.vendor)
+			}
+			if found.SSID != tc.ssid {
+				t.Errorf("ssid = %q, ждём %q", found.SSID, tc.ssid)
+			}
+			hasDHCPName, hasDHCPObs := false, false
+			for _, n := range found.Names {
+				if n.Source == model.NameSourceDHCP {
+					hasDHCPName = true
+				}
+			}
+			for _, o := range found.Observations {
+				if o.Source == "dhcp" {
+					hasDHCPObs = true
+				}
+			}
+			if !hasDHCPName {
+				t.Errorf("нет имени с источником dhcp: %+v", found.Names)
+			}
+			if !hasDHCPObs {
+				t.Errorf("нет наблюдения dhcp: %+v", found.Observations)
+			}
+		})
 	}
 }

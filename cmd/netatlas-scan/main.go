@@ -2,8 +2,10 @@
 // этой машины, при флагах --ping и --names выполняет активный
 // ping-sweep (ICMP) и разрешение имён (NetBIOS, mDNS, SSDP), при
 // --snmp-targets опрашивает перечисленные цели по SNMP (только
-// чтение) — всё строго внутри границ из флага --subnets, и печатает
-// результат в JSON.
+// чтение), при --leases вливает DHCP-аренды из локального
+// файла-выгрузки (IP, имя, SSID) — всё строго внутри границ из флага
+// --subnets, и печатает результат в JSON. Производитель (vendor)
+// определяется по MAC из встроенного реестра IEEE MA-L, без сети.
 package main
 
 import (
@@ -21,6 +23,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
+	"github.com/ShkodnikAI/NetAtlas/scanner/dhcp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/names"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
@@ -68,6 +71,8 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 	namesFlag := fs.Bool("names", false, "разрешение имён (NetBIOS, mDNS, SSDP)")
 	snmpTargets := fs.String("snmp-targets", "", "цели SNMP (только чтение) через запятую; каждая обязана быть внутри --subnets")
 	snmpV2C := fs.Bool("snmp-v2c", false, "SNMPv2c вместо SNMPv3 authPriv (SHA/AES)")
+	leasesPath := fs.String("leases", "", "файл DHCP-аренд (isc или csv); читается только локально")
+	leasesFormat := fs.String("leases-format", "", "формат файла аренд: isc или csv (обязателен вместе с --leases)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -80,6 +85,36 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 	if err != nil {
 		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 2
+	}
+
+	// Файл аренд читается только локально и целиком до сканирования:
+	// невалидная пара флагов — код 2, ошибка файла — код 1.
+	var leaseRes *dhcp.Result
+	if (*leasesPath == "") != (*leasesFormat == "") {
+		fmt.Fprintln(stderr, "ошибка: флаги --leases и --leases-format указываются вместе")
+		return 2
+	}
+	if *leasesPath != "" {
+		if *leasesFormat != "isc" && *leasesFormat != "csv" {
+			fmt.Fprintf(stderr, "ошибка: --leases-format %q: ждём isc или csv\n", *leasesFormat)
+			return 2
+		}
+		f, ferr := os.Open(*leasesPath)
+		if ferr != nil {
+			fmt.Fprintf(stderr, "ошибка: файл аренд: %v\n", ferr)
+			return 1
+		}
+		res, perr := dhcp.ParseLeases(f, *leasesFormat)
+		cerr := f.Close()
+		if perr != nil {
+			fmt.Fprintf(stderr, "ошибка: файл аренд: %v\n", perr)
+			return 1
+		}
+		if cerr != nil {
+			fmt.Fprintf(stderr, "ошибка: файл аренд: %v\n", cerr)
+			return 1
+		}
+		leaseRes = &res
 	}
 
 	limiter, err := scanner.NewLimiter(scanner.DefaultParallel, scanner.DefaultPerSecond, nil)
@@ -95,7 +130,8 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 	}
 
 	ctx := context.Background()
-	opt := scanner.Options{Now: time.Now()}
+	now := time.Now()
+	opt := scanner.Options{Now: now}
 
 	if *pingFlag {
 		p, err := ping.NewICMPProber()
@@ -125,6 +161,12 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 		fmt.Fprintf(stderr, "ошибка: %v\n", err)
 		return 1
 	}
+
+	if leaseRes != nil {
+		result.Devices = scanner.AddLeases(result.Devices, leaseRes.Leases, scope, now)
+		fmt.Fprintf(stderr, "аренды: получено %d, пропущено %d\n", len(leaseRes.Leases), leaseRes.Skipped)
+	}
+	result.Devices = scanner.FillVendors(result.Devices)
 
 	out := scanOutput{Result: result, Snmp: []snmp.TargetResult{}, Topology: model.NewTopology()}
 	if *snmpTargets != "" {
