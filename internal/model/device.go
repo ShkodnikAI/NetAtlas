@@ -21,6 +21,8 @@ type Device struct {
 	Class        Class         `json:"class"`
 	Names        []Name        `json:"names"`
 	Observations []Observation `json:"observations"`
+	Vendor       string        `json:"vendor,omitempty"`
+	SSID         string        `json:"ssid,omitempty"`
 }
 
 // NewDevice создаёт устройство по MAC-адресу: MAC нормализуется,
