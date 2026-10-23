@@ -198,11 +198,13 @@ func loadLeases(path, format string) (*dhcp.Result, error) {
 	if format != "isc" && format != "csv" {
 		return nil, fmt.Errorf("leases_format %q: допустимы isc и csv", format)
 	}
-	if !filepath.IsAbs(path) {
-		return nil, fmt.Errorf("leases_path %q: путь должен быть абсолютным", path)
-	}
+	// «..» проверяется до абсолютности: ответ не зависит от того,
+	// считается ли путь абсолютным на текущей платформе.
 	if strings.Contains(path, "..") {
 		return nil, fmt.Errorf("leases_path %q: путь с «..» запрещён", path)
+	}
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("leases_path %q: путь должен быть абсолютным", path)
 	}
 	f, err := os.Open(path)
 	if err != nil {
