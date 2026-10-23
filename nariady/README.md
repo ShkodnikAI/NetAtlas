@@ -44,14 +44,19 @@
 
 | Наряд | Название | Риск | Статус |
 |---|---|---|---|
-| NR-001 | Скелет проекта и CI | low | принято, issue [#1](https://github.com/ShkodnikAI/NetAtlas/issues/1) |
-| NR-002 | Основа сканера: модель, границы безопасности, ARP-таблица | medium | issue [#6](https://github.com/ShkodnikAI/NetAtlas/issues/6) |
-| NR-014 | Активный ping-sweep и имена (NetBIOS, mDNS, SSDP) | medium | запланирован, часть заготовки [NR-002](NR-002.md) |
-| NR-015 | SNMP: таблица MAC по портам, LLDP/CDP, топология | medium | запланирован, часть заготовки [NR-002](NR-002.md) |
-| NR-016 | Wi‑Fi клиенты, DHCP-аренды, производитель по MAC | medium | запланирован, часть заготовки [NR-002](NR-002.md) |
-| [NR-003](NR-003.md) | Хранилище и журнал аудита | high | заготовка |
-| [NR-004](NR-004.md) | Сервер и экран «Карта сети» | medium | заготовка |
-| [NR-005](NR-005.md) | Мастер сканирования и «Найденные устройства» | medium | заготовка |
+| NR-001 | Скелет проекта и CI | low | принято, [#1](https://github.com/ShkodnikAI/NetAtlas/issues/1) |
+| NR-002 | Основа сканера: модель, границы безопасности, ARP-таблица | medium | принято, [#6](https://github.com/ShkodnikAI/NetAtlas/issues/6) |
+| NR-014 | Ping-sweep и имена | medium | принято, [#10](https://github.com/ShkodnikAI/NetAtlas/issues/10) |
+| NR-018 | Запросы имён через Limiter | medium | принято, [#12](https://github.com/ShkodnikAI/NetAtlas/issues/12) |
+| NR-015 | SNMP-сборщик (только чтение) | medium | принято, [#15](https://github.com/ShkodnikAI/NetAtlas/issues/15) |
+| NR-020 | Тест CLI без сети | low | принято, [#17](https://github.com/ShkodnikAI/NetAtlas/issues/17) |
+| NR-019 | Граф топологии | medium | принято, [#19](https://github.com/ShkodnikAI/NetAtlas/issues/19) |
+| NR-016 | DHCP-аренды, Wi‑Fi, производитель по MAC | medium | принято, [#21](https://github.com/ShkodnikAI/NetAtlas/issues/21) |
+| NR-021 | Точность топологии без LLDP | medium | в работе, [#23](https://github.com/ShkodnikAI/NetAtlas/issues/23) |
+| NR-003 | Хранилище и журнал аудита | high | в очереди, [#24](https://github.com/ShkodnikAI/NetAtlas/issues/24) |
+| NR-004 | Сервер и API карты сети | medium | в очереди, [#25](https://github.com/ShkodnikAI/NetAtlas/issues/25) |
+| NR-022 | Веб-интерфейс «Карта сети» | medium | в очереди, [#26](https://github.com/ShkodnikAI/NetAtlas/issues/26) |
+| NR-005 | Мастер сканирования и «Найденные устройства» | medium | в очереди, [#27](https://github.com/ShkodnikAI/NetAtlas/issues/27) |
 | [NR-006](NR-006.md) | Агент Windows: инвентарь и связь | high | заготовка |
 | [NR-007](NR-007.md) | PKI и подпись заданий | high | заготовка |
 | [NR-008](NR-008.md) | Измерения качества сети | medium | заготовка |
