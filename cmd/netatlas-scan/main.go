@@ -18,11 +18,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/names"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
+	"github.com/ShkodnikAI/NetAtlas/scanner/topology"
 )
 
 func main() {
@@ -37,7 +39,8 @@ func run() int {
 // запрашивался. Ключ snmp присутствует всегда (пустой [] без целей).
 type scanOutput struct {
 	scanner.Result
-	Snmp []snmp.TargetResult `json:"snmp"`
+	Snmp     []snmp.TargetResult `json:"snmp"`
+	Topology model.Topology      `json:"topology"`
 }
 
 // walkerFactory — фабрика Walker'а для одной цели: настоящая
@@ -123,7 +126,7 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 		return 1
 	}
 
-	out := scanOutput{Result: result, Snmp: []snmp.TargetResult{}}
+	out := scanOutput{Result: result, Snmp: []snmp.TargetResult{}, Topology: model.NewTopology()}
 	if *snmpTargets != "" {
 		targets, err := parseTargets(*snmpTargets)
 		if err != nil {
@@ -140,6 +143,7 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 			return 2
 		}
 		out.Snmp = collectSNMP(ctx, targets, auth, limiter, newWalker)
+		out.Topology = topology.Build(result.Devices, out.Snmp)
 	}
 
 	enc := json.NewEncoder(stdout)
