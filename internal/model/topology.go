@@ -20,6 +20,9 @@ const (
 	// NodeKindUnknown — сосед из таблиц LLDP/FDB, которого нет среди
 	// устройств сканера (ID = MAC).
 	NodeKindUnknown = "unknown"
+	// NodeKindHost — хост без MAC (ID = «ip:»+адрес): ответил на
+	// ping, но не найден в ARP-таблице (NR-023).
+	NodeKindHost = "host"
 )
 
 // Источники связей графа топологии.

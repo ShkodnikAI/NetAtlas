@@ -26,6 +26,7 @@ export const ICONS: Record<string, string> = {
   printer: 'M7 9V4h10v5 M7 14h10v6H7z M4 9h16v8H4z',
   cloud: 'M9 12h6 M5 5h14v14H5z',
   unknown: 'M9 12h6 M5 5h14v14H5z',
+  host: 'M12 7v.01M12 10v5 M4 4h16v16H4z',
 };
 
 // KIND_LABELS — подпись типа для панели и значков.
@@ -40,6 +41,7 @@ export const KIND_LABELS: Record<string, string> = {
   printer: 'принтер',
   cloud: 'неуправляемый коммутатор',
   unknown: 'неизвестное устройство',
+  host: 'хост без MAC',
 };
 
 // Формы cytoscape: у каждого типа своя фигура.
@@ -54,6 +56,7 @@ const SHAPES: Record<string, string> = {
   printer: 'concave-hexagon',
   cloud: 'tag',
   unknown: 'ellipse',
+  host: 'round-rectangle',
 };
 
 // svgIcon — data URI с иконкой: рисуется внутри узла.

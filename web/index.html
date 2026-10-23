@@ -23,6 +23,7 @@
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Скрипты и тесты <span class="soon-badge">скоро</span></button>
+    <div id="audit-badge" class="audit-badge" role="status" hidden></div>
   </nav>
 
   <main>
@@ -57,6 +58,14 @@
         <label for="scan-snmp">Цели SNMP (только чтение, через запятую)</label>
         <input type="text" id="scan-snmp" placeholder="192.168.1.1, 192.168.1.2" spellcheck="false">
         <p class="subtitle" id="scan-snmp-note" hidden>SNMP-учётные данные не настроены на сервере: цели указывать бессмысленно.</p>
+        <label for="scan-leases-path">Файл DHCP-аренд на сервере (необязательно)</label>
+        <input type="text" id="scan-leases-path" placeholder="/var/lib/dhcp/dhcpd.leases" spellcheck="false">
+        <label for="scan-leases-format">Формат файла аренд</label>
+        <select id="scan-leases-format">
+          <option value="isc">isc (dhcpd.leases)</option>
+          <option value="csv">csv</option>
+        </select>
+        <p class="subtitle">Файл читается на сервере (не больше 5 МБ); аренды вне выбранных подсетей игнорируются.</p>
       </fieldset>
       <div class="row">
         <button id="scan-run">Запустить сканирование</button>

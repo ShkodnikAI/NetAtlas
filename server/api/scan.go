@@ -1,18 +1,24 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
+	"github.com/ShkodnikAI/NetAtlas/scanner/dhcp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/scanner/pipeline"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
@@ -26,6 +32,10 @@ type ScanRequest struct {
 	Names       bool     `json:"names"`
 	SNMPTargets []string `json:"snmp_targets"`
 	Confirm     bool     `json:"confirm"`
+	// LeasesPath и LeasesFormat (NR-023): файл DHCP-аренд на сервере
+	// и его формат (isc|csv). Только вместе: оба поля или ни одного.
+	LeasesPath   string `json:"leases_path,omitempty"`
+	LeasesFormat string `json:"leases_format,omitempty"`
 }
 
 // ServerScanConfig — подсети сервера и доступность SNMP (учётные
@@ -131,6 +141,18 @@ func (a *API) handleScanStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Аренды (NR-023): путь и формат только вместе, путь абсолютный
+	// без «..», формат isc|csv, файл не больше лимита парсера.
+	// Все проверки до старта: недоступный файл — 400, сканирование
+	// не начинается.
+	var leases *dhcp.Result
+	if body.LeasesPath != "" || body.LeasesFormat != "" {
+		leases, err = loadLeases(body.LeasesPath, body.LeasesFormat)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+			return
+		}
+	}
 
 	a.scanMu.Lock()
 	if running || a.scanRunning {
@@ -146,10 +168,12 @@ func (a *API) handleScanStart(w http.ResponseWriter, r *http.Request) {
 	a.scanMu.Unlock()
 
 	// Действие пишется в аудит (актор owner): ошибка аудита делает
-	// операцию неуспешной.
+	// операцию неуспешной. Путь аренд — не секрет (локальный файл
+	// конфигурации скана), значение пишется для прослеживаемости.
 	detail, _ := json.Marshal(map[string]any{
 		"subnets": body.Subnets, "ping": body.Ping,
 		"names": body.Names, "snmp_targets": len(targets),
+		"leases_path": body.LeasesPath, "leases_format": body.LeasesFormat,
 	})
 	if err := a.store.AppendAudit(r.Context(), ActorOwner, "start_scan", "scan", string(detail)); err != nil {
 		a.scanMu.Lock()
@@ -160,14 +184,51 @@ func (a *API) handleScanStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go a.runScan(st, body, targets, *cfg, *deps, scanScope)
+	go a.runScan(st, body, targets, leases, *cfg, *deps, scanScope)
 	writeJSON(w, http.StatusAccepted, map[string]int64{"id": id})
+}
+
+// loadLeases читает и разбирает файл аренд: оба поля обязательны,
+// путь абсолютный без «..», формат isc|csv, размер не больше
+// dhcp.MaxInputSize (5 МБ). Ошибка — вход отклонён (400).
+func loadLeases(path, format string) (*dhcp.Result, error) {
+	if path == "" || format == "" {
+		return nil, fmt.Errorf("leases_path и leases_format указываются вместе")
+	}
+	if format != "isc" && format != "csv" {
+		return nil, fmt.Errorf("leases_format %q: допустимы isc и csv", format)
+	}
+	// «..» проверяется до абсолютности: ответ не зависит от того,
+	// считается ли путь абсолютным на текущей платформе.
+	if strings.Contains(path, "..") {
+		return nil, fmt.Errorf("leases_path %q: путь с «..» запрещён", path)
+	}
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("leases_path %q: путь должен быть абсолютным", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("файл аренд недоступен: %s", path)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, dhcp.MaxInputSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("файл аренд не читается: %s", path)
+	}
+	if len(data) > dhcp.MaxInputSize {
+		return nil, fmt.Errorf("файл аренд больше %d МБ", dhcp.MaxInputSize>>20)
+	}
+	res, err := dhcp.ParseLeases(bytes.NewReader(data), format)
+	if err != nil {
+		return nil, fmt.Errorf("файл аренд %s: %v", path, err)
+	}
+	return &res, nil
 }
 
 // runScan — фоновое выполнение: конвейер, затем сохранение через
 // store.SaveScan (аудит пишет сам SaveScan). Признак «идёт
 // сканирование» снимается только здесь — по факту завершения.
-func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, cfg ServerScanConfig, deps ScanDeps, scanScope *scanner.Scope) {
+func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, leases *dhcp.Result, cfg ServerScanConfig, deps ScanDeps, scanScope *scanner.Scope) {
 	defer func() {
 		a.scanMu.Lock()
 		a.scanRunning = false
@@ -178,10 +239,19 @@ func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, cfg
 
 	// Гости и «известные без агента» не опрашиваются по именам и SNMP.
 	skip := map[string]bool{}
+	skipIPs := map[string]bool{}
 	if devs, err := a.store.ListDevices(ctx); err == nil {
 		for _, d := range devs {
-			if d.Class == model.ClassGuest || d.Class == model.ClassKnownNoAgent {
-				skip[d.ID] = true
+			if d.Class != model.ClassGuest && d.Class != model.ClassKnownNoAgent {
+				continue
+			}
+			skip[d.ID] = true
+			for _, ip := range d.IPs {
+				skipIPs[ip.String()] = true
+			}
+			// ip:-хосты хранят адрес в идентификаторе, а не в device_ips.
+			if rest, ok := strings.CutPrefix(d.ID, "ip:"); ok {
+				skipIPs[rest] = true
 			}
 		}
 	}
@@ -193,14 +263,16 @@ func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, cfg
 	}
 	// Стадия ping/names отмечается по включённости метода.
 	pcfg := pipeline.Config{
-		Scope:        scanScope,
-		Limiter:      a.limiter,
-		Ping:         body.Ping,
-		Names:        body.Names,
-		SNMPTargets:  targets,
-		SNMPAuth:     cfg.SNMPAuth,
-		SkipDeepMACs: skip,
-		OnStage:      addStage,
+		Scope:          scanScope,
+		Limiter:        a.limiter,
+		Ping:           body.Ping,
+		Names:          body.Names,
+		SNMPTargets:    targets,
+		SNMPAuth:       cfg.SNMPAuth,
+		Leases:         leases,
+		SkipDeepMACs:   skip,
+		SkipSSDPForIPs: skipIPs,
+		OnStage:        addStage,
 	}
 	res, err := pipeline.Run(ctx, pcfg, pipeline.Deps{
 		ReadARP:     deps.ReadARP,
@@ -223,6 +295,7 @@ func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, cfg
 		Finished: now,
 		Subnets:  body.Subnets,
 		Devices:  res.Devices,
+		Hosts:    res.Hosts,
 		Topology: res.Topology,
 	}, ActorOwner)
 	a.scanMu.Lock()
@@ -326,16 +399,18 @@ func (a *API) handleAlertAck(w http.ResponseWriter, r *http.Request) {
 }
 
 // configResponse — конфигурация для мастера сканирования (без
-// секретов): границы сервера и доступность SNMP.
+// секретов): границы сервера, доступность SNMP и состояние цепочки
+// журнала аудита на старте сервера (NR-023).
 type configResponse struct {
 	Subnets []string `json:"subnets"`
 	SNMP    bool     `json:"snmp"`
+	AuditOK bool     `json:"audit_ok"`
 }
 
 // handleConfig — GET /api/config.
 func (a *API) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	cfg := a.scanCfg
-	resp := configResponse{Subnets: []string{}}
+	resp := configResponse{Subnets: []string{}, AuditOK: a.auditOK.Load()}
 	if cfg != nil {
 		resp.Subnets = cfg.Subnets
 		resp.SNMP = cfg.SNMPReady

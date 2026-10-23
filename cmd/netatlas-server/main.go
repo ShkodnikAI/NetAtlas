@@ -21,6 +21,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 	"github.com/ShkodnikAI/NetAtlas/server/api"
+	"github.com/ShkodnikAI/NetAtlas/server/audit"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 	"github.com/ShkodnikAI/NetAtlas/web"
 )
@@ -64,6 +65,14 @@ func run(cfg config) error {
 	handler, err := api.New(st, cfg.token, cfg.scope, limiter, prober)
 	if err != nil {
 		return fmt.Errorf("api: %w", err)
+	}
+
+	// Цепочка журнала аудита проверяется при старте (NR-023): разрыв
+	// не мешает работе (сервер стартует), но пишется в stderr и
+	// отдаётся интерфейсу через /api/config (audit_ok: false).
+	if err := audit.Verify(context.Background(), st.DB()); err != nil {
+		handler.SetAuditOK(false)
+		fmt.Fprintf(os.Stderr, "audit: цепочка нарушена: %v\n", err)
 	}
 
 	// Мастер сканирования: границы из --subnets, SNMP-учётные данные

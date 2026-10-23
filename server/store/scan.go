@@ -16,13 +16,14 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 )
 
-// ScanResult — итог одного сканирования для сохранения: устройства и
-// топология из scanner.Result, границы скана и время.
+// ScanResult — итог одного сканирования для сохранения: устройства,
+// хосты без MAC и топология из scanner.Result, границы скана и время.
 type ScanResult struct {
 	Started  time.Time      `json:"started"`
 	Finished time.Time      `json:"finished"`
 	Subnets  []string       `json:"subnets"`
 	Devices  []model.Device `json:"devices"`
+	Hosts    []model.Host   `json:"hosts"`
 	Topology model.Topology `json:"topology"`
 }
 
@@ -116,13 +117,62 @@ func (s *Store) SaveScan(ctx context.Context, scan ScanResult, actor string) err
 			return err
 		}
 	}
+	// Хосты без MAC (NR-023): адрес, занятый устройством с MAC,
+	// не создаёт ip:-дубль; устаревшая ip:-запись удаляется.
+	scanIPs := map[string]bool{}
+	for _, d := range scan.Devices {
+		for _, ip := range d.IPs {
+			scanIPs[ip.String()] = true
+		}
+	}
+	ipHosts := make([]model.Host, 0, len(scan.Hosts))
+	for _, h := range scan.Hosts {
+		key := h.IP.String()
+		if scanIPs[key] {
+			continue // адрес занят устройством этого же скана
+		}
+		var seen int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM device_ips WHERE ip = ?`, key).Scan(&seen); err != nil {
+			return fmt.Errorf("store: адрес %s: %w", key, err)
+		}
+		if seen > 0 {
+			// Устройство с этим адресом уже в базе: устаревшая
+			// ip:-запись (если была) удаляется, хост не дублируется.
+			if err := dropIPHost(ctx, tx, key, actor); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := upsertIPHost(ctx, tx, h, now); err != nil {
+			return err
+		}
+		ipHosts = append(ipHosts, h)
+	}
+	// Адреса устройств этого скана: устаревшие ip:-записи под ними
+	// больше не нужны (хост получил MAC).
+	for ip := range scanIPs {
+		if err := dropIPHost(ctx, tx, ip, actor); err != nil {
+			return err
+		}
+	}
 	// Оповещения о новых неизвестных устройствах (NR-005): одно
 	// открытое на устройство, повторный скан не создаёт второе.
+	// ip:-хосты действуют так же, как остальные.
 	for _, d := range scan.Devices {
 		if known[d.ID] {
 			continue
 		}
 		if err := maybeAlert(ctx, tx, d.ID, !known[d.ID], now); err != nil {
+			return err
+		}
+	}
+	for _, h := range ipHosts {
+		id := ipHostID(h.IP)
+		if known[id] {
+			continue
+		}
+		if err := maybeAlert(ctx, tx, id, !known[id], now); err != nil {
 			return err
 		}
 	}
@@ -132,6 +182,103 @@ func (s *Store) SaveScan(ctx context.Context, scan ScanResult, actor string) err
 		}
 	}
 	return tx.Commit()
+}
+
+// ipHostID — идентификатор хоста без MAC: префикс ip: и адрес.
+func ipHostID(ip netip.Addr) string {
+	return "ip:" + ip.String()
+}
+
+// dropIPHost удаляет устаревшую ip:-запись хоста (только найденную
+// сканером, не ручную) вместе с её открытыми оповещениями; удаление
+// пишется в аудит в той же транзакции.
+func dropIPHost(ctx context.Context, tx *sql.Tx, ip, actor string) error {
+	id := "ip:" + ip
+	res, err := tx.ExecContext(ctx,
+		`DELETE FROM devices WHERE id = ? AND manual = 0`, id)
+	if err != nil {
+		return fmt.Errorf("store: удаление %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: удаление %s: %w", id, err)
+	}
+	if n == 0 {
+		return nil // удалять нечего
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM alerts WHERE device_id = ?`, id); err != nil {
+		return fmt.Errorf("store: оповещения %s: %w", id, err)
+	}
+	detail, _ := json.Marshal(map[string]string{
+		"ip":     ip,
+		"reason": "device_with_mac",
+	})
+	if _, err := audit.Append(ctx, tx, audit.Entry{
+		Actor: actor, Action: "drop_ip_host", Target: id,
+		Result: "ok", Detail: string(detail),
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// upsertIPHost сохраняет хост без MAC как устройство с ID «ip:»+адрес:
+// kind host, класс unknown (при первом появлении), last_seen,
+// имена и наблюдение ping. Повторное появление адреса обновляет
+// last_seen и данные, class/label/verified не трогаются.
+func upsertIPHost(ctx context.Context, tx *sql.Tx, h model.Host, now time.Time) error {
+	if !h.IP.IsValid() {
+		return fmt.Errorf("store: хост без MAC: недопустимый адрес")
+	}
+	id := ipHostID(h.IP)
+	ts := now.UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO devices
+		(id, kind, class, label, hostname, vendor, ssid, manual, verified, first_seen, last_seen)
+		VALUES (?, 'host', 'unknown', '', '', '', '', 0, 0, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen`,
+		id, ts, ts); err != nil {
+		return fmt.Errorf("store: хост %s: %w", id, err)
+	}
+	for _, n := range h.Names {
+		fixed, err := model.NewName(n.Source, n.Name, n.Seen)
+		if err != nil {
+			return fmt.Errorf("store: хост %s: имя: %w", id, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO device_names (device_id, source, name, seen)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(device_id, source, name) DO UPDATE SET seen = excluded.seen`,
+			id, fixed.Source, fixed.Name, fixed.Seen.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("store: имя хоста %s: %w", id, err)
+		}
+	}
+	obs := h.Observations
+	if !hasObservation(obs, "ping") {
+		obs = append(append([]model.Observation{}, obs...),
+			model.Observation{Source: "ping", Seen: now})
+	}
+	for _, o := range obs {
+		seen := o.Seen
+		if seen.IsZero() {
+			seen = now
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO observations (device_id, source, seen)
+			VALUES (?, ?, ?)
+			ON CONFLICT(device_id, source) DO UPDATE SET seen = excluded.seen`,
+			id, o.Source, seen.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("store: наблюдение хоста %s: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// hasObservation — есть ли наблюдение источника source в срезе.
+func hasObservation(obs []model.Observation, source string) bool {
+	for _, o := range obs {
+		if o.Source == source {
+			return true
+		}
+	}
+	return false
 }
 
 // upsertDevice добавляет или обновляет устройство и его данные.

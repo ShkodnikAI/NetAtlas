@@ -90,6 +90,19 @@ nav .soon-badge {
   padding: 1px 6px;
 }
 
+/* Плашка целостности журнала аудита (NR-023): внизу левой панели,
+   видна на всех экранах. */
+.audit-badge {
+  margin-top: auto;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--bad);
+  color: var(--bad);
+  background: rgba(255, 122, 122, 0.08);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* Полотно и главная область */
 main {
   flex: 1 1 auto;

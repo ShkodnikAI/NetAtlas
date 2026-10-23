@@ -31,6 +31,13 @@ describe('nodeStyle', () => {
     expect(nodeStyle(node('самозванец')).shape).toBe(nodeStyle(node('unknown')).shape);
   });
 
+  it('хост без MAC получает форму, иконку и подпись (NR-023)', () => {
+    const st = nodeStyle(node('host'));
+    expect(st.icon).toContain('data:image/svg+xml');
+    expect(st.kindLabel).toBe('хост без MAC');
+    expect(st.shape).not.toBe('ellipse');
+  });
+
   it('svgIcon содержит путь иконки', () => {
     expect(svgIcon('switch')).toContain('%3Cpath');
   });

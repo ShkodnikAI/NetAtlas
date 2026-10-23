@@ -25,6 +25,11 @@ type Options struct {
 	// именам (NetBIOS, mDNS): гости и «известные без агента»
 	// (NR-005). Хосты без MAC не имеют классов и не пропускаются.
 	SkipNamesForMACs map[string]bool
+	// SkipSSDPForIPs — адреса (строки netip), чьи ответы SSDP не
+	// сохраняются (NR-023): гости и «известные без агента».
+	// Групповой M-SEARCH отвечает всем, поэтому имя из ответа такого
+	// адреса отбрасывается; присутствие (ARP/ping) не трогается.
+	SkipSSDPForIPs map[string]bool
 }
 
 // Result — итог сканирования: устройства (с MAC) и хосты без MAC.
@@ -120,7 +125,7 @@ func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limite
 			}
 			h.Names = append(h.Names, name)
 		}
-		if err := attachSSDP(ctx, opt.NameClient, limiter, scope, now, devices, hosts); err != nil {
+		if err := attachSSDP(ctx, opt.NameClient, limiter, scope, now, devices, hosts, opt.SkipSSDPForIPs); err != nil {
 			return Result{}, err
 		}
 	}
@@ -170,8 +175,10 @@ func resolveName(ctx context.Context, c *names.Client, ip netip.Addr, scope *Sco
 // attachSSDP выполняет один M-SEARCH и прикрепляет имена (источник
 // ssdp) устройствам и хостам по адресу отправителя. Единственный
 // M-SEARCH берёт один слот лимитера на время отправки и окна сбора
-// ответов. Ответы от адресов вне границ отбрасываются (fail closed).
-func attachSSDP(ctx context.Context, c *names.Client, limiter *Limiter, scope *Scope, now time.Time, devices []model.Device, hosts []model.Host) error {
+// ответов. Ответы от адресов вне границ и адресов из skipSSDP
+// (гости и «известные без агента», NR-023) отбрасываются —
+// присутствие и ping не трогаются.
+func attachSSDP(ctx context.Context, c *names.Client, limiter *Limiter, scope *Scope, now time.Time, devices []model.Device, hosts []model.Host, skipSSDP map[string]bool) error {
 	release, err := limiter.Acquire(ctx)
 	if err != nil {
 		return err
@@ -191,6 +198,9 @@ func attachSSDP(ctx context.Context, c *names.Client, limiter *Limiter, scope *S
 	for _, ip := range addrs {
 		if scope == nil || !scope.Contains(ip) {
 			continue // ответ вне границ не принимается
+		}
+		if skipSSDP != nil && skipSSDP[ip.String()] {
+			continue // гость или «известный без агента»: имя не сохраняется
 		}
 		info := infos[ip]
 		name := info.Server
