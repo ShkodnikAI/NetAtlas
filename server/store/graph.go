@@ -15,8 +15,9 @@ import (
 // NodeInfo — узел графа с признаками ручного элемента и проверки.
 type NodeInfo struct {
 	model.Node
-	Manual   bool `json:"manual"`
-	Verified bool `json:"verified"`
+	Class    string `json:"class,omitempty"`
+	Manual   bool   `json:"manual"`
+	Verified bool   `json:"verified"`
 }
 
 // LinkInfo — связь графа с признаками ручной связи и проверки.
@@ -57,6 +58,7 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 		known[id] = true
 		g.Nodes = append(g.Nodes, NodeInfo{
 			Node:     model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String)},
+			Class:    class,
 			Manual:   manual,
 			Verified: verified,
 		})
@@ -161,6 +163,25 @@ func sortLinks(links []LinkInfo) {
 			links[j], links[j-1] = links[j-1], links[j]
 		}
 	}
+}
+
+// ListDevicesByClass возвращает устройства одного класса (для экрана
+// «Найденные устройства»); класс валидируется.
+func (s *Store) ListDevicesByClass(ctx context.Context, class model.Class) ([]DeviceInfo, error) {
+	if !class.Valid() {
+		return nil, fmt.Errorf("store: недопустимый класс устройства %q", string(class))
+	}
+	all, err := s.ListDevices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []DeviceInfo{}
+	for _, d := range all {
+		if d.Class == class {
+			out = append(out, d)
+		}
+	}
+	return out, nil
 }
 
 // DeviceInfo — карточка устройства с признаками ручного элемента и

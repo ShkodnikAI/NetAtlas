@@ -18,16 +18,14 @@ import (
 	"net/netip"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/dhcp"
-	"github.com/ShkodnikAI/NetAtlas/scanner/names"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
+	"github.com/ShkodnikAI/NetAtlas/scanner/pipeline"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
-	"github.com/ShkodnikAI/NetAtlas/scanner/topology"
 )
 
 func main() {
@@ -49,7 +47,7 @@ type scanOutput struct {
 // walkerFactory — фабрика Walker'а для одной цели: настоящая
 // реализация открывает UDP-сокет и говорит по SNMP, в тестах
 // подменяется подставной, чтобы тесты не отправляли реальных пакетов.
-type walkerFactory func(netip.Addr, snmp.Auth) (snmp.Walker, error)
+type walkerFactory = pipeline.WalkerFactory
 
 // realWalker — настоящая фабрика: walker поверх gosnmp.
 func realWalker(target netip.Addr, auth snmp.Auth) (snmp.Walker, error) {
@@ -123,52 +121,19 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 		return 1
 	}
 
-	entries, err := arp.ReadSystem(context.Background())
-	if err != nil {
-		fmt.Fprintf(stderr, "ошибка: %v\n", err)
-		return 1
-	}
-
 	ctx := context.Background()
-	now := time.Now()
-	opt := scanner.Options{Now: now}
 
-	if *pingFlag {
-		p, err := ping.NewICMPProber()
-		if err != nil {
-			fmt.Fprintf(stderr, "ошибка: %v\n", err)
-			return 1
-		}
-		defer p.Close()
-		opt.Ping = true
-		opt.Prober = p
+	cfg := pipeline.Config{Scope: scope, Limiter: limiter, Ping: *pingFlag, Names: *namesFlag}
+	deps := pipeline.Deps{
+		ReadARP: arp.ReadSystem,
+		NewProber: func() (ping.Prober, func(), error) {
+			p, err := ping.NewICMPProber()
+			return p, func() { _ = p.Close() }, err
+		},
+		NewNameConn: func() (net.PacketConn, error) { return net.ListenPacket("udp4", ":0") },
+		NewWalker:   newWalker,
 	}
 
-	if *namesFlag {
-		conn, err := net.ListenPacket("udp4", ":0")
-		if err != nil {
-			fmt.Fprintf(stderr, "ошибка: не удалось открыть UDP-сокет: %v\n", err)
-			return 1
-		}
-		client := names.NewClient(conn)
-		defer client.Close()
-		opt.Names = true
-		opt.NameClient = client
-	}
-
-	result, err := scanner.Run(ctx, entries, scope, limiter, opt)
-	if err != nil {
-		fmt.Fprintf(stderr, "ошибка: %v\n", err)
-		return 1
-	}
-
-	if leaseRes != nil {
-		result.Devices = scanner.AddLeases(result.Devices, leaseRes.Leases, scope, now)
-		fmt.Fprintf(stderr, "аренды: получено %d, пропущено %d\n", len(leaseRes.Leases), leaseRes.Skipped)
-	}
-	result.Devices = scanner.FillVendors(result.Devices)
-
-	out := scanOutput{Result: result, Snmp: []snmp.TargetResult{}, Topology: model.NewTopology()}
 	if *snmpTargets != "" {
 		targets, err := parseTargets(*snmpTargets)
 		if err != nil {
@@ -184,9 +149,23 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 			fmt.Fprintf(stderr, "ошибка: не хватает переменных окружения: %s\n", strings.Join(missing, ", "))
 			return 2
 		}
-		out.Snmp = collectSNMP(ctx, targets, auth, limiter, newWalker)
-		out.Topology = topology.Build(result.Devices, out.Snmp)
+		cfg.SNMPTargets = targets
+		cfg.SNMPAuth = auth
 	}
+	cfg.Leases = leaseRes
+
+	out := scanOutput{Snmp: []snmp.TargetResult{}, Topology: model.NewTopology()}
+	res, err := pipeline.Run(ctx, cfg, deps)
+	if err != nil {
+		fmt.Fprintf(stderr, "ошибка: %v\n", err)
+		return 1
+	}
+	if leaseRes != nil {
+		fmt.Fprintf(stderr, "аренды: получено %d, пропущено %d\n", len(leaseRes.Leases), leaseRes.Skipped)
+	}
+	out.Result = scanner.Result{Devices: res.Devices, Hosts: res.Hosts}
+	out.Snmp = res.Snmp
+	out.Topology = res.Topology
 
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
@@ -243,28 +222,4 @@ func snmpAuth(getenv func(string) string, v2c bool) (snmp.Auth, []string) {
 		return snmp.Auth{}, missing
 	}
 	return snmp.Auth{User: user, AuthPass: authPass, PrivPass: privPass}, nil
-}
-
-// collectSNMP опрашивает цели по очереди; неответившая цель даёт
-// запись с полем error, остальные цели обрабатываются дальше.
-// Walker для каждой цели создаёт фабрика newWalker.
-func collectSNMP(ctx context.Context, targets []netip.Addr, auth snmp.Auth, limiter *scanner.Limiter, newWalker walkerFactory) []snmp.TargetResult {
-	out := make([]snmp.TargetResult, 0, len(targets))
-	for _, t := range targets {
-		tr := snmp.NewTargetResult(t)
-		w, err := newWalker(t, auth)
-		if err == nil {
-			res, cerr := snmp.Collect(ctx, snmp.NewLimitedWalker(w, limiter))
-			_ = w.Close()
-			if cerr == nil {
-				tr.Fill(res)
-			} else {
-				tr.Error = cerr.Error()
-			}
-		} else {
-			tr.Error = err.Error()
-		}
-		out = append(out, tr)
-	}
-	return out
 }

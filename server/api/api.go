@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
@@ -42,6 +43,12 @@ type Store interface {
 	AddManualLink(ctx context.Context, a, aPort, b, bPort, actor string) (string, error)
 	DeleteManualLink(ctx context.Context, id, actor string) error
 	RecordVerification(ctx context.Context, id, actor string, alive bool, detail string) error
+	ListDevices(ctx context.Context) ([]store.DeviceInfo, error)
+	ListDevicesByClass(ctx context.Context, class model.Class) ([]store.DeviceInfo, error)
+	AppendAudit(ctx context.Context, actor, action, target, detail string) error
+	SaveScan(ctx context.Context, scan store.ScanResult, actor string) error
+	ListAlerts(ctx context.Context) ([]store.Alert, error)
+	AckAlert(ctx context.Context, id int64, actor string) error
 	DB() *sql.DB
 }
 
@@ -58,6 +65,15 @@ type API struct {
 	limiter *scanner.Limiter
 	prober  Prober
 	mux     *http.ServeMux
+
+	// Скан (NR-005): конфигурация и подменяемые зависимости;
+	// ConfigureScan подключает, до вызова — 503.
+	scanMu      sync.Mutex
+	scanCfg     *ServerScanConfig
+	scanDeps    *ScanDeps
+	scanRunning bool
+	nextScanID  int64
+	scans       map[int64]*ScanState
 }
 
 // New собирает API. Токен короче 24 символов — ошибка (сервер не
@@ -80,6 +96,12 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("DELETE /api/links/{id}", a.handleDeleteLink)
 	mux.HandleFunc("POST /api/devices/{id}/verify", a.handleVerify)
 	mux.HandleFunc("GET /api/audit", a.handleAudit)
+	mux.HandleFunc("GET /api/devices", a.handleDevicesList)
+	mux.HandleFunc("POST /api/scan", a.handleScanStart)
+	mux.HandleFunc("GET /api/scan/{id}", a.handleScanStatus)
+	mux.HandleFunc("GET /api/alerts", a.handleAlerts)
+	mux.HandleFunc("POST /api/alerts/{id}/ack", a.handleAlertAck)
+	mux.HandleFunc("GET /api/config", a.handleConfig)
 	a.mux = mux
 	return a, nil
 }

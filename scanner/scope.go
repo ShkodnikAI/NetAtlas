@@ -57,6 +57,29 @@ func overlapsPrefix(p, f netip.Prefix) bool {
 	return f.Contains(p.Addr()) || p.Contains(f.Addr())
 }
 
+// ContainsPrefix истинно только для подсети, целиком лежащей внутри
+// одной из разрешённых: интерфейс может выбрать подмножество границ,
+// но не расширить их (NR-005).
+func (s *Scope) ContainsPrefix(p netip.Prefix) bool {
+	p = p.Masked()
+	if !p.IsValid() {
+		return false
+	}
+	for _, allowed := range s.prefixes {
+		if p.Bits() >= allowed.Bits() && allowed.Contains(p.Addr()) {
+			return true
+		}
+	}
+	return false
+}
+
+// Prefixes возвращает копию списка разрешённых подсетей.
+func (s *Scope) Prefixes() []netip.Prefix {
+	out := make([]netip.Prefix, len(s.prefixes))
+	copy(out, s.prefixes)
+	return out
+}
+
 // Contains истинно только для адреса внутри хотя бы одной разрешённой подсети.
 func (s *Scope) Contains(addr netip.Addr) bool {
 	if !addr.IsValid() {

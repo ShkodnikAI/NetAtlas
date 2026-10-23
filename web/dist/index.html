@@ -13,7 +13,9 @@
       <img src="logo-mark.png" alt="Логотип NetAtlas">
       <span class="name">NetAtlas</span>
     </div>
-    <button class="item active" data-page="map" aria-current="page">Карта сети</button>
+    <button class="item active" data-page="map">Карта сети</button>
+    <button class="item" data-page="scan">Мастер сканирования</button>
+    <button class="item" data-page="devices">Найденные устройства <span id="alerts-badge" class="soon-badge" hidden>0</span></button>
     <button class="item soon" disabled>Компьютеры <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Диски <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Качество сети <span class="soon-badge">скоро</span></button>
@@ -38,6 +40,52 @@
     </header>
 
     <div id="notice" class="notice" hidden></div>
+
+    <section id="screen-scan" hidden aria-label="Мастер сканирования">
+      <h2>Мастер сканирования</h2>
+      <p class="subtitle">Границы задаёт конфигурация сервера (--subnets): можно выбрать подмножество, расширить нельзя. Скорость — ограничитель по умолчанию.</p>
+      <fieldset style="border:1px solid var(--line);border-radius:8px;padding:12px">
+        <legend>Подсети</legend>
+        <div id="scan-subnets" class="row">Загрузка конфигурации…</div>
+      </fieldset>
+      <fieldset style="border:1px solid var(--line);border-radius:8px;padding:12px">
+        <legend>Методы</legend>
+        <div class="row">
+          <label style="margin:0"><input type="checkbox" id="scan-ping" checked> Ping-sweep (ICMP)</label>
+          <label style="margin:0"><input type="checkbox" id="scan-names" checked> Имена (NetBIOS, mDNS, SSDP)</label>
+        </div>
+        <label for="scan-snmp">Цели SNMP (только чтение, через запятую)</label>
+        <input type="text" id="scan-snmp" placeholder="192.168.1.1, 192.168.1.2" spellcheck="false">
+        <p class="subtitle" id="scan-snmp-note" hidden>SNMP-учётные данные не настроены на сервере: цели указывать бессмысленно.</p>
+      </fieldset>
+      <div class="row">
+        <button id="scan-run">Запустить сканирование</button>
+        <span id="scan-error" class="verdict bad" hidden></span>
+      </div>
+      <div id="scan-progress-wrap" hidden>
+        <div style="height:10px;border:1px solid var(--line2);border-radius:5px;overflow:hidden;max-width:480px">
+          <div id="scan-progress" style="height:100%;width:0;background:var(--accent)"></div>
+        </div>
+        <p class="subtitle" id="scan-status"></p>
+      </div>
+    </section>
+
+    <section id="screen-devices" hidden aria-label="Найденные устройства">
+      <h2>Найденные устройства</h2>
+      <div id="alerts-list"></div>
+      <table id="devices-table" style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="text-align:left;color:var(--muted)">
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Имя</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">IP</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">MAC</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Производитель</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Класс</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
 
     <div class="workspace">
       <section class="canvas-wrap" aria-label="Граф сети">

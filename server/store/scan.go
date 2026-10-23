@@ -93,8 +93,36 @@ func (s *Store) SaveScan(ctx context.Context, scan ScanResult, actor string) err
 		started, finished, string(subnetsJSON)); err != nil {
 		return fmt.Errorf("store: строка скана: %w", err)
 	}
+	known := map[string]bool{}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM devices`)
+	if err != nil {
+		return fmt.Errorf("store: существующие устройства: %w", err)
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("store: существующее устройство: %w", err)
+		}
+		known[id] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("store: существующие устройства: %w", err)
+	}
+
 	for _, d := range scan.Devices {
 		if err := upsertDevice(ctx, tx, d, switchIDs[d.ID], now); err != nil {
+			return err
+		}
+	}
+	// Оповещения о новых неизвестных устройствах (NR-005): одно
+	// открытое на устройство, повторный скан не создаёт второе.
+	for _, d := range scan.Devices {
+		if known[d.ID] {
+			continue
+		}
+		if err := maybeAlert(ctx, tx, d.ID, !known[d.ID], now); err != nil {
 			return err
 		}
 	}

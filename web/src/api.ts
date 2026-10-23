@@ -5,6 +5,7 @@ export interface NodeInfo {
   id: string;
   kind: string;
   label: string;
+  class?: string;
   manual: boolean;
   verified: boolean;
 }
@@ -41,6 +42,15 @@ export interface VerifyReport {
   id: string;
   verified: boolean;
   results: { ip: string; alive: boolean; rtt_ms?: number }[];
+}
+
+export interface ScanView {
+  id: number;
+  status: string;
+  stages: string[];
+  counts: { devices: number; hosts: number; links: number; snmp_targets: number; leases?: number; leases_skipped?: number };
+  error?: string;
+  subnets?: string[];
 }
 
 export class ApiError extends Error {
@@ -110,6 +120,36 @@ export class NetatlasApi {
 
   topology(): Promise<Graph> {
     return this.req<Graph>('GET', '/api/topology');
+  }
+
+  config(): Promise<{ subnets: string[]; snmp: boolean }> {
+    return this.req('GET', '/api/config');
+  }
+
+  devices(): Promise<{ devices: DeviceInfo[] }> {
+    return this.req('GET', '/api/devices');
+  }
+
+  alerts(): Promise<{ alerts: { id: number; device_id: string; created: string; open: boolean }[] }> {
+    return this.req('GET', '/api/alerts');
+  }
+
+  ackAlert(id: number): Promise<{ ok: boolean }> {
+    return this.req('POST', `/api/alerts/${id}/ack`);
+  }
+
+  startScan(body: {
+    subnets: string[]; ping: boolean; names: boolean; snmp_targets: string[]; confirm: boolean;
+  }): Promise<{ id: number }> {
+    return this.req('POST', '/api/scan', body);
+  }
+
+  scanState(id: number): Promise<ScanView> {
+    return this.req('GET', `/api/scan/${id}`);
+  }
+
+  devicesList(): Promise<{ devices: DeviceInfo[] }> {
+    return this.req('GET', '/api/devices');
   }
 
   device(id: string): Promise<DeviceInfo> {

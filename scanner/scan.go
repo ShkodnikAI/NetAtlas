@@ -21,6 +21,10 @@ type Options struct {
 	Now        time.Time
 	Prober     ping.Prober   // обязателен при Ping
 	NameClient *names.Client // обязателен при Names
+	// SkipNamesForMACs — MAC устройств, которые не опрашиваются по
+	// именам (NetBIOS, mDNS): гости и «известные без агента»
+	// (NR-005). Хосты без MAC не имеют классов и не пропускаются.
+	SkipNamesForMACs map[string]bool
 }
 
 // Result — итог сканирования: устройства (с MAC) и хосты без MAC.
@@ -82,6 +86,9 @@ func Run(ctx context.Context, entries []arp.Entry, scope *Scope, limiter *Limite
 		}
 		for i := range devices {
 			d := &devices[i]
+			if opt.SkipNamesForMACs[d.ID] {
+				continue // глубокого опроса гостей и «известных» нет
+			}
 			for _, ip := range d.IPs {
 				n, ok, err := resolveName(ctx, opt.NameClient, ip, scope, limiter)
 				if err != nil {

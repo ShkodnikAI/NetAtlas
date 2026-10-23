@@ -68,6 +68,27 @@
     topology() {
       return this.req("GET", "/api/topology");
     }
+    config() {
+      return this.req("GET", "/api/config");
+    }
+    devices() {
+      return this.req("GET", "/api/devices");
+    }
+    alerts() {
+      return this.req("GET", "/api/alerts");
+    }
+    ackAlert(id2) {
+      return this.req("POST", `/api/alerts/${id2}/ack`);
+    }
+    startScan(body) {
+      return this.req("POST", "/api/scan", body);
+    }
+    scanState(id2) {
+      return this.req("GET", `/api/scan/${id2}`);
+    }
+    devicesList() {
+      return this.req("GET", "/api/devices");
+    }
     device(id2) {
       return this.req("GET", `/api/devices/${encodeURIComponent(id2)}`);
     }
@@ -30639,8 +30660,10 @@
     });
     cy2.elements().remove();
     const elements = [];
+    let hasGuests = false;
     for (const n of g.nodes) {
       const st = nodeStyle(n);
+      hasGuests = hasGuests || n.class === "guest";
       elements.push({
         group: "nodes",
         data: {
@@ -30651,11 +30674,28 @@
           manual: n.manual,
           verified: n.verified,
           kindLabel: st.kindLabel,
-          aria: `${st.kindLabel}: ${n.label}`
+          aria: `${st.kindLabel}: ${n.label}`,
+          // Гости объединяются группой «Гостевая сеть» (compound).
+          parent: n.class === "guest" ? "grp-guest" : void 0
         },
         position: positions2.get(n.id) ?? { x: 0, y: 0 },
         style: { shape: st.shape, width: String(st.width), height: String(st.height) },
         classes: n.manual && !n.verified ? "unverified" : ""
+      });
+    }
+    if (hasGuests) {
+      elements.push({
+        group: "nodes",
+        data: { id: "grp-guest", label: "\u0413\u043E\u0441\u0442\u0435\u0432\u0430\u044F \u0441\u0435\u0442\u044C" },
+        style: {
+          shape: "round-rectangle",
+          "background-opacity": "0.06",
+          "border-style": "dashed",
+          "border-color": "#8FB8E8",
+          "font-size": "12",
+          color: "#9AA6B5",
+          "text-valign": "top"
+        }
       });
     }
     for (const l of g.links) {
@@ -30686,6 +30726,7 @@
   function nodeLabel(n) {
     let label = n.label || n.id;
     const marks = badges(n);
+    if (n.class === "known_no_agent") marks.push("\u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430");
     if (marks.length > 0) label += `
 (${marks.join(", ")})`;
     return label;
@@ -30862,6 +30903,116 @@
       const row4 = el("div", "row");
       row4.append(del);
       page.append(row4);
+    }
+  }
+
+  // src/scan.ts
+  var CLASS_BUTTONS = [
+    ["managed", "\u041C\u043E\u0451"],
+    ["guest", "\u0413\u043E\u0441\u0442\u044C"],
+    ["known_no_agent", "\u0411\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430"],
+    ["unknown", "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
+  ];
+  var CLASS_NAMES = {
+    managed: "\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u043E\u0435 (\u0441 \u0430\u0433\u0435\u043D\u0442\u043E\u043C)",
+    guest: "\u0433\u043E\u0441\u0442\u044C",
+    known_no_agent: "\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430",
+    unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"
+  };
+  async function setupScanScreen(cfg, el2) {
+    el2.subnets.textContent = "";
+    for (const cidr of cfg.subnets) {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = cidr;
+      box.checked = true;
+      label.append(box, document.createTextNode(` ${cidr}`));
+      el2.subnets.append(label);
+    }
+    if (!cfg.snmp) {
+      el2.snmp.disabled = true;
+      el2.snmp.value = "";
+      el2.snmpNote.hidden = false;
+    }
+  }
+  function startScan(el2) {
+    const subnets = [...el2.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
+      (b) => b.value
+    );
+    const snmpTargets = el2.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    return {
+      subnets,
+      ping: el2.ping.checked,
+      names: el2.names.checked,
+      snmp_targets: snmpTargets,
+      confirm: true
+    };
+  }
+  function expectedStages(ping, names, snmp) {
+    let n = 1;
+    if (ping) n++;
+    if (names) n++;
+    if (snmp) n += 2;
+    return n;
+  }
+  function renderProgress(el2, view, expected) {
+    el2.progressWrap.hidden = false;
+    const done = view.stages.length;
+    if (view.status === "done") {
+      el2.progress.style.width = "100%";
+      el2.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
+    } else if (view.status === "failed") {
+      el2.progress.style.width = "0";
+      el2.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
+    } else {
+      el2.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
+      el2.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
+    }
+  }
+  function deviceRow(info, onClass) {
+    const tr = document.createElement("tr");
+    const cell = (value) => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      return td;
+    };
+    const name = info.hostname !== "" ? info.hostname : info.id;
+    tr.append(
+      cell(name),
+      cell(info.ips.join(", ")),
+      cell(info.id),
+      cell(info.vendor)
+    );
+    const actions = document.createElement("td");
+    for (const [value, label] of CLASS_BUTTONS) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      if (info.class === value) b.setAttribute("aria-pressed", "true");
+      b.addEventListener("click", () => onClass(info.id, value));
+      actions.append(b);
+    }
+    const cur = document.createElement("span");
+    cur.className = "badge";
+    cur.textContent = CLASS_NAMES[info.class] ?? info.class;
+    actions.append(document.createTextNode(" "), cur);
+    tr.append(actions);
+    return tr;
+  }
+  function renderAlerts(el2, alerts, onAck) {
+    el2.alertsList.textContent = "";
+    el2.badge.hidden = alerts.length === 0;
+    el2.badge.textContent = String(alerts.length);
+    for (const a of alerts) {
+      const item = document.createElement("div");
+      item.className = "alert-item";
+      const text2 = document.createElement("span");
+      text2.textContent = `\u041D\u043E\u0432\u043E\u0435 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E: ${a.device_id}`;
+      const ack = document.createElement("button");
+      ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
+      ack.addEventListener("click", () => onAck(a.id));
+      item.append(text2, ack);
+      el2.alertsList.append(item);
     }
   }
 
@@ -31110,6 +31261,115 @@
     });
   }
   api2.onUnauthorized = () => askToken();
+  function showScreen(name) {
+    $2("screen-scan").hidden = name !== "scan";
+    $2("screen-devices").hidden = name !== "devices";
+    document.querySelector(".workspace").hidden = name !== "map";
+    document.querySelectorAll("nav .item[data-page]").forEach((item) => {
+      const on3 = item.dataset.page === name;
+      item.classList.toggle("active", on3);
+      if (on3) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    });
+    if (name === "scan") void initScanScreen();
+    if (name === "devices") void initDevicesScreen();
+    if (name === "map") void reload();
+  }
+  document.querySelectorAll("nav .item[data-page]").forEach((item) => {
+    item.addEventListener("click", () => showScreen(item.dataset.page));
+  });
+  var scanEls = {
+    subnets: $2("scan-subnets"),
+    ping: $2("scan-ping"),
+    names: $2("scan-names"),
+    snmp: $2("scan-snmp"),
+    snmpNote: $2("scan-snmp-note"),
+    run: $2("scan-run"),
+    error: $2("scan-error"),
+    progressWrap: $2("scan-progress-wrap"),
+    progress: $2("scan-progress"),
+    status: $2("scan-status"),
+    alertsList: $2("alerts-list"),
+    tableBody: document.querySelector("#devices-table tbody"),
+    badge: $2("alerts-badge")
+  };
+  var scanCfg = { subnets: [], snmp: false };
+  async function initScanScreen() {
+    try {
+      scanCfg = await api2.config();
+      setupScanScreen(scanCfg, scanEls);
+    } catch (err) {
+      scanEls.error.hidden = false;
+      scanEls.error.textContent = errMessage(err);
+    }
+  }
+  scanEls.run.addEventListener("click", async () => {
+    scanEls.error.hidden = true;
+    const body = startScan(scanEls);
+    if (body.subnets.length === 0) {
+      scanEls.error.hidden = false;
+      scanEls.error.textContent = "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u043D\u0443 \u043F\u043E\u0434\u0441\u0435\u0442\u044C.";
+      return;
+    }
+    scanEls.run.disabled = true;
+    try {
+      const started = await api2.startScan(body);
+      const expected = expectedStages(body.ping, body.names, body.snmp_targets.length > 0);
+      const poll = window.setInterval(async () => {
+        try {
+          const view = await api2.scanState(started.id);
+          renderProgress(scanEls, view, expected);
+          if (view.status !== "running") {
+            window.clearInterval(poll);
+            scanEls.run.disabled = false;
+          }
+        } catch {
+          window.clearInterval(poll);
+          scanEls.run.disabled = false;
+        }
+      }, 1e3);
+    } catch (err) {
+      scanEls.error.hidden = false;
+      scanEls.error.textContent = errMessage(err);
+      scanEls.run.disabled = false;
+    }
+  });
+  async function initDevicesScreen() {
+    try {
+      const [devs, alerts] = await Promise.all([api2.devices(), api2.alerts()]);
+      scanEls.tableBody.textContent = "";
+      for (const d of devs.devices) {
+        scanEls.tableBody.append(deviceRow(d, async (id2, klass) => {
+          try {
+            await api2.updateDevice(id2, { class: klass });
+            await initDevicesScreen();
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        }));
+      }
+      renderAlerts(scanEls, alerts.alerts, async (id2) => {
+        try {
+          await api2.ackAlert(id2);
+          await initDevicesScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      });
+    } catch (err) {
+      showNotice(errMessage(err), true);
+    }
+  }
+  async function refreshAlertBadge() {
+    try {
+      const alerts = await api2.alerts();
+      renderAlerts(scanEls, alerts.alerts, async (id2) => {
+        await api2.ackAlert(id2);
+        await refreshAlertBadge();
+      });
+    } catch {
+    }
+  }
   $2("panel-close").addEventListener("click", closePanel);
   $2("btn-reload").addEventListener("click", () => void reload());
   $2("btn-connect").addEventListener("click", () => {
@@ -31160,4 +31420,5 @@
   }
   setupTokenDialog();
   setupAddDialog();
+  void refreshAlertBadge();
 })();

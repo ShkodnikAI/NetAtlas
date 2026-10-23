@@ -8,14 +8,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/scanner"
+	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
+	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 	"github.com/ShkodnikAI/NetAtlas/server/api"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 	"github.com/ShkodnikAI/NetAtlas/web"
@@ -61,6 +65,27 @@ func run(cfg config) error {
 	if err != nil {
 		return fmt.Errorf("api: %w", err)
 	}
+
+	// Мастер сканирования: границы из --subnets, SNMP-учётные данные
+	// только из окружения (в API, базу, аудит и ответы не попадают).
+	auth, snmpReady := snmpServerAuth(os.Getenv)
+	handler.ConfigureScan(api.ServerScanConfig{
+		Subnets:   cfg.subnetList,
+		SNMPAuth:  auth,
+		SNMPReady: snmpReady,
+	}, api.ScanDeps{
+		ReadARP: arp.ReadSystem,
+		NewProber: func() (ping.Prober, func(), error) {
+			if prober == nil {
+				return nil, nil, fmt.Errorf("проверка живости недоступна (нужны права на ICMP)")
+			}
+			return prober, func() {}, nil
+		},
+		NewNameConn: func() (net.PacketConn, error) { return net.ListenPacket("udp4", ":0") },
+		NewWalker: func(target netip.Addr, auth snmp.Auth) (snmp.Walker, error) {
+			return snmp.NewGoWalker(target, auth)
+		},
+	})
 
 	// Корень — интерфейс (встроенная сборка web/dist), API — /api/.
 	root := http.NewServeMux()
