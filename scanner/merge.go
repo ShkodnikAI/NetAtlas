@@ -45,6 +45,14 @@ func FromARP(entries []arp.Entry, scope *Scope, now time.Time) []model.Device {
 		ips := devices[i].IPs
 		sort.Slice(ips, func(a, b int) bool { return ips[a].Compare(ips[b]) < 0 })
 	}
+	sortByFirstIP(devices)
+	return devices
+}
+
+// sortByFirstIP упорядочивает устройства по первому IP (при равенстве
+// или отсутствии IP — по MAC). Общий порядок для FromARP и AddLeases:
+// результат не зависит от порядка входа.
+func sortByFirstIP(devices []model.Device) {
 	sort.Slice(devices, func(a, b int) bool {
 		firstA, firstB := devices[a].IPs, devices[b].IPs
 		if len(firstA) == 0 || len(firstB) == 0 {
@@ -55,7 +63,6 @@ func FromARP(entries []arp.Entry, scope *Scope, now time.Time) []model.Device {
 		}
 		return devices[a].MAC < devices[b].MAC
 	})
-	return devices
 }
 
 func containsAddr(addrs []netip.Addr, a netip.Addr) bool {

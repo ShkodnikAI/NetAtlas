@@ -12,6 +12,7 @@ const (
 	NameSourceNetBIOS = "netbios"
 	NameSourceMDNS    = "mdns"
 	NameSourceSSDP    = "ssdp"
+	NameSourceDHCP    = "dhcp"
 )
 
 // MaxNameLen — максимальная длина имени в символах.
@@ -22,6 +23,7 @@ var nameSources = map[string]bool{
 	NameSourceNetBIOS: true,
 	NameSourceMDNS:    true,
 	NameSourceSSDP:    true,
+	NameSourceDHCP:    true,
 }
 
 // Name — имя устройства или хоста с указанием источника и времени.

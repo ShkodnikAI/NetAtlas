@@ -1,0 +1,7 @@
+mac,ip,hostname,ssid,expires
+AA:BB:CC:DD:EE:F0,192.0.2.10,lab-laptop,Office-WiFi,2026-10-21T20:00:00Z
+28:6f:b9:00:00:02,192.0.2.11,print3d,Guest-WiFi,
+de-ad-be-ef-00-02,192.0.2.14,tablet,,
+192.0.2.15,laptop,WiFi2,2026-10-21T21:00:00Z
+aa:bb:cc:dd:ee:99,192.0.2.16,broken-date,WiFi3,not-a-date
+aa:bb:cc:dd:ee:aa,not-an-ip,room-sensor,WiFi4,2026-10-21T22:00:00Z

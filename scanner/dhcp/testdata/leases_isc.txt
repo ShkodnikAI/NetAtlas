@@ -1,0 +1,24 @@
+# The format of this file is documented in the dhcpd.leases(5) manual page.
+# Фикстура NR-016: составлена вручную, адреса из TEST-NET-1 (RFC 5737).
+
+lease 192.0.2.10 {
+  starts 3 2026/10/21 08:00:00;
+  ends 3 2026/10/21 20:00:00;
+  hardware ethernet AA:BB:CC:DD:EE:F0;
+  client-hostname "lab-laptop";
+}
+lease 192.0.2.11 {
+  starts 3 2026/10/21 09:30:00;
+  ends never;
+  hardware ethernet 28:6F:B9:00:00:02;
+  binding state active;
+}
+lease 192.0.2.12 {
+  ends 4 2026/10/22 10:00:00;
+  hardware ethernet 00-00-0C-11-22-33;
+  option agent.circuit-id "port-7";
+}
+this is not a lease
+lease 192.0.2.13 {
+  ends 4 2026/10/22 11:00:00;
+}
