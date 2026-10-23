@@ -57,11 +57,15 @@
 | NR-004 | Сервер и API карты сети | medium | в очереди, [#25](https://github.com/ShkodnikAI/NetAtlas/issues/25) |
 | NR-022 | Веб-интерфейс «Карта сети» | medium | в очереди, [#26](https://github.com/ShkodnikAI/NetAtlas/issues/26) |
 | NR-005 | Мастер сканирования и «Найденные устройства» | medium | в очереди, [#27](https://github.com/ShkodnikAI/NetAtlas/issues/27) |
-| [NR-006](NR-006.md) | Агент Windows: инвентарь и связь | high | заготовка |
-| [NR-007](NR-007.md) | PKI и подпись заданий | high | заготовка |
-| [NR-008](NR-008.md) | Измерения качества сети | medium | заготовка |
-| [NR-009](NR-009.md) | Движок правил, экраны «Компьютеры» и «Диски» | medium | заготовка |
-| [NR-010](NR-010.md) | Аудит безопасности | medium | заготовка |
-| [NR-011](NR-011.md) | Конвейер скриптов и Hyper-V тесты | high | заготовка |
-| [NR-012](NR-012.md) | Активность сотрудников | high | заготовка |
-| [NR-013](NR-013.md) | Отчёты для ИИ | high | заготовка |
+| NR-023 | Хвосты волны 1 | medium | в работе, [#34](https://github.com/ShkodnikAI/NetAtlas/issues/34) |
+| NR-007 | Центр сертификации и подпись заданий | high | в очереди, [#35](https://github.com/ShkodnikAI/NetAtlas/issues/35) |
+| NR-024 | Агентский API сервера | high | в очереди, [#36](https://github.com/ShkodnikAI/NetAtlas/issues/36) |
+| NR-006 | Агент Windows: инвентарь | high | в очереди, [#37](https://github.com/ShkodnikAI/NetAtlas/issues/37) |
+| NR-009 | Правила, «Компьютеры» и «Диски» | medium | в очереди, [#38](https://github.com/ShkodnikAI/NetAtlas/issues/38) |
+| NR-008 | Качество сети | medium | в очереди, [#39](https://github.com/ShkodnikAI/NetAtlas/issues/39) |
+| NR-010 | Аудит безопасности | medium | в очереди, [#40](https://github.com/ShkodnikAI/NetAtlas/issues/40) |
+| NR-011 | Конвейер скриптов и шлюз | high | в очереди, [#41](https://github.com/ShkodnikAI/NetAtlas/issues/41) |
+| NR-025 | Исполнение заданий на агенте | high | в очереди, [#42](https://github.com/ShkodnikAI/NetAtlas/issues/42) |
+| NR-026 | Стенд Hyper-V | medium | в очереди, [#43](https://github.com/ShkodnikAI/NetAtlas/issues/43) |
+| NR-012 | Активность сотрудников | high | в очереди, [#44](https://github.com/ShkodnikAI/NetAtlas/issues/44) |
+| NR-013 | Отчёты для ИИ | high | в очереди, [#45](https://github.com/ShkodnikAI/NetAtlas/issues/45) |
