@@ -131,26 +131,45 @@ func (s *Store) migrate(ctx context.Context) error {
 		if m.version <= applied {
 			continue // уже применена: повторный запуск ничего не меняет
 		}
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("store: миграция %s: транзакция: %w", m.name, err)
+		if strings.HasPrefix(m.body, nonTxMarker) {
+			// Внетранзакционная миграция: PRAGMA foreign_keys внутри
+			// транзакции — no-op, пересоздание таблиц требует autocommit.
+			// Каждый шаг файла атомарен сам по себе; порядок шагов
+			// повторяемый (см. файл миграции).
+			if _, err := s.db.ExecContext(ctx, m.body); err != nil {
+				return fmt.Errorf("store: миграция %s: исполнение: %w", m.name, err)
+			}
+		} else {
+			tx, err := s.db.BeginTx(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("store: миграция %s: транзакция: %w", m.name, err)
+			}
+			if _, err := tx.ExecContext(ctx, m.body); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("store: миграция %s: исполнение: %w", m.name, err)
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO schema_version (version, applied_at) VALUES (?, ?)`,
+				m.version, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("store: миграция %s: отметка версии: %w", m.name, err)
+			}
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("store: миграция %s: фиксация: %w", m.name, err)
+			}
+			continue
 		}
-		if _, err := tx.ExecContext(ctx, m.body); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("store: миграция %s: исполнение: %w", m.name, err)
-		}
-		if _, err := tx.ExecContext(ctx,
+		if _, err := s.db.ExecContext(ctx,
 			`INSERT INTO schema_version (version, applied_at) VALUES (?, ?)`,
 			m.version, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-			tx.Rollback()
 			return fmt.Errorf("store: миграция %s: отметка версии: %w", m.name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("store: миграция %s: фиксация: %w", m.name, err)
 		}
 	}
 	return nil
 }
+
+// nonTxMarker — первая строка внетранзакционной миграции.
+const nonTxMarker = "-- nontransactional"
 
 // SchemaVersion возвращает текущую версию схемы (0 — пустая база).
 func (s *Store) SchemaVersion(ctx context.Context) (int, error) {

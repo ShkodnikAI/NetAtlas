@@ -37,6 +37,36 @@ jobs:
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
 
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - name: typecheck
+        working-directory: web
+        run: npm run typecheck
+
+      - name: test
+        working-directory: web
+        run: npm test
+
+      - name: build
+        working-directory: web
+        run: npm run build
+
+      - name: dist соответствует коммиту
+        run: git diff --exit-code web/dist
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

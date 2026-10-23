@@ -77,8 +77,8 @@ func TestMigrationsEmptyAndRepeat(t *testing.T) {
 	}
 	ctx := context.Background()
 	v, err := s.SchemaVersion(ctx)
-	if err != nil || v != 3 {
-		t.Fatalf("версия = %d (err %v), хочу 3", v, err)
+	if err != nil || v != 4 {
+		t.Fatalf("версия = %d (err %v), хочу 4", v, err)
 	}
 	if _, err := s.AddManualDevice(ctx, model.NodeKindDevice, "ручной", "owner"); err != nil {
 		t.Fatalf("ручной элемент: %v", err)
@@ -91,12 +91,38 @@ func TestMigrationsEmptyAndRepeat(t *testing.T) {
 		t.Fatalf("повторное открытие: %v", err)
 	}
 	defer s2.Close()
-	if v, err := s2.SchemaVersion(ctx); err != nil || v != 3 {
-		t.Fatalf("версия после повтора = %d (err %v), хочу 3", v, err)
+	if v, err := s2.SchemaVersion(ctx); err != nil || v != 4 {
+		t.Fatalf("версия после повтора = %d (err %v), хочу 4", v, err)
 	}
 	devs, err := s2.ListDevices(ctx)
 	if err != nil || len(devs) != 1 {
 		t.Fatalf("устройств = %d (err %v), хочу 1 (миграция не пересоздала таблицы)", len(devs), err)
+	}
+}
+
+// Ручной элемент с типом из NR-022 сохраняется (миграция 4).
+func TestManualKindExtended(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	id, err := s.AddManualDevice(ctx, model.NodeKindPrinter, "принтер", "owner")
+	if err != nil {
+		t.Fatalf("принтер: %v", err)
+	}
+	g, err := s.Topology(ctx)
+	if err != nil {
+		t.Fatalf("топология: %v", err)
+	}
+	found := false
+	for _, n := range g.Nodes {
+		if n.ID == id {
+			found = true
+			if n.Kind != model.NodeKindPrinter {
+				t.Fatalf("kind = %q, хочу printer", n.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("принтер не в графе")
 	}
 }
 

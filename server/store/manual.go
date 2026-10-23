@@ -26,10 +26,16 @@ func jsonDetail(v any) (string, error) {
 
 // manualKinds — типы узлов, допустимые для ручного элемента.
 var manualKinds = map[string]bool{
-	model.NodeKindDevice:  true,
-	model.NodeKindSwitch:  true,
-	model.NodeKindCloud:   true,
-	model.NodeKindUnknown: true,
+	model.NodeKindDevice:   true,
+	model.NodeKindSwitch:   true,
+	model.NodeKindCloud:    true,
+	model.NodeKindUnknown:  true,
+	model.NodeKindInternet: true,
+	model.NodeKindRouter:   true,
+	model.NodeKindAP:       true,
+	model.NodeKindServer:   true,
+	model.NodeKindLaptop:   true,
+	model.NodeKindPrinter:  true,
 }
 
 // AddManualDevice добавляет ручной элемент (id = manual:<uuid>):

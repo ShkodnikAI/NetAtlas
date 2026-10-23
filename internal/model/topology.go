@@ -9,6 +9,14 @@ const (
 	// NodeKindCloud — неуправляемый коммутатор («облако») между
 	// портами, за которыми видно несколько MAC-адресов.
 	NodeKindCloud = "cloud"
+	// Типы ручных элементов карты (NR-022): значки различаются
+	// формой и подписью, тип выбирается при добавлении.
+	NodeKindInternet = "internet"
+	NodeKindRouter   = "router"
+	NodeKindAP       = "ap"
+	NodeKindServer   = "server"
+	NodeKindLaptop   = "laptop"
+	NodeKindPrinter  = "printer"
 	// NodeKindUnknown — сосед из таблиц LLDP/FDB, которого нет среди
 	// устройств сканера (ID = MAC).
 	NodeKindUnknown = "unknown"
