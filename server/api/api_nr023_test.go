@@ -102,6 +102,18 @@ func TestScanLeasesValidation(t *testing.T) {
 		t.Fatalf("большой файл: %v", err)
 	}
 	absent := filepath.Join(t.TempDir(), "absent.csv")
+	// Тела с путями из t.TempDir() строятся json.Marshal: на Windows
+	// путь с бэкслешами нельзя вставить в JSON-строку вручную.
+	leaseBody := func(path, format string) string {
+		b, err := json.Marshal(map[string]any{
+			"subnets": []string{"10.0.0.0/24"}, "confirm": true,
+			"leases_path": path, "leases_format": format,
+		})
+		if err != nil {
+			t.Fatalf("тело запроса: %v", err)
+		}
+		return string(b)
+	}
 	cases := []struct {
 		name string
 		body string
@@ -112,8 +124,8 @@ func TestScanLeasesValidation(t *testing.T) {
 		{"чужой формат", `{"subnets":["10.0.0.0/24"],"confirm":true,"leases_path":"/tmp/x.csv","leases_format":"json"}`, "допустимы"},
 		{"относительный путь", `{"subnets":["10.0.0.0/24"],"confirm":true,"leases_path":"leases.csv","leases_format":"csv"}`, "абсолютным"},
 		{"путь с ..", `{"subnets":["10.0.0.0/24"],"confirm":true,"leases_path":"/tmp/../etc/passwd","leases_format":"csv"}`, "запрещён"},
-		{"файл недоступен", `{"subnets":["10.0.0.0/24"],"confirm":true,"leases_path":"` + absent + `","leases_format":"csv"}`, "недоступен"},
-		{"больше лимита", `{"subnets":["10.0.0.0/24"],"confirm":true,"leases_path":"` + big + `","leases_format":"csv"}`, "больше"},
+		{"файл недоступен", leaseBody(absent, "csv"), "недоступен"},
+		{"больше лимита", leaseBody(big, "csv"), "больше"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,7 +162,14 @@ func TestScanWithLeases(t *testing.T) {
 	}
 	deps := &fakeScanDeps{}
 	h := scanAPI(t, st, deps, true)
-	body := `{"subnets":["10.0.0.0/24"],"ping":true,"confirm":true,"leases_path":"` + leases + `","leases_format":"csv"}`
+	raw, err := json.Marshal(map[string]any{
+		"subnets": []string{"10.0.0.0/24"}, "ping": true, "confirm": true,
+		"leases_path": leases, "leases_format": "csv",
+	})
+	if err != nil {
+		t.Fatalf("тело запроса: %v", err)
+	}
+	body := string(raw)
 	rec := do(h, "POST", "/api/scan", body, bearer)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("код %d, хочу 202: %s", rec.Code, rec.Body.String())
