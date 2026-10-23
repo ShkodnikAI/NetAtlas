@@ -1,0 +1,325 @@
+/* Палитра и размеры — из макетов design/Main.dc.html и
+   design/Computer.dc.html (фон, панели, границы, текст, статусы). */
+:root {
+  --bg: #0E1116;
+  --panel: #151A22;
+  --panel2: #10151C;
+  --line: #263040;
+  --line2: #2E3A4C;
+  --text: #E6EAF0;
+  --muted: #9AA6B5;
+  --accent: #5AA9FF;
+  --ok: #5FD38D;
+  --warn: #F5B83D;
+  --bad: #FF7A7A;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+/* Левая панель */
+nav {
+  flex: 0 0 232px;
+  background: var(--panel2);
+  border-right: 1px solid var(--line);
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+nav .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 18px 8px;
+}
+
+nav .brand img { width: 51px; height: 42px; }
+
+nav .brand .name {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+nav .item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  color: var(--muted);
+  background: none;
+  border-top: none; border-right: none; border-bottom: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+nav .item.active {
+  background: #1B2430;
+  color: var(--text);
+  border-left-color: var(--accent);
+}
+
+nav .item.soon { cursor: default; }
+
+nav .soon-badge {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* Полотно и главная область */
+main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 28px;
+  gap: 16px;
+}
+
+main header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+main h1 { margin: 0; font-size: 24px; font-weight: 600; }
+
+main .subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button,
+.panel button,
+dialog button {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.actions button:hover:not(:disabled),
+.panel button:hover:not(:disabled),
+dialog button:hover:not(:disabled) { border-color: var(--accent); }
+
+.actions button:disabled { opacity: 0.5; cursor: default; }
+
+.actions button:focus-visible,
+nav .item:focus-visible,
+.panel button:focus-visible,
+dialog button:focus-visible,
+.tabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+
+.canvas-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+#graph { width: 100%; height: 100%; }
+
+.hint {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(14, 17, 22, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  pointer-events: none;
+}
+
+.notice {
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: rgba(90, 169, 255, 0.12);
+  padding: 10px 12px;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.error {
+  border-color: #5A2A2A;
+  background: rgba(255, 122, 122, 0.12);
+}
+
+/* Правая панель */
+aside.panel {
+  flex: 0 0 320px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+}
+
+aside.panel.open { display: flex; }
+
+.panel .title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel .title h2 { margin: 0; font-size: 16px; word-break: break-all; }
+
+.panel .close {
+  padding: 2px 8px;
+  font-size: 14px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs button {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 2px solid transparent;
+}
+
+.tabs button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tabpage { font-size: 13px; display: none; }
+.tabpage.active { display: block; }
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+}
+
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--line2);
+  padding: 1px 6px;
+  color: var(--muted);
+}
+
+.badge.manual { color: var(--warn); border-color: #5A4A1E; }
+.badge.unverified { color: var(--accent); border-color: #2F5C8F; }
+
+.panel label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+.panel input[type='text'],
+.panel select,
+dialog input[type='text'],
+dialog select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.panel .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+.verdict { font-size: 12.5px; margin-top: 8px; }
+.verdict.ok { color: var(--ok); }
+.verdict.bad { color: var(--bad); }
+
+/* Диалоги */
+dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  width: min(420px, 90vw);
+}
+
+dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+
+dialog h2 { margin: 0 0 10px; font-size: 16px; }
+
+dialog .error { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12.5px; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

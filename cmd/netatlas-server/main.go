@@ -18,6 +18,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/server/api"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
+	"github.com/ShkodnikAI/NetAtlas/web"
 )
 
 func main() {
@@ -61,9 +62,14 @@ func run(cfg config) error {
 		return fmt.Errorf("api: %w", err)
 	}
 
+	// Корень — интерфейс (встроенная сборка web/dist), API — /api/.
+	root := http.NewServeMux()
+	root.Handle("/api/", handler.Handler())
+	root.Handle("/", web.Handler())
+
 	srv := &http.Server{
 		Addr:              cfg.listen,
-		Handler:           handler.Handler(),
+		Handler:           root,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,

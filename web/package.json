@@ -1,0 +1,19 @@
+{
+  "name": "netatlas-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "cytoscape": "3.34.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.3",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

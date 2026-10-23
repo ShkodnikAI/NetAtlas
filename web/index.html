@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetAtlas — Карта сети</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <nav aria-label="Основная навигация">
+    <div class="brand">
+      <img src="logo-mark.png" alt="Логотип NetAtlas">
+      <span class="name">NetAtlas</span>
+    </div>
+    <button class="item active" data-page="map" aria-current="page">Карта сети</button>
+    <button class="item soon" disabled>Компьютеры <span class="soon-badge">скоро</span></button>
+    <button class="item soon" disabled>Диски <span class="soon-badge">скоро</span></button>
+    <button class="item soon" disabled>Качество сети <span class="soon-badge">скоро</span></button>
+    <button class="item soon" disabled>Безопасность <span class="soon-badge">скоро</span></button>
+    <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
+    <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
+    <button class="item soon" disabled>Скрипты и тесты <span class="soon-badge">скоро</span></button>
+  </nav>
+
+  <main>
+    <header>
+      <div>
+        <h1>Карта сети</h1>
+        <div class="subtitle" id="subtitle">Нажмите на значок устройства, чтобы открыть вкладку с подробностями</div>
+      </div>
+      <div class="actions" aria-label="Действия с картой">
+        <button id="btn-add">Добавить элемент</button>
+        <button id="btn-connect" disabled>Соединить два узла</button>
+        <button id="btn-disconnect" disabled>Разорвать связь</button>
+        <button id="btn-reload">Обновить</button>
+      </div>
+    </header>
+
+    <div id="notice" class="notice" hidden></div>
+
+    <div class="workspace">
+      <section class="canvas-wrap" aria-label="Граф сети">
+        <div id="graph" role="application" aria-label="Карта сети"></div>
+        <div class="hint">Сплошные линии — LLDP и таблицы MAC; пунктир — вывод построителя и ручные связи</div>
+      </section>
+
+      <aside class="panel" id="panel" aria-label="Устройство">
+        <div class="title">
+          <h2 id="panel-title">Устройство</h2>
+          <button class="close" id="panel-close" aria-label="Закрыть панель">×</button>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Вкладки устройства">
+          <button role="tab" id="tab-overview" aria-controls="page-overview" aria-selected="true">Обзор</button>
+          <button role="tab" id="tab-disks" aria-controls="page-disks" aria-selected="false">Диски</button>
+          <button role="tab" id="tab-user" aria-controls="page-user" aria-selected="false">Пользователь</button>
+          <button role="tab" id="tab-net" aria-controls="page-net" aria-selected="false">Сеть</button>
+          <button role="tab" id="tab-edit" aria-controls="page-edit" aria-selected="false">Правка</button>
+        </div>
+        <div class="tabpage active" id="page-overview" role="tabpanel" aria-labelledby="tab-overview"></div>
+        <div class="tabpage" id="page-disks" role="tabpanel" aria-labelledby="tab-disks">
+          <p class="muted">нет данных</p>
+        </div>
+        <div class="tabpage" id="page-user" role="tabpanel" aria-labelledby="tab-user">
+          <p class="muted">нет данных</p>
+        </div>
+        <div class="tabpage" id="page-net" role="tabpanel" aria-labelledby="tab-net"></div>
+        <div class="tabpage" id="page-edit" role="tabpanel" aria-labelledby="tab-edit"></div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<dialog id="token-dialog" aria-labelledby="token-title">
+  <form id="token-form" method="dialog">
+    <h2 id="token-title">Токен доступа</h2>
+    <p class="muted">Введите токен сервера (переменная <code>NETATLAS_TOKEN</code>).
+       Он хранится только в памяти страницы и не сохраняется в браузере.</p>
+    <input type="text" id="token-input" name="token" autocomplete="off" spellcheck="false" required
+           aria-describedby="token-help">
+    <p id="token-help" class="muted" hidden>Неверный токен: сервер ответил 401.</p>
+    <div class="row">
+      <button type="submit" id="token-submit">Открыть карту</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="add-dialog" aria-labelledby="add-title">
+  <form id="add-form" method="dialog">
+    <h2 id="add-title">Добавить элемент на карту</h2>
+    <label for="add-kind">Тип</label>
+    <select id="add-kind" name="kind"></select>
+    <label for="add-name">Название</label>
+    <input type="text" id="add-name" name="name" required maxlength="255">
+    <div id="add-error" class="error" hidden></div>
+    <div class="row">
+      <button type="submit" id="add-submit">Добавить</button>
+      <button type="button" class="cancel">Отмена</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
