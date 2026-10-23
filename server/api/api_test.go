@@ -137,6 +137,56 @@ func (f *fakeStore) RecordVerification(ctx context.Context, id, actor string, al
 	return nil
 }
 
+func (f *fakeStore) setClass(id, class string) {
+	d := f.devices[id]
+	d.Class = model.Class(class)
+	f.devices[id] = d
+}
+
+func (f *fakeStore) ListDevices(ctx context.Context) ([]store.DeviceInfo, error) {
+	out := []store.DeviceInfo{}
+	for _, d := range f.devices {
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+func (f *fakeStore) ListDevicesByClass(ctx context.Context, class model.Class) ([]store.DeviceInfo, error) {
+	if !class.Valid() {
+		return nil, fmt.Errorf("store: недопустимый класс устройства %q", string(class))
+	}
+	all, err := f.ListDevices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []store.DeviceInfo{}
+	for _, d := range all {
+		if d.Class == class {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) AppendAudit(ctx context.Context, actor, action, target, detail string) error {
+	return nil
+}
+
+func (f *fakeStore) SaveScan(ctx context.Context, scan store.ScanResult, actor string) error {
+	return nil
+}
+
+func (f *fakeStore) ListAlerts(ctx context.Context) ([]store.Alert, error) {
+	return []store.Alert{}, nil
+}
+
+func (f *fakeStore) AckAlert(ctx context.Context, id int64, actor string) error {
+	if id != 1 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
 func (f *fakeStore) DB() *sql.DB { return nil }
 
 // fakeProber — подставной пробер со счётчиком вызовов.

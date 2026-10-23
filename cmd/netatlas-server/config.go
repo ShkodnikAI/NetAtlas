@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ShkodnikAI/NetAtlas/scanner"
+	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 )
 
 // config — параметры запуска сервера.
@@ -17,6 +18,7 @@ type config struct {
 	listen      string
 	allowRemote bool
 	allowLarge  bool
+	subnetList  []string
 	scope       *scanner.Scope
 	token       string
 }
@@ -55,6 +57,7 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 			list = append(list, c)
 		}
 	}
+	cfg.subnetList = list
 	scope, err := scanner.NewScope(list, cfg.allowLarge)
 	if err != nil {
 		return config{}, fmt.Errorf("%w: --subnets: %v", errUsage, err)
@@ -69,6 +72,20 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		return config{}, fmt.Errorf("%w: NETATLAS_TOKEN короче 24 символов", errUsage)
 	}
 	return cfg, nil
+}
+
+// snmpServerAuth — учётные данные SNMP из переменных окружения:
+// NETATLAS_SNMP_COMMUNITY задан — SNMPv2c, иначе v3 authPriv.
+// Значения не печатаются никогда; второй результат — готовность.
+func snmpServerAuth(getenv func(string) string) (snmp.Auth, bool) {
+	if c := getenv("NETATLAS_SNMP_COMMUNITY"); c != "" {
+		return snmp.Auth{V2C: true, Community: c}, true
+	}
+	user, authPass, privPass := getenv("NETATLAS_SNMP_USER"), getenv("NETATLAS_SNMP_AUTH_PASS"), getenv("NETATLAS_SNMP_PRIV_PASS")
+	if user == "" || authPass == "" || privPass == "" {
+		return snmp.Auth{}, false
+	}
+	return snmp.Auth{User: user, AuthPass: authPass, PrivPass: privPass}, true
 }
 
 // checkListen — нелокальный адрес только с явным --allow-remote.

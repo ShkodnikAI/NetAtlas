@@ -116,6 +116,10 @@ func (s *Store) UpdateDevice(ctx context.Context, id string, upd Update, actor s
 			`UPDATE devices SET class = ? WHERE id = ?`, string(*upd.Class), id); err != nil {
 			return fmt.Errorf("store: класс устройства %s: %w", id, err)
 		}
+		// Смена класса закрывает открытые оповещения устройства.
+		if _, err := closeAlerts(ctx, tx, id, time.Now()); err != nil {
+			return err
+		}
 	}
 	if upd.Verified != nil {
 		v := 0

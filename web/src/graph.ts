@@ -138,8 +138,10 @@ export function setGraph(cy: Core, g: Graph): void {
   cy.elements().remove();
 
   const elements: ElementDefinition[] = [];
+  let hasGuests = false;
   for (const n of g.nodes) {
     const st = nodeStyle(n);
+    hasGuests = hasGuests || n.class === 'guest';
     elements.push({
       group: 'nodes',
       data: {
@@ -151,10 +153,27 @@ export function setGraph(cy: Core, g: Graph): void {
         verified: n.verified,
         kindLabel: st.kindLabel,
         aria: `${st.kindLabel}: ${n.label}`,
+        // Гости объединяются группой «Гостевая сеть» (compound).
+        parent: n.class === 'guest' ? 'grp-guest' : undefined,
       },
       position: positions.get(n.id) ?? { x: 0, y: 0 },
       style: { shape: st.shape, width: String(st.width), height: String(st.height) },
       classes: n.manual && !n.verified ? 'unverified' : '',
+    });
+  }
+  if (hasGuests) {
+    elements.push({
+      group: 'nodes',
+      data: { id: 'grp-guest', label: 'Гостевая сеть' },
+      style: {
+        shape: 'round-rectangle',
+        'background-opacity': '0.06',
+        'border-style': 'dashed',
+        'border-color': '#8FB8E8',
+        'font-size': '12',
+        color: '#9AA6B5',
+        'text-valign': 'top',
+      },
     });
   }
   for (const l of g.links) {
@@ -180,10 +199,12 @@ export function setGraph(cy: Core, g: Graph): void {
     .run();
 }
 
-// nodeLabel — имя узла с метками «вручную» / «не проверен».
+// nodeLabel — имя узла с метками «вручную» / «не проверен» /
+// «без агента».
 function nodeLabel(n: NodeInfo): string {
   let label = n.label || n.id;
   const marks = badges(n);
+  if (n.class === 'known_no_agent') marks.push('без агента');
   if (marks.length > 0) label += `\n(${marks.join(', ')})`;
   return label;
 }

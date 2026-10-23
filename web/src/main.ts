@@ -4,6 +4,14 @@
 import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type NodeInfo } from './api';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
+import {
+  deviceRow,
+  expectedStages,
+  renderAlerts,
+  renderProgress,
+  setupScanScreen,
+  startScan,
+} from './scan';
 
 const api = new NetatlasApi();
 
@@ -296,6 +304,133 @@ function setupAddDialog(): void {
 
 api.onUnauthorized = () => askToken();
 
+// --- экраны ----------------------------------------------------------------
+
+type ScreenName = 'map' | 'scan' | 'devices';
+
+function showScreen(name: ScreenName): void {
+  $('screen-scan').hidden = name !== 'scan';
+  $('screen-devices').hidden = name !== 'devices';
+  (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
+  document.querySelectorAll('nav .item[data-page]').forEach((item) => {
+    const on = (item as HTMLElement).dataset.page === name;
+    item.classList.toggle('active', on);
+    if (on) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+  if (name === 'scan') void initScanScreen();
+  if (name === 'devices') void initDevicesScreen();
+  if (name === 'map') void reload();
+}
+
+document.querySelectorAll('nav .item[data-page]').forEach((item) => {
+  item.addEventListener('click', () => showScreen((item as HTMLElement).dataset.page as ScreenName));
+});
+
+// --- мастер сканирования ---------------------------------------------------
+
+const scanEls = {
+  subnets: $('scan-subnets'),
+  ping: $('scan-ping') as HTMLInputElement,
+  names: $('scan-names') as HTMLInputElement,
+  snmp: $('scan-snmp') as HTMLInputElement,
+  snmpNote: $('scan-snmp-note'),
+  run: $('scan-run') as HTMLButtonElement,
+  error: $('scan-error'),
+  progressWrap: $('scan-progress-wrap'),
+  progress: $('scan-progress'),
+  status: $('scan-status'),
+  alertsList: $('alerts-list'),
+  tableBody: document.querySelector('#devices-table tbody') as HTMLElement,
+  badge: $('alerts-badge'),
+};
+
+let scanCfg: { subnets: string[]; snmp: boolean } = { subnets: [], snmp: false };
+
+async function initScanScreen(): Promise<void> {
+  try {
+    scanCfg = await api.config();
+    setupScanScreen(scanCfg, scanEls);
+  } catch (err) {
+    scanEls.error.hidden = false;
+    scanEls.error.textContent = errMessage(err);
+  }
+}
+
+scanEls.run.addEventListener('click', async () => {
+  scanEls.error.hidden = true;
+  const body = startScan(scanEls);
+  if (body.subnets.length === 0) {
+    scanEls.error.hidden = false;
+    scanEls.error.textContent = 'Выберите хотя бы одну подсеть.';
+    return;
+  }
+  scanEls.run.disabled = true;
+  try {
+    const started = await api.startScan(body);
+    const expected = expectedStages(body.ping, body.names, body.snmp_targets.length > 0);
+    const poll = window.setInterval(async () => {
+      try {
+        const view = await api.scanState(started.id);
+        renderProgress(scanEls, view, expected);
+        if (view.status !== 'running') {
+          window.clearInterval(poll);
+          scanEls.run.disabled = false;
+        }
+      } catch {
+        window.clearInterval(poll);
+        scanEls.run.disabled = false;
+      }
+    }, 1000);
+  } catch (err) {
+    scanEls.error.hidden = false;
+    scanEls.error.textContent = errMessage(err);
+    scanEls.run.disabled = false;
+  }
+});
+
+// --- найденные устройства --------------------------------------------------
+
+async function initDevicesScreen(): Promise<void> {
+  try {
+    const [devs, alerts] = await Promise.all([api.devices(), api.alerts()]);
+    scanEls.tableBody.textContent = '';
+    for (const d of devs.devices) {
+      scanEls.tableBody.append(deviceRow(d, async (id, klass) => {
+        try {
+          await api.updateDevice(id, { class: klass });
+          await initDevicesScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      }));
+    }
+    renderAlerts(scanEls, alerts.alerts, async (id) => {
+      try {
+        await api.ackAlert(id);
+        await initDevicesScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    });
+  } catch (err) {
+    showNotice(errMessage(err), true);
+  }
+}
+
+// Обновить бейдж оповещений при старте и после сканов.
+async function refreshAlertBadge(): Promise<void> {
+  try {
+    const alerts = await api.alerts();
+    renderAlerts(scanEls, alerts.alerts, async (id) => {
+      await api.ackAlert(id);
+      await refreshAlertBadge();
+    });
+  } catch {
+    // бейдж не критичен
+  }
+}
+
 $('panel-close').addEventListener('click', closePanel);
 $('btn-reload').addEventListener('click', () => void reload());
 
@@ -353,3 +488,4 @@ for (let i = 0; i < tabs.length; i++) {
 
 setupTokenDialog();
 setupAddDialog();
+void refreshAlertBadge();
