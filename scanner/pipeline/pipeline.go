@@ -63,6 +63,9 @@ type Config struct {
 	// (NetBIOS, mDNS) и SNMP для них не запрашиваются; ARP/ping и
 	// данные аренд работают как для всех.
 	SkipDeepMACs map[string]bool
+	// SkipSSDPForIPs — адреса гостей и «известных без агента» (NR-023):
+	// ответы SSDP от них не сохраняются, присутствие не трогается.
+	SkipSSDPForIPs map[string]bool
 	// OnStage — прогресс: вызывается по завершении каждого этапа
 	// ("arp", "ping", "names", "leases", "snmp", "topology").
 	OnStage func(stage string)
@@ -145,6 +148,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) (Result, error) {
 	if len(cfg.SkipDeepMACs) > 0 {
 		opt.SkipNamesForMACs = cfg.SkipDeepMACs
 	}
+	opt.SkipSSDPForIPs = cfg.SkipSSDPForIPs
 
 	res, err := scanner.Run(ctx, entries, cfg.Scope, cfg.Limiter, opt)
 	if err != nil {

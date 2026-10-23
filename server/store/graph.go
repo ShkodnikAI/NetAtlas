@@ -313,6 +313,11 @@ func (s *Store) ListDevices(ctx context.Context) ([]DeviceInfo, error) {
 		}
 		info.MAC = info.ID
 		info.Class = model.Class(class)
+		// Срезы пустые, не nil: в JSON должны быть [], а не null —
+		// интерфейс вызывает .join по ним без проверок (смок NR-023).
+		info.IPs = []netip.Addr{}
+		info.Names = []model.Name{}
+		info.Observations = []model.Observation{}
 		if hostname != "" {
 			info.Hostname = hostname
 		}

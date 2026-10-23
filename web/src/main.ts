@@ -2,6 +2,7 @@
 // страницы), загрузка графа, правая панель, ручные действия.
 
 import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type NodeInfo } from './api';
+import { setAuditBadge } from './audit';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import {
@@ -335,6 +336,8 @@ const scanEls = {
   names: $('scan-names') as HTMLInputElement,
   snmp: $('scan-snmp') as HTMLInputElement,
   snmpNote: $('scan-snmp-note'),
+  leasesPath: $('scan-leases-path') as HTMLInputElement,
+  leasesFormat: $('scan-leases-format') as HTMLSelectElement,
   run: $('scan-run') as HTMLButtonElement,
   error: $('scan-error'),
   progressWrap: $('scan-progress-wrap'),
@@ -345,11 +348,14 @@ const scanEls = {
   badge: $('alerts-badge'),
 };
 
-let scanCfg: { subnets: string[]; snmp: boolean } = { subnets: [], snmp: false };
+let scanCfg: { subnets: string[]; snmp: boolean; audit_ok: boolean } = {
+  subnets: [], snmp: false, audit_ok: true,
+};
 
 async function initScanScreen(): Promise<void> {
   try {
     scanCfg = await api.config();
+    setAuditBadge($('audit-badge'), scanCfg.audit_ok);
     setupScanScreen(scanCfg, scanEls);
   } catch (err) {
     scanEls.error.hidden = false;
@@ -368,7 +374,12 @@ scanEls.run.addEventListener('click', async () => {
   scanEls.run.disabled = true;
   try {
     const started = await api.startScan(body);
-    const expected = expectedStages(body.ping, body.names, body.snmp_targets.length > 0);
+    const expected = expectedStages(
+      body.ping,
+      body.names,
+      body.snmp_targets.length > 0,
+      body.leases_path !== undefined,
+    );
     const poll = window.setInterval(async () => {
       try {
         const view = await api.scanState(started.id);
@@ -431,6 +442,17 @@ async function refreshAlertBadge(): Promise<void> {
   }
 }
 
+// Плашка аудита при старте: состояние приходит из /api/config;
+// при недоступности сервера плашка скрыта (нет данных — нет тревоги).
+async function refreshAuditBadge(): Promise<void> {
+  try {
+    const cfg = await api.config();
+    setAuditBadge($('audit-badge'), cfg.audit_ok);
+  } catch {
+    // плашка не критична
+  }
+}
+
 $('panel-close').addEventListener('click', closePanel);
 $('btn-reload').addEventListener('click', () => void reload());
 
@@ -489,3 +511,4 @@ for (let i = 0; i < tabs.length; i++) {
 setupTokenDialog();
 setupAddDialog();
 void refreshAlertBadge();
+void refreshAuditBadge();

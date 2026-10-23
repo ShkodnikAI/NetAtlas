@@ -21,6 +21,8 @@ function elems(): ScreenElems {
     names: mk('input'),
     snmp: mk('input'),
     snmpNote: mk('p'),
+    leasesPath: mk('input'),
+    leasesFormat: mk('select'),
     run: mk('button'),
     error: mk('span'),
     progressWrap: mk('div'),
@@ -67,6 +69,26 @@ describe('startScan', () => {
     el.snmp.value = ' , ';
     expect(startScan(el).snmp_targets).toEqual([]);
   });
+
+  it('без пути аренд поля leases в тело не попадают (NR-023)', () => {
+    const el = elems();
+    setupScanScreen({ subnets: ['10.0.0.0/24'], snmp: true }, el);
+    el.leasesFormat.value = 'csv';
+    const body = startScan(el);
+    expect(body.leases_path).toBeUndefined();
+    expect(body.leases_format).toBeUndefined();
+  });
+
+  it('путь аренд уходит вместе с форматом (NR-023)', () => {
+    const el = elems();
+    setupScanScreen({ subnets: ['10.0.0.0/24'], snmp: true }, el);
+    el.leasesFormat.append(new Option('isc (dhcpd.leases)', 'isc'));
+    el.leasesPath.value = ' /var/lib/dhcp/dhcpd.leases ';
+    el.leasesFormat.value = 'isc';
+    const body = startScan(el);
+    expect(body.leases_path).toBe('/var/lib/dhcp/dhcpd.leases');
+    expect(body.leases_format).toBe('isc');
+  });
 });
 
 describe('expectedStages', () => {
@@ -74,6 +96,11 @@ describe('expectedStages', () => {
     expect(expectedStages(false, false, false)).toBe(1);
     expect(expectedStages(true, true, false)).toBe(3);
     expect(expectedStages(true, true, true)).toBe(5);
+  });
+
+  it('аренды добавляют стадию (NR-023)', () => {
+    expect(expectedStages(false, false, false, true)).toBe(2);
+    expect(expectedStages(true, true, true, true)).toBe(6);
   });
 });
 

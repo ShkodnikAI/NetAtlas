@@ -112,6 +112,13 @@
     }
   };
 
+  // src/audit.ts
+  function setAuditBadge(el2, ok) {
+    el2.classList.add("audit-badge");
+    el2.hidden = ok;
+    if (!ok) el2.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
+  }
+
   // node_modules/cytoscape/dist/cytoscape.esm.mjs
   function _arrayLikeToArray(r, a) {
     (null == a || a > r.length) && (a = r.length);
@@ -30499,7 +30506,8 @@
     laptop: "M2.5 19h19 M5 5h14v10H5z",
     printer: "M7 9V4h10v5 M7 14h10v6H7z M4 9h16v8H4z",
     cloud: "M9 12h6 M5 5h14v14H5z",
-    unknown: "M9 12h6 M5 5h14v14H5z"
+    unknown: "M9 12h6 M5 5h14v14H5z",
+    host: "M12 7v.01M12 10v5 M4 4h16v16H4z"
   };
   var KIND_LABELS = {
     internet: "\u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442",
@@ -30511,7 +30519,8 @@
     laptop: "\u043D\u043E\u0443\u0442\u0431\u0443\u043A",
     printer: "\u043F\u0440\u0438\u043D\u0442\u0435\u0440",
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
-    unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"
+    unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
+    host: "\u0445\u043E\u0441\u0442 \u0431\u0435\u0437 MAC"
   };
   var SHAPES = {
     internet: "octagon",
@@ -30523,7 +30532,8 @@
     laptop: "rhomboid",
     printer: "concave-hexagon",
     cloud: "tag",
-    unknown: "ellipse"
+    unknown: "ellipse",
+    host: "round-rectangle"
   };
   function svgIcon(kind, color = "#C5CEDA") {
     const path = ICONS[kind] ?? ICONS["unknown"] ?? "";
@@ -30941,18 +30951,25 @@
       (b) => b.value
     );
     const snmpTargets = el2.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
-    return {
+    const out = {
       subnets,
       ping: el2.ping.checked,
       names: el2.names.checked,
       snmp_targets: snmpTargets,
       confirm: true
     };
+    const path = el2.leasesPath.value.trim();
+    if (path !== "") {
+      out.leases_path = path;
+      out.leases_format = el2.leasesFormat.value;
+    }
+    return out;
   }
-  function expectedStages(ping, names, snmp) {
+  function expectedStages(ping, names, snmp, leases = false) {
     let n = 1;
     if (ping) n++;
     if (names) n++;
+    if (leases) n++;
     if (snmp) n += 2;
     return n;
   }
@@ -31284,6 +31301,8 @@
     names: $2("scan-names"),
     snmp: $2("scan-snmp"),
     snmpNote: $2("scan-snmp-note"),
+    leasesPath: $2("scan-leases-path"),
+    leasesFormat: $2("scan-leases-format"),
     run: $2("scan-run"),
     error: $2("scan-error"),
     progressWrap: $2("scan-progress-wrap"),
@@ -31293,10 +31312,15 @@
     tableBody: document.querySelector("#devices-table tbody"),
     badge: $2("alerts-badge")
   };
-  var scanCfg = { subnets: [], snmp: false };
+  var scanCfg = {
+    subnets: [],
+    snmp: false,
+    audit_ok: true
+  };
   async function initScanScreen() {
     try {
       scanCfg = await api2.config();
+      setAuditBadge($2("audit-badge"), scanCfg.audit_ok);
       setupScanScreen(scanCfg, scanEls);
     } catch (err) {
       scanEls.error.hidden = false;
@@ -31314,7 +31338,12 @@
     scanEls.run.disabled = true;
     try {
       const started = await api2.startScan(body);
-      const expected = expectedStages(body.ping, body.names, body.snmp_targets.length > 0);
+      const expected = expectedStages(
+        body.ping,
+        body.names,
+        body.snmp_targets.length > 0,
+        body.leases_path !== void 0
+      );
       const poll = window.setInterval(async () => {
         try {
           const view = await api2.scanState(started.id);
@@ -31370,6 +31399,13 @@
     } catch {
     }
   }
+  async function refreshAuditBadge() {
+    try {
+      const cfg = await api2.config();
+      setAuditBadge($2("audit-badge"), cfg.audit_ok);
+    } catch {
+    }
+  }
   $2("panel-close").addEventListener("click", closePanel);
   $2("btn-reload").addEventListener("click", () => void reload());
   $2("btn-connect").addEventListener("click", () => {
@@ -31421,4 +31457,5 @@
   setupTokenDialog();
   setupAddDialog();
   void refreshAlertBadge();
+  void refreshAuditBadge();
 })();

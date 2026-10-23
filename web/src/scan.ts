@@ -25,6 +25,8 @@ export interface ScreenElems {
   names: HTMLInputElement;
   snmp: HTMLInputElement;
   snmpNote: HTMLElement;
+  leasesPath: HTMLInputElement;
+  leasesFormat: HTMLSelectElement;
   run: HTMLButtonElement;
   error: HTMLElement;
   progressWrap: HTMLElement;
@@ -57,8 +59,13 @@ export async function setupScanScreen(
   }
 }
 
-// startScan — явный запуск: confirm=true обязателен.
-export function startScan(el: ScreenElems): { subnets: string[]; ping: boolean; names: boolean; snmp_targets: string[]; confirm: boolean } {
+// startScan — явный запуск: confirm=true обязателен. Аренды (NR-023):
+// оба поля уходят на сервер только вместе, при пустом пути формат
+// игнорируется.
+export function startScan(el: ScreenElems): {
+  subnets: string[]; ping: boolean; names: boolean; snmp_targets: string[]; confirm: boolean;
+  leases_path?: string; leases_format?: string;
+} {
   const subnets = [...el.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
     (b) => (b as HTMLInputElement).value,
   );
@@ -66,20 +73,30 @@ export function startScan(el: ScreenElems): { subnets: string[]; ping: boolean; 
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s !== '');
-  return {
+  const out: {
+    subnets: string[]; ping: boolean; names: boolean; snmp_targets: string[]; confirm: boolean;
+    leases_path?: string; leases_format?: string;
+  } = {
     subnets,
     ping: el.ping.checked,
     names: el.names.checked,
     snmp_targets: snmpTargets,
     confirm: true,
   };
+  const path = el.leasesPath.value.trim();
+  if (path !== '') {
+    out.leases_path = path;
+    out.leases_format = el.leasesFormat.value;
+  }
+  return out;
 }
 
 // expectedStages — сколько стадий ждать при выбранных методах.
-export function expectedStages(ping: boolean, names: boolean, snmp: boolean): number {
+export function expectedStages(ping: boolean, names: boolean, snmp: boolean, leases = false): number {
   let n = 1; // arp
   if (ping) n++;
   if (names) n++;
+  if (leases) n++; // leases
   if (snmp) n += 2; // snmp + topology
   return n;
 }

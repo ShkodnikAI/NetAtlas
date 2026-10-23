@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
@@ -66,6 +67,11 @@ type API struct {
 	prober  Prober
 	mux     *http.ServeMux
 
+	// auditOK — состояние цепочки журнала аудита на старте сервера
+	// (NR-023): проверка в cmd/netatlas-server до старта HTTP;
+	// /api/config отдаёт её как audit_ok.
+	auditOK atomic.Bool
+
 	// Скан (NR-005): конфигурация и подменяемые зависимости;
 	// ConfigureScan подключает, до вызова — 503.
 	scanMu      sync.Mutex
@@ -86,6 +92,7 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 		return nil, fmt.Errorf("api: хранилище не задано")
 	}
 	a := &API{store: st, token: token, scope: scope, limiter: limiter, prober: prober}
+	a.auditOK.Store(true) // цепочка целая, пока проверка старта не скажет иное
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/topology", a.handleTopology)
 	mux.HandleFunc("GET /api/devices/{id}", a.handleDevice)
@@ -96,6 +103,7 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("DELETE /api/links/{id}", a.handleDeleteLink)
 	mux.HandleFunc("POST /api/devices/{id}/verify", a.handleVerify)
 	mux.HandleFunc("GET /api/audit", a.handleAudit)
+	mux.HandleFunc("GET /api/audit/verify", a.handleAuditVerify)
 	mux.HandleFunc("GET /api/devices", a.handleDevicesList)
 	mux.HandleFunc("POST /api/scan", a.handleScanStart)
 	mux.HandleFunc("GET /api/scan/{id}", a.handleScanStatus)
@@ -110,6 +118,13 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 // авторизация → маршруты.
 func (a *API) Handler() http.Handler {
 	return a.withSecurity(a.withBodyLimit(a.withAuth(a.mux)))
+}
+
+// SetAuditOK фиксирует состояние цепочки журнала аудита на старте
+// сервера: разрыв (ошибка Verify) даёт false. Вызывается до старта
+// HTTP; дальше флаг только читается /api/config.
+func (a *API) SetAuditOK(ok bool) {
+	a.auditOK.Store(ok)
 }
 
 // withSecurity — заголовки на каждый ответ; CORS не выдаётся.
@@ -427,4 +442,22 @@ func (a *API) handleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+// auditVerifyResponse — ответ GET /api/audit/verify: целостность
+// цепочки журнала (NR-023). Разрыв — не ошибка сервера, а факт,
+// поэтому ответ 200 в обоих случаях.
+type auditVerifyResponse struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+// handleAuditVerify — GET /api/audit/verify: проверка цепочки хэшей
+// от начала до конца.
+func (a *API) handleAuditVerify(w http.ResponseWriter, r *http.Request) {
+	if err := audit.Verify(r.Context(), a.store.DB()); err != nil {
+		writeJSON(w, http.StatusOK, auditVerifyResponse{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, auditVerifyResponse{OK: true})
 }

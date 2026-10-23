@@ -122,7 +122,7 @@ export class NetatlasApi {
     return this.req<Graph>('GET', '/api/topology');
   }
 
-  config(): Promise<{ subnets: string[]; snmp: boolean }> {
+  config(): Promise<{ subnets: string[]; snmp: boolean; audit_ok: boolean }> {
     return this.req('GET', '/api/config');
   }
 
@@ -140,6 +140,7 @@ export class NetatlasApi {
 
   startScan(body: {
     subnets: string[]; ping: boolean; names: boolean; snmp_targets: string[]; confirm: boolean;
+    leases_path?: string; leases_format?: string;
   }): Promise<{ id: number }> {
     return this.req('POST', '/api/scan', body);
   }
