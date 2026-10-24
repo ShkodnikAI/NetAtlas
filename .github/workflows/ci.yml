@@ -37,6 +37,16 @@ jobs:
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
 
+      - name: windows test diagnostics (temp, NR-009)
+        if: failure() && runner.os == 'Windows'
+        shell: bash
+        run: |
+          export PATH="/c/Program Files/Git/usr/bin:$PATH"
+          go test ./... -count=1 2>&1 | grep -E "^--- FAIL|^FAIL|^    [a-z_]+\.go:" | head -40 > /tmp/fails.txt || true
+          cat /tmp/fails.txt | while IFS= read -r line; do echo "::error::$line"; done
+          echo "### windows fails" >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/fails.txt >> "$GITHUB_STEP_SUMMARY" || true
+
   web:
     runs-on: ubuntu-latest
     steps:
