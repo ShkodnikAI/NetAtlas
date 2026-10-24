@@ -173,17 +173,18 @@ func TestEnrollBadToken(t *testing.T) {
 // Цикл RunOnce: спул при потере связи, слив по восстановлению,
 // интервал из checkin.
 type fakeTransport struct {
-	checkins int
-	sent     [][]byte
-	metrics  [][]byte
-	security [][]byte
-	results  map[int64][][]byte
-	checkErr error
-	sendErr  error
-	secErr   error // отдельная ошибка для /agent/v1/security
-	resErr   error // отдельная ошибка для /agent/v1/jobs/{id}/result
-	pollSec  int
-	jobs     []json.RawMessage // задания в ответе checkin (NR-025)
+	checkins   int
+	sent       [][]byte
+	metrics    [][]byte
+	security   [][]byte
+	results    map[int64][][]byte
+	activities [][]byte
+	checkErr   error
+	sendErr    error
+	secErr     error // отдельная ошибка для /agent/v1/security
+	resErr     error // отдельная ошибка для /agent/v1/jobs/{id}/result
+	pollSec    int
+	jobs       []json.RawMessage // задания в ответе checkin (NR-025)
 }
 
 func (f *fakeTransport) Checkin(ctx context.Context) (Checkin, error) {
@@ -207,6 +208,11 @@ func (f *fakeTransport) SendMetrics(ctx context.Context, body []byte) error {
 		return f.sendErr
 	}
 	f.metrics = append(f.metrics, append([]byte(nil), body...))
+	return nil
+}
+
+func (f *fakeTransport) SendActivity(ctx context.Context, body []byte) error {
+	f.activities = append(f.activities, append([]byte(nil), body...))
 	return nil
 }
 

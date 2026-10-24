@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/agent/activity"
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
 	"github.com/ShkodnikAI/NetAtlas/pipeline/gate"
 	"github.com/ShkodnikAI/NetAtlas/pki"
@@ -126,6 +127,7 @@ func New(st *store.Store, ca *pki.CA, poll time.Duration) (*API, error) {
 	agentMux.HandleFunc("GET /agent/v1/blob", a.handleBlobGet)
 	agentMux.HandleFunc("POST /agent/v1/blob", a.handleBlobPost)
 	agentMux.HandleFunc("POST /agent/v1/jobs/{id}/result", a.handleJobResult)
+	agentMux.HandleFunc("POST /agent/v1/activity", a.handleActivity)
 	enrollMux := http.NewServeMux()
 	enrollMux.HandleFunc("POST /agent/v1/enroll", a.handleEnroll)
 	a.agentMux, a.enrollMux = agentMux, enrollMux
@@ -1046,4 +1048,118 @@ func (a *API) handleBlobPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// activityRequest — конверт POST /agent/v1/activity: 5-минутный
+// агрегат (NR-012). Жёсткий белый список полей: неизвестные поля
+// отвергаются (decodeStrict), сырых событий в схеме нет.
+type activityRequest struct {
+	SchemaVer   int            `json:"schema_ver"`
+	WindowStart string         `json:"window_start"`
+	Account     string         `json:"account"`
+	ActiveSec   int            `json:"active_sec"`
+	IdleSec     int            `json:"idle_sec"`
+	Apps        map[string]int `json:"apps"`
+	Domains     map[string]int `json:"domains"`
+}
+
+// Границы приёма активности (те же, что в agent/activity).
+const (
+	MaxActivityAccounts   = 200
+	MaxActivityNames      = 500
+	MaxActivityNameLen    = 253
+	MaxActivityAccountLen = 128
+)
+
+// handleActivity — приём агрегата активности: только от ПК, для
+// которых сбор включён с записью подтверждения владельца. Отказы —
+// в аудит; успешный приём не аудируется (частота разорвала бы
+// журнал) — факты сбора видны в данных и запросах владельца.
+func (a *API) handleActivity(w http.ResponseWriter, r *http.Request) {
+	cn, ok := a.guardAgent(w, r, "agent_activity")
+	if !ok {
+		return
+	}
+	body, ok := readBody(w, r, 256<<10)
+	if !ok {
+		return
+	}
+	var req activityRequest
+	if err := decodeStrict(body, &req); err != nil {
+		a.auditDeny(r.Context(), "agent_activity", cn, "тело: "+err.Error())
+		writeJSON(w, http.StatusBadRequest, errorBody{"тело запроса: " + err.Error()})
+		return
+	}
+	// Сбор выключен на сервере для этого ПК — данные не принимаются
+	// никогда (двойное включение: сервер + локальный флаг агента).
+	enabled, err := a.st.ActivityEnabled(r.Context(), cn)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{"статус активности"})
+		return
+	}
+	if !enabled {
+		a.auditDeny(r.Context(), "agent_activity", cn, "сбор активности не включён для компьютера")
+		writeJSON(w, http.StatusForbidden, errorBody{"сбор активности не включён для этого компьютера"})
+		return
+	}
+	if req.SchemaVer != activity.SchemaVersion {
+		a.auditDeny(r.Context(), "agent_activity", cn, fmt.Sprintf("версия схемы %d", req.SchemaVer))
+		writeJSON(w, http.StatusBadRequest, errorBody{"версия схемы не поддерживается"})
+		return
+	}
+	if err := validateActivity(&req); err != nil {
+		a.auditDeny(r.Context(), "agent_activity", cn, err.Error())
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		return
+	}
+	if _, err := time.Parse(time.RFC3339, req.WindowStart); err != nil {
+		a.auditDeny(r.Context(), "agent_activity", cn, "окно без времени")
+		writeJSON(w, http.StatusBadRequest, errorBody{"window_start: формат RFC3339"})
+		return
+	}
+	row := store.ActivityRow{
+		AgentID: cn, Account: req.Account, WindowStart: req.WindowStart,
+		ActiveSec: req.ActiveSec, IdleSec: req.IdleSec, Apps: req.Apps, Domains: req.Domains,
+	}
+	if err := a.st.SaveActivity(r.Context(), row); err != nil {
+		switch {
+		case errors.Is(err, store.ErrScriptValue):
+			writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, errorBody{"сохранение активности"})
+		}
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// validateActivity — белый список и границы значений: имена
+// приложений нормализованы, домены — только host.
+func validateActivity(req *activityRequest) error {
+	if len(req.Account) == 0 || len(req.Account) > MaxActivityAccountLen {
+		return errors.New("activity: учётная запись отсутствует или длиннее лимита")
+	}
+	if req.ActiveSec < 0 || req.IdleSec < 0 || req.ActiveSec > 900 || req.IdleSec > 900 {
+		return errors.New("activity: счётчики вне окна 5 минут")
+	}
+	if len(req.Apps) > MaxActivityAccounts {
+		return errors.New("activity: слишком много приложений")
+	}
+	if len(req.Domains) > MaxActivityNames {
+		return errors.New("activity: слишком много доменов")
+	}
+	for a := range req.Apps {
+		if len(a) == 0 || len(a) > 64 || strings.ContainsAny(a, `\/:*?"<>|`) {
+			return errors.New("activity: имя приложения вне маски")
+		}
+	}
+	for d := range req.Domains {
+		if activity.ExtractHost(d) != d {
+			return errors.New("activity: домен вне маски (допускается только host)")
+		}
+		if req.Domains[d] < 0 {
+			return errors.New("activity: отрицательный счётчик домена")
+		}
+	}
+	return nil
 }

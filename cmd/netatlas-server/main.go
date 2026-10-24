@@ -97,6 +97,9 @@ func run(cfg config) error {
 	// Качество сети (NR-008): фоновое уплотнение метрик раз в час.
 	go metricsLoop(ctx, st)
 
+	// Активность (NR-012): чистка данных старше 90 дней раз в сутки.
+	go activityPurgeLoop(ctx, handler)
+
 	// SNMP-счётчики портов: только при явных --snmp-targets.
 	if len(cfg.snmpList) > 0 {
 		auth, snmpReady := snmpServerAuth(os.Getenv)
@@ -241,6 +244,22 @@ func startAgentListeners(ctx context.Context, cfg config, st *store.Store, errCh
 		}()
 	}
 	return nil
+}
+
+// activityPurgeLoop — удаление данных активности старше 90 дней
+// (NR-012) раз в сутки с записью в аудит; идемпотентно.
+func activityPurgeLoop(ctx context.Context, h *api.API) {
+	h.PurgeActivityNow(ctx)
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			h.PurgeActivityNow(ctx)
+		}
+	}
 }
 
 // metricsLoop — уплотнение метрик раз в час (NR-008): сырые →

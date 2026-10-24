@@ -390,6 +390,44 @@ export class NetatlasApi {
   auditList(limit: number): Promise<{ entries: AuditEntry[] }> {
     return this.req('GET', `/api/audit?limit=${limit}`);
   }
+
+  // --- Активность (NR-012) ---
+
+  activityComputers(): Promise<{ computers: ActivityStatus[] }> {
+    return this.req('GET', '/api/activity/computers');
+  }
+
+  activitySummary(query = ''): Promise<ActivitySummary> {
+    return this.req('GET', `/api/activity/summary${query}`);
+  }
+
+  activityEnable(agentID: string, confirmation: string): Promise<{ ok: boolean }> {
+    return this.req('POST', '/api/activity/enable', { agent_id: agentID, confirmation });
+  }
+
+  activityDisable(agentID: string): Promise<{ ok: boolean }> {
+    return this.req('POST', '/api/activity/disable', { agent_id: agentID });
+  }
+
+  activityPurge(agentID: string): Promise<{ ok: boolean; rows: number }> {
+    return this.req('DELETE', `/api/activity?computer=${encodeURIComponent(agentID)}`);
+  }
+}
+
+export interface ActivityStatus {
+  agent_id: string;
+  enabled: boolean;
+  confirmed_by?: string;
+  confirmed_at?: string;
+}
+
+export interface ActivitySummary {
+  from: string;
+  to: string;
+  totals: Record<string, number>;
+  accounts: { account: string; computer: string; active_sec: number; idle_sec: number }[];
+  apps: { name: string; value: number }[];
+  domains: { name: string; value: number }[];
 }
 
 export interface AuditEntry {

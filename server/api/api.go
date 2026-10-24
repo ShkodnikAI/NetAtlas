@@ -69,6 +69,15 @@ type Store interface {
 	AdvanceStatus(ctx context.Context, scriptID, versionID int64, to, comment, actor string) (store.VersionRow, error)
 	RecordCheck(ctx context.Context, scriptID, versionID int64, in store.CheckRow, pass bool) (store.VersionRow, error)
 	VersionBySHA256(ctx context.Context, sha string) (int64, int64, error)
+	// Активность (NR-012).
+	EnableActivity(ctx context.Context, agentID, phrase, actor string) error
+	DisableActivity(ctx context.Context, agentID, actor string) error
+	ActivityEnabled(ctx context.Context, agentID string) (bool, error)
+	ListActivityEnabled(ctx context.Context) ([]store.ActivityStatus, error)
+	SaveActivity(ctx context.Context, row store.ActivityRow) error
+	ActivityAggregates(ctx context.Context, from, to time.Time, agentID, account string) (store.ActivitySummary, error)
+	PurgeOldActivity(ctx context.Context, now time.Time) (int64, error)
+	DeleteActivityFor(ctx context.Context, agentID, actor string) (int64, error)
 	SignVersion(ctx context.Context, scriptID, versionID int64, sha, signature string, expires time.Time, actor string) (store.VersionRow, error)
 	StageCounts(ctx context.Context) (map[string]int, error)
 	CreateJob(ctx context.Context, in store.CreateJobInput, actor string) (int64, error)
@@ -167,6 +176,12 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("POST /api/scripts/{id}/versions/{vid}/sign", a.handleSign)
 	mux.HandleFunc("GET /api/catalog", a.handleCatalog)
 	mux.HandleFunc("POST /api/test-runs", a.handleTestRun)
+	// Активность сотрудников (NR-012): каждый запрос владельца в аудит.
+	mux.HandleFunc("POST /api/activity/enable", a.handleActivityEnable)
+	mux.HandleFunc("POST /api/activity/disable", a.handleActivityDisable)
+	mux.HandleFunc("GET /api/activity/computers", a.handleActivityComputers)
+	mux.HandleFunc("GET /api/activity/summary", a.handleActivitySummary)
+	mux.HandleFunc("DELETE /api/activity", a.handleActivityPurge)
 	mux.HandleFunc("GET /api/jobs", a.handleJobsList)
 	mux.HandleFunc("POST /api/jobs", a.handleJobCreate)
 	mux.HandleFunc("GET /api/jobs/{id}", a.handleJob)

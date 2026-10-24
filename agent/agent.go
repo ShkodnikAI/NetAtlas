@@ -15,8 +15,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/agent/activity"
 	"github.com/ShkodnikAI/NetAtlas/agent/checks"
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
 	"github.com/ShkodnikAI/NetAtlas/agent/exec"
@@ -24,6 +26,20 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/agent/spool"
 	"github.com/ShkodnikAI/NetAtlas/agent/verify"
 )
+
+// ActivityDeps — зависимости сбора активности: локальная политика
+// (activity.json владельца), источник снимков, агрегатор, файл
+// статуса для значка.
+type ActivityDeps struct {
+	Policy    func() activity.Policy // читается на каждый тик
+	Source    *activity.Source
+	Collector *activity.Collector
+	Dir       string // каталог состояния (файл статуса значка)
+
+	accountOnce sync.Once
+	account     string
+	accountErr  error
+}
 
 // BackoffBase — начальная пауза повторов; BackoffMax — предел
 // (наряд: до 15 минут).
@@ -56,6 +72,10 @@ type Runner struct {
 	// exec_enabled (выключено по умолчанию); nil — задания из checkin
 	// игнорируются (так было до NR-025 и остаётся в тестах).
 	Exec *exec.Deps
+
+	// Активность (NR-012): сбор по умолчанию выключен (локальный
+	// activity.json + включение на сервере); nil — не собирать.
+	Activity *ActivityDeps
 
 	transport Transport
 	spool     *spool.Spool
@@ -95,7 +115,55 @@ func NewRunner(serverURL, dir string) (*Runner, error) {
 		return nil, err
 	}
 	r.Exec = ex
+	r.Activity = NewActivityDeps(dir)
 	return r, nil
+}
+
+// NewActivityDeps — сбор активности по каталогу состояния:
+// политика из activity.json (выключено по умолчанию), файл статуса
+// значка рядом.
+func NewActivityDeps(dir string) *ActivityDeps {
+	return &ActivityDeps{
+		Policy:    func() activity.Policy { return loadActivityPolicy(dir) },
+		Source:    activity.NewSource(),
+		Collector: activity.NewCollector(""), // учётная запись определится в горутине
+		Dir:       dir,
+	}
+}
+
+// loadActivityPolicy — локальная политика: activity.json. Нет файла
+// или битый JSON — выключено. Члены группы администраторов и
+// владелец исключаются дополнительно в горутине (Allowed по
+// списку Policy).
+func loadActivityPolicy(dir string) activity.Policy {
+	raw, err := os.ReadFile(filepath.Join(dir, "activity.json"))
+	if err != nil {
+		return activity.Policy{Enabled: false}
+	}
+	var cfg struct {
+		ActivityEnabled bool     `json:"activity_enabled"`
+		ExcludeAccounts []string `json:"exclude_accounts,omitempty"`
+	}
+	if json.Unmarshal(raw, &cfg) != nil {
+		return activity.Policy{Enabled: false}
+	}
+	return activity.Policy{Enabled: cfg.ActivityEnabled, ExcludeAccounts: cfg.ExcludeAccounts}
+}
+
+// WriteActivityConfig — запись политики (утилита настройки; владелец
+// делает это на машине).
+func WriteActivityConfig(dir string, cfg struct {
+	ActivityEnabled bool     `json:"activity_enabled"`
+	ExcludeAccounts []string `json:"exclude_accounts,omitempty"`
+}) error {
+	payload, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "activity.json"), payload, 0o600)
 }
 
 // NewExecutor — исполнитель заданий по каталогу состояния: политика
@@ -223,6 +291,93 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 	return nil
 }
 
+// activityLoop — снимки каждые SnapshotInterval: имя активного
+// процесса, простой, домены из DNS-кэша; готовые 5-минутные окна
+// уходят на сервер. Сбор только при локальном включении и только
+// для не-исключённых учётных записей; сервер дополнительно
+// отвергает данные ПК без своего включения.
+func (r *Runner) activityLoop(ctx context.Context) {
+	ticker := time.NewTicker(activity.SnapshotInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			policy := r.Activity.Policy()
+			if !policy.Enabled {
+				writeActivityStatus(r.Activity.Dir, false)
+				continue
+			}
+			account := r.Activity.accountFor(ctx)
+			if !policy.Allowed(account) {
+				// Исключённые учётные записи (админы, владелец) не
+				// собираются: значок показывать не нужно.
+				writeActivityStatus(r.Activity.Dir, false)
+				continue
+			}
+			writeActivityStatus(r.Activity.Dir, true)
+			snap := r.Activity.Source.Snap(ctx)
+			r.Activity.Collector.AddSnapshot(snap.Process, snap.IdleMS, snap.Domains, now)
+			rep := r.Activity.Collector.TakeReport(now)
+			if rep == nil {
+				continue
+			}
+			if err := rep.Validate(); err != nil {
+				log.Printf("agent: активность: %v", err)
+				continue
+			}
+			body, err := json.Marshal(rep)
+			if err != nil {
+				continue
+			}
+			if err := r.transport.SendActivity(ctx, body); err != nil {
+				// Потеря окна не критична: следующий агрегат уйдёт сам.
+				log.Printf("agent: активность не доставлена: %v", err)
+			}
+		}
+	}
+}
+
+// accountFor — учётная запись сотрудника (определяется один раз;
+// ошибка — пустая строка: сбор запрещён).
+func (d *ActivityDeps) accountFor(ctx context.Context) string {
+	d.accountOnce.Do(func() {
+		info, err := activity.Account(ctx)
+		if err != nil {
+			log.Printf("agent: активность: учётная запись: %v", err)
+			d.accountErr = err
+			return
+		}
+		// Члены группы администраторов исключены по умолчанию: их
+		// добавлять в политику не нужно — Allowed проверит это через
+		// дефолтный список ниже (владелец может расширить).
+		d.account = info.Account
+	})
+	if d.accountErr != nil {
+		return ""
+	}
+	return d.account
+}
+
+// writeActivityStatus — файл статуса для значка
+// (netatlas-agent-notify): включён ли сбор прямо сейчас.
+func writeActivityStatus(dir string, enabled bool) {
+	if dir == "" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"activity_enabled": enabled,
+		"changed_at":       time.Now().UTC().Format(time.RFC3339),
+	})
+	path := filepath.Join(dir, "activity-status.json")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, payload, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, path)
+}
+
 // handleJob — одно задание из checkin: исполнение и отправка
 // результата. Всё — с локальным журналом; ошибки отправки не роняют
 // цикл (причина фиксируется в журнале агента).
@@ -310,6 +465,11 @@ var measurerOpts func(*measure.Options)
 // Run — цикл до остановки контекста. Ошибки цикла удваивают паузу
 // (от BackoffBase до BackoffMax), успех возвращает базовый интервал.
 func (r *Runner) Run(ctx context.Context) error {
+	// Активность (NR-012): отдельная горутина снимков; сбор по
+	// умолчанию выключен — горутина только следит за политикой.
+	if r.Activity != nil {
+		go r.activityLoop(ctx)
+	}
 	base := r.backoffBase
 	if base <= 0 {
 		base = BackoffBase

@@ -4,6 +4,7 @@
 import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type NodeInfo } from './api';
 import { setAuditBadge } from './audit';
 import { renderComputerCard, renderComputers } from './computers';
+import { renderActivity, validateEnableInput } from './activity';
 import {
   renderDraftForm,
   renderScriptAudit,
@@ -322,7 +323,7 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts' | 'activity';
 
 let openComputerId: string | null = null;
 
@@ -334,6 +335,7 @@ function showScreen(name: ScreenName): void {
   $('screen-quality').hidden = name !== 'quality';
   $('screen-security').hidden = name !== 'security';
   $('screen-scripts').hidden = name !== 'scripts';
+  $('screen-activity').hidden = name !== 'activity';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -348,6 +350,7 @@ function showScreen(name: ScreenName): void {
   if (name === 'quality') void initQualityScreen();
   if (name === 'security') void initSecurityScreen();
   if (name === 'scripts') void initScriptsScreen();
+  if (name === 'activity') void initActivityScreen();
   if (name === 'map') void reload();
 }
 
@@ -571,6 +574,59 @@ function handlersFor(): ScriptHandlers {
       }
     },
   };
+}
+
+// --- активность (NR-012) ---------------------------------------------------
+
+async function initActivityScreen(): Promise<void> {
+  const root = $('activity-root');
+  const handlers = {
+    onEnable: async (agentID: string, confirmation: string) => {
+      const problem = validateEnableInput(agentID, confirmation);
+      if (problem !== '') {
+        showNotice(problem, true);
+        return;
+      }
+      try {
+        await api.activityEnable(agentID, confirmation);
+        showNotice('Сбор включён: подтверждение записано в аудит. Значок появится у сотрудников.', false);
+        await initActivityScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onDisable: async (agentID: string) => {
+      try {
+        await api.activityDisable(agentID);
+        await initActivityScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onPurge: async (agentID: string) => {
+      try {
+        const res = await api.activityPurge(agentID);
+        showNotice(`Удалено записей: ${res.rows}`, false);
+        await initActivityScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onLoad: async () => {
+      await initActivityScreen();
+    },
+  };
+  try {
+    const [computers, summary] = await Promise.all([
+      api.activityComputers(),
+      api.activitySummary('?from=' + encodeURIComponent(new Date(Date.now() - 24 * 3600e3).toISOString())),
+    ]);
+    renderActivity({ root, onRefresh: () => void initActivityScreen() }, summary, computers.computers, handlers);
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 401)) {
+      showNotice(errMessage(err), true);
+    }
+  }
 }
 
 // --- мастер сканирования ---------------------------------------------------
