@@ -5,6 +5,7 @@ package rules
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"strings"
 )
 
-//go:embed data/rules.json data/network.json data/os_lifecycle.json data/cpu_generations.json
+//go:embed data/rules.json data/network.json data/os_lifecycle.json data/cpu_generations.json data/security_weights.json data/software_min_versions.json
 var dataFS embed.FS
 
 // Severity — серьёзность замечания.
@@ -81,10 +82,34 @@ type CPURow struct {
 
 // Table — набор правил и справочных таблиц.
 type Table struct {
-	Rules   []Rule   `json:"rules"`
-	Network []Rule   `json:"-"` // network.json (узкие места)
-	OS      []OSRow  `json:"-"` // отдельный файл
-	CPU     []CPURow `json:"-"`
+	Rules    []Rule             `json:"rules"`
+	Network  []Rule             `json:"-"` // network.json (узкие места)
+	OS       []OSRow            `json:"-"` // отдельный файл
+	CPU      []CPURow           `json:"-"` // отдельный файл
+	Security map[string]SecRule `json:"-"` // security_weights.json (NR-010)
+	Software []SoftwareRow      `json:"-"` // software_min_versions.json (NR-010)
+}
+
+// SecRule — вес замечания безопасности (NR-010): серьёзность,
+// вычитаемый вес, готовый совет и основание. Основание — публичный
+// источник; неподтверждённые номера рекомендаций не пишутся.
+type SecRule struct {
+	Severity string `json:"severity"`
+	Weight   int    `json:"weight"`
+	Title    string `json:"title"`
+	Advice   string `json:"advice"`
+	Basis    string `json:"basis"`
+	BasisURL string `json:"basis_url,omitempty"`
+}
+
+// SoftwareRow — строка таблицы минимально допустимых версий ПО.
+type SoftwareRow struct {
+	MatchContains []string `json:"match_contains"`
+	MinVersion    string   `json:"min_version"`
+	Title         string   `json:"title"`
+	SourceURL     string   `json:"source_url"`
+	Checked       string   `json:"checked"`
+	Verified      bool     `json:"verified"`
 }
 
 // Engine — загруженные правила и таблицы.
@@ -196,7 +221,60 @@ func loadFS(fsys fs.FS, base string) (Table, error) {
 	}{&t.CPU}); err != nil {
 		return t, fmt.Errorf("cpu_generations.json: %w", err)
 	}
+	// Файлы безопасности (NR-010) — необязательные: каталог
+	// переопределения может содержать только прежние три файла.
+	if raw, err := fs.ReadFile(fsys, fsPath(base, "security_weights.json")); err == nil {
+		if err := json.Unmarshal(raw, &struct {
+			Rules *map[string]SecRule `json:"rules"`
+		}{&t.Security}); err != nil {
+			return t, fmt.Errorf("security_weights.json: %w", err)
+		}
+		if err := validateSecurity(t.Security); err != nil {
+			return t, err
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return t, fmt.Errorf("security_weights.json: %w", err)
+	}
+	if raw, err := fs.ReadFile(fsys, fsPath(base, "software_min_versions.json")); err == nil {
+		if err := json.Unmarshal(raw, &struct {
+			Programs *[]SoftwareRow `json:"programs"`
+		}{&t.Software}); err != nil {
+			return t, fmt.Errorf("software_min_versions.json: %w", err)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return t, fmt.Errorf("software_min_versions.json: %w", err)
+	}
 	return t, nil
+}
+
+// validateSecurity — веса: корректная серьёзность, неотрицательный
+// вес, готовые title и advice, основание.
+func validateSecurity(rules map[string]SecRule) error {
+	for id, r := range rules {
+		switch r.Severity {
+		case SeverityCritical, SeverityWarning, SeverityInfo:
+		default:
+			return fmt.Errorf("security_weights.json: %s: недопустимая severity %q", id, r.Severity)
+		}
+		if r.Weight < 0 {
+			return fmt.Errorf("security_weights.json: %s: отрицательный вес", id)
+		}
+		if strings.TrimSpace(r.Title) == "" || strings.TrimSpace(r.Advice) == "" || strings.TrimSpace(r.Basis) == "" {
+			return fmt.Errorf("security_weights.json: %s: пустые title/advice/basis", id)
+		}
+	}
+	return nil
+}
+
+// SecurityRule — вес замечания по идентификатору; нет записи — false.
+func (e *Engine) SecurityRule(id string) (SecRule, bool) {
+	r, ok := e.table.Security[id]
+	return r, ok
+}
+
+// SoftwareRows — таблица минимально допустимых версий ПО.
+func (e *Engine) SoftwareRows() []SoftwareRow {
+	return append([]SoftwareRow(nil), e.table.Software...)
 }
 
 // SortedRules — правила в стабильном порядке (для тестов и UI).

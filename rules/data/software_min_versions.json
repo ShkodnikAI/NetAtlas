@@ -1,0 +1,38 @@
+{
+  "checked": "2026-10-24",
+  "note": "Локальная таблица минимально допустимых версий ПО (NR-010). Пока короткая и заполняемая владельцем: строка — семейство программ, совпадение по подстроке имени без учёта регистра. Записи с verified=false замечаний серьёзнее info не дают (как в os_lifecycle.json). Сравнение версий числовое по сегментам через точку; нечисловые хвосты (сборки, суффиксы) отбрасываются. Интеграция с NVD — отдельным нарядом.",
+  "programs": [
+    {
+      "match_contains": ["adobe reader", "acrobat reader"],
+      "min_version": "24.0",
+      "title": "Adobe Acrobat Reader",
+      "source_url": "https://www.adobe.com/devnet-docs/acrobatetk/tools/ReleaseNotesDC/index.html",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "match_contains": ["google chrome"],
+      "min_version": "130.0",
+      "title": "Google Chrome",
+      "source_url": "https://chromereleases.googleblog.com/",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "match_contains": ["mozilla firefox"],
+      "min_version": "132.0",
+      "title": "Mozilla Firefox",
+      "source_url": "https://www.mozilla.org/security/known-vulnerabilities/firefox/",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "match_contains": ["7-zip", "7zip"],
+      "min_version": "24.0",
+      "title": "7-Zip",
+      "source_url": "https://www.7-zip.org/history.txt",
+      "checked": "2026-10-24",
+      "verified": true
+    }
+  ]
+}

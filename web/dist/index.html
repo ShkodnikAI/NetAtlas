@@ -19,7 +19,7 @@
     <button class="item" data-page="computers">Компьютеры</button>
     <button class="item" data-page="disks">Диски</button>
     <button class="item" data-page="quality">Качество сети</button>
-    <button class="item soon" disabled>Безопасность <span class="soon-badge">скоро</span></button>
+    <button class="item" data-page="security">Безопасность</button>
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Скрипты и тесты <span class="soon-badge">скоро</span></button>
@@ -108,6 +108,12 @@
       <div id="quality-matrix"></div>
       <h3>Скорость за сутки</h3>
       <div id="quality-graph"></div>
+    </section>
+
+    <section id="screen-security" hidden aria-label="Безопасность">
+      <h2>Безопасность</h2>
+      <p class="subtitle">Проверка изнутри сети силами агентов: настройки ОС, службы и порты, шифрование, устаревший софт, сетевые устройства. Проверки только читают.</p>
+      <div id="security-root"></div>
     </section>
 
     <section id="screen-disks" hidden aria-label="Диски">

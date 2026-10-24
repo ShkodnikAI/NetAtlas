@@ -125,16 +125,22 @@
     qualityBottlenecks() {
       return this.req("GET", "/api/quality/bottlenecks");
     }
+    securitySummary() {
+      return this.req("GET", "/api/security/summary");
+    }
+    securityComputer(id2) {
+      return this.req("GET", `/api/security/computers/${encodeURIComponent(id2)}`);
+    }
     qualitySeries(kind) {
       return this.req("GET", `/api/quality/series?agent=_&target=_&kind=${encodeURIComponent(kind)}&hourly=1&from=${encodeURIComponent(new Date(Date.now() - 24 * 36e5).toISOString())}`);
     }
   };
 
   // src/audit.ts
-  function setAuditBadge(el4, ok) {
-    el4.classList.add("audit-badge");
-    el4.hidden = ok;
-    if (!ok) el4.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
+  function setAuditBadge(el5, ok) {
+    el5.classList.add("audit-badge");
+    el5.hidden = ok;
+    if (!ok) el5.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
   }
 
   // src/computers.ts
@@ -463,6 +469,206 @@
     renderBottlenecks(broot, bottlenecks);
     graph2.textContent = "";
     graph2.append(svgPolyline(series, 600, 120));
+  }
+
+  // src/security.ts
+  function el3(tag, cls, text2) {
+    const e = document.createElement(tag);
+    if (cls !== "") e.className = cls;
+    if (text2 !== void 0) e.textContent = text2;
+    return e;
+  }
+  var sevNames = {
+    critical: "\u041A\u0440\u0438\u0442\u0438\u0447\u043D\u043E\u0435",
+    warning: "\u0412\u0430\u0436\u043D\u043E\u0435",
+    info: "\u041F\u0440\u043E\u0447\u0435\u0435",
+    ok: "\u041D\u043E\u0440\u043C\u0430",
+    unknown: "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"
+  };
+  function scoreText(score) {
+    if (score === null) return "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445";
+    return String(score);
+  }
+  function checkStatusName(status) {
+    switch (status) {
+      case "pass":
+        return "\u043D\u043E\u0440\u043C\u0430";
+      case "fail":
+        return "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0435";
+      case "unknown":
+        return "\u043D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E";
+      default:
+        return status;
+    }
+  }
+  function renderScore(root, score) {
+    root.textContent = "";
+    const big = el3("div", "sec-score-value", scoreText(score));
+    if (score === null) big.classList.add("muted");
+    else if (score < 50) big.classList.add("severity-critical");
+    else if (score < 80) big.classList.add("severity-warning");
+    root.append(big);
+    const bar = el3("div", "sec-score-bar");
+    const fill = el3("div", "sec-score-fill");
+    if (score !== null) {
+      fill.style.width = `${score}%`;
+      if (score < 50) fill.classList.add("fill-critical");
+      else if (score < 80) fill.classList.add("fill-warning");
+    } else {
+      fill.style.width = "0%";
+    }
+    bar.append(fill);
+    root.append(bar);
+  }
+  function renderCounts(root, counts, unknownChecks) {
+    root.textContent = "";
+    for (const [key, label] of [["critical", "\u041A\u0440\u0438\u0442\u0438\u0447\u043D\u044B\u0435"], ["warning", "\u0412\u0430\u0436\u043D\u044B\u0435"], ["info", "\u041F\u0440\u043E\u0447\u0438\u0435"]]) {
+      const cell = el3("div", "sec-count");
+      cell.append(el3("div", `severity-${key}`, `${label}`));
+      cell.append(el3("div", "sec-count-value", String(counts[key] ?? 0)));
+      root.append(cell);
+    }
+    if (unknownChecks > 0) {
+      const cell = el3("div", "sec-count");
+      cell.append(el3("div", "severity-unknown", "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"));
+      cell.append(el3("div", "sec-count-value", String(unknownChecks)));
+      root.append(cell);
+    }
+  }
+  function renderGroups(root, groups) {
+    root.textContent = "";
+    if (groups.length === 0) {
+      root.append(el3("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
+      return;
+    }
+    for (const g of groups) {
+      const row = el3("div", `finding severity-${g.severity}`);
+      row.append(el3("span", "finding-sev", sevNames[g.severity] ?? g.severity));
+      const body = el3("div", "finding-body");
+      body.append(el3("div", "finding-fact", g.title));
+      body.append(el3("div", "muted", `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${g.basis}`));
+      body.append(el3("div", "muted", `\u041A\u0430\u043A \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C: ${g.advice}`));
+      row.append(body);
+      row.append(el3("span", "finding-where", g.where.join(", ")));
+      root.append(row);
+    }
+  }
+  function renderComputers2(root, computers, onComputer) {
+    root.textContent = "";
+    if (computers.length === 0) {
+      root.append(el3("p", "muted", "\u043D\u0435\u0442 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u043E\u0432 \u0441 \u0434\u0430\u043D\u043D\u044B\u043C\u0438"));
+      return;
+    }
+    const table = el3("table", "data-table");
+    const thead = el3("thead", "");
+    const hr = el3("tr", "");
+    for (const h of ["\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440", "\u041E\u0446\u0435\u043D\u043A\u0430", "\u0421\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435", "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"]) hr.append(el3("th", "", h));
+    thead.append(hr);
+    table.append(thead);
+    const tbody = el3("tbody", "");
+    for (const c of computers) {
+      const tr = el3("tr", "sec-computer-row");
+      tr.setAttribute("data-agent", c.id);
+      tr.append(el3("td", "", c.hostname));
+      tr.append(el3("td", "", String(c.score)));
+      tr.append(el3("td", `severity-${c.worst}`, sevNames[c.worst] ?? c.worst));
+      tr.append(el3("td", "", String(c.unknown_checks)));
+      tr.addEventListener("click", () => onComputer(c.id));
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    root.append(table);
+  }
+  function checkLine(chk) {
+    const row = el3("div", `sec-check sec-check-${chk.status}`);
+    row.append(el3("span", "sec-check-status", checkStatusName(chk.status)));
+    row.append(el3("span", "", chk.id));
+    if (chk.detail !== void 0) row.append(el3("span", "muted", chk.detail));
+    return row;
+  }
+  function renderSecurityCard(root, card, onBack) {
+    root.textContent = "";
+    const head = el3("div", "sec-card-head");
+    const back = el3("button", "ghost", "\u2190 \u0412\u0441\u0435 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u044B");
+    back.addEventListener("click", onBack);
+    head.append(back, el3("h3", "", `\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C: ${card.hostname}`));
+    if (card.score !== null) {
+      head.append(el3("span", "sec-card-score", `\u043E\u0446\u0435\u043D\u043A\u0430 ${card.score} / 100`));
+    }
+    root.append(head);
+    if (card.collected_at !== void 0) {
+      root.append(el3("div", "muted", `\u043E\u0442\u0447\u0451\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A: ${card.collected_at}`));
+    }
+    root.append(el3("h4", "", "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438"));
+    const checksBox = el3("div", "sec-checks");
+    if (card.checks.length === 0) {
+      checksBox.append(el3("p", "muted", "\u043E\u0442\u0447\u0451\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u0438\u0445\u043E\u0434\u0438\u043B"));
+    }
+    for (const chk of card.checks) checksBox.append(checkLine(chk));
+    root.append(checksBox);
+    root.append(el3("h4", "", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"));
+    const fbox = el3("div", "");
+    if (card.findings.length === 0) {
+      fbox.append(el3("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
+    }
+    for (const f of card.findings) {
+      const row = el3("div", `finding severity-${f.severity}`);
+      row.append(el3("span", "finding-sev", sevNames[f.severity] ?? f.severity));
+      const body = el3("div", "finding-body");
+      body.append(el3("div", "finding-fact", f.fact));
+      body.append(el3("div", "muted", `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${f.basis}`));
+      body.append(el3("div", "muted", `\u041A\u0430\u043A \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C: ${f.advice}`));
+      row.append(body);
+      fbox.append(row);
+    }
+    root.append(fbox);
+    if (card.ports !== void 0 && card.ports.length > 0) {
+      root.append(el3("h4", "", `\u0421\u043B\u0443\u0448\u0430\u044E\u0449\u0438\u0435 \u043F\u043E\u0440\u0442\u044B (${card.ports.length})`));
+      const table = el3("table", "data-table");
+      const tbody = el3("tbody", "");
+      for (const p2 of card.ports) {
+        const tr = el3("tr", "");
+        tr.append(el3("td", "", p2.local_address));
+        tr.append(el3("td", "", String(p2.local_port)));
+        tr.append(el3("td", "", p2.process ?? ""));
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      root.append(table);
+    }
+  }
+  function renderSecurity(root, summary, card, refs) {
+    root.textContent = "";
+    const top = el3("div", "sec-top");
+    const scoreBox = el3("div", "sec-score-box");
+    scoreBox.append(el3("div", "sec-score-label", "\u041E\u0431\u0449\u0430\u044F \u043E\u0446\u0435\u043D\u043A\u0430"));
+    const scoreHolder = el3("div", "sec-score");
+    renderScore(scoreHolder, summary.score);
+    scoreBox.append(scoreHolder);
+    scoreBox.append(el3("div", "muted", "\u041E\u0446\u0435\u043D\u043A\u0430 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044F \u043F\u043E \u043F\u0440\u0430\u0432\u0438\u043B\u0430\u043C \u0438 \u0432\u0435\u0441\u0430\u043C \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439. \u041E\u043D\u0430 \u043D\u0435 \u0437\u0430\u0432\u0438\u0441\u0438\u0442 \u043E\u0442 \u0418\u0418."));
+    top.append(scoreBox);
+    const counts = el3("div", "sec-counts");
+    renderCounts(counts, summary.counts, summary.unknown_checks);
+    top.append(counts);
+    root.append(top);
+    root.append(el3("h3", "", "\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u044B"));
+    const computersBox = el3("div", "");
+    renderComputers2(computersBox, summary.computers, refs.onComputer);
+    root.append(computersBox);
+    const cardBox = el3("div", "");
+    if (card !== null) {
+      renderSecurityCard(cardBox, card, () => refs.onComputer(""));
+    }
+    root.append(cardBox);
+    root.append(el3("h3", "", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"));
+    const findings = el3("div", "");
+    renderGroups(findings, summary.findings);
+    root.append(findings);
+    root.append(el3("h3", "", "\u0421\u0435\u0442\u0435\u0432\u044B\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430"));
+    const network = el3("div", "");
+    renderGroups(network, summary.network);
+    root.append(network);
+    root.append(el3("p", "muted", "\u0421\u0435\u0442\u0435\u0432\u044B\u0435 \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0442\u043E, \u0447\u0442\u043E \u0443\u0436\u0435 \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E \u0441\u043A\u0430\u043D\u0435\u0440\u0443: \u043E\u0442\u0432\u0435\u0442\u044B \u043D\u0430 SNMP-\u043E\u043F\u0440\u043E\u0441 \u0438 \u0435\u0433\u043E \u043C\u0435\u0442\u043E\u0434. \u041D\u043E\u0432\u044B\u0445 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u043F\u0440\u043E\u0431 \u043D\u0435\u0442."));
   }
 
   // node_modules/cytoscape/dist/cytoscape.esm.mjs
@@ -1625,8 +1831,8 @@
   };
   var push = function push2(arr, otherArr) {
     for (var i2 = 0; i2 < otherArr.length; i2++) {
-      var el4 = otherArr[i2];
-      arr.push(el4);
+      var el5 = otherArr[i2];
+      arr.push(el5);
     }
   };
   var getPrefixedProperty = function getPrefixedProperty2(obj, propName, prefix) {
@@ -2814,8 +3020,8 @@
                 }
                 cycle = cycle.slice(smallestIndex).concat(cycle.slice(0, smallestIndex));
                 cycle.push(cycle[0]);
-                var cycleId = cycle.map(function(el4) {
-                  return el4.id();
+                var cycleId = cycle.map(function(el5) {
+                  return el5.id();
                 }).join(",");
                 if (negativeWeightCycleIds.indexOf(cycleId) === -1) {
                   negativeWeightCycles.push(eles.spawn(cycle));
@@ -17689,8 +17895,8 @@
     };
     var adjustMaximally = function adjustMaximally2(ele2, shifted2) {
       var eInfo = getInfo(ele2);
-      var incomers = ele2.incomers().filter(function(el4) {
-        return el4.isNode() && eles.has(el4);
+      var incomers = ele2.incomers().filter(function(el5) {
+        return el5.isNode() && eles.has(el5);
       });
       var maxDepth = -1;
       var id3 = ele2.id();
@@ -17726,8 +17932,8 @@
         var _ele3 = dequeue();
         var didShift = adjustMaximally(_ele3, shifted);
         if (didShift) {
-          _ele3.outgoers().filter(function(el4) {
-            return el4.isNode() && eles.has(el4);
+          _ele3.outgoers().filter(function(el5) {
+            return el5.isNode() && eles.has(el5);
           }).forEach(enqueue);
         } else if (didShift === null) {
           warn("Detected double maximal shift for node `" + _ele3.id() + "`.  Bailing maximal adjustment due to cycle.  Use `options.maximal: true` only on DAGs.");
@@ -31115,7 +31321,7 @@
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"
   };
-  function el3(tag, className2) {
+  function el4(tag, className2) {
     const e = document.createElement(tag);
     if (className2) e.className = className2;
     return e;
@@ -31125,11 +31331,11 @@
   }
   function fillOverview(page, info, kind) {
     page.textContent = "";
-    const dl = el3("dl", "kv");
+    const dl = el4("dl", "kv");
     const row = (dt, dd) => {
-      const t = el3("dt");
+      const t = el4("dt");
       text(t, dt);
-      const d = el3("dd");
+      const d = el4("dd");
       text(d, dd);
       dl.append(t, d);
     };
@@ -31141,14 +31347,14 @@
     row("\u041A\u043B\u0430\u0441\u0441", className(info.class));
     if (info.ssid !== "") row("SSID", info.ssid);
     page.append(dl);
-    const marks = el3("p");
+    const marks = el4("p");
     if (info.manual) {
-      const b = el3("span", "badge manual");
+      const b = el4("span", "badge manual");
       text(b, "\u0432\u0440\u0443\u0447\u043D\u0443\u044E");
       marks.append(b, document.createTextNode(" "));
     }
     if (!info.verified) {
-      const b = el3("span", "badge unverified");
+      const b = el4("span", "badge unverified");
       text(b, "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
       marks.append(b);
     }
@@ -31164,11 +31370,11 @@
     page.textContent = "";
     const links = graph2.links.filter((l) => l.a === id2 || l.b === id2);
     if (links.length > 0) {
-      const h = el3("h3");
+      const h = el4("h3");
       text(h, "\u0421\u0432\u044F\u0437\u0438");
-      const ul = el3("ul");
+      const ul = el4("ul");
       for (const l of links) {
-        const li = el3("li");
+        const li = el4("li");
         const other = l.a === id2 ? l.b : l.a;
         const port = l.a === id2 ? l.aPort : l.bPort;
         text(li, `${other}${port !== "" ? ` (${port})` : ""} \u2014 ${linkSource(l)}`);
@@ -31176,16 +31382,16 @@
       }
       page.append(h, ul);
     }
-    const h2 = el3("h3");
+    const h2 = el4("h3");
     text(h2, "\u041D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u044F");
-    const ul2 = el3("ul");
+    const ul2 = el4("ul");
     for (const o of graphObservations(page, id2)) {
-      const li = el3("li");
+      const li = el4("li");
       text(li, `${o.source} \u2014 ${o.seen}`);
       ul2.append(li);
     }
     if (ul2.childNodes.length === 0) {
-      const li = el3("li");
+      const li = el4("li");
       text(li, "\u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0439");
       ul2.append(li);
     }
@@ -31215,21 +31421,21 @@
   function fillEdit(page, info, handlers) {
     page.textContent = "";
     const nameId = "edit-name";
-    const nameLabel = el3("label");
+    const nameLabel = el4("label");
     nameLabel.setAttribute("for", nameId);
     text(nameLabel, "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435");
-    const name = el3("input");
+    const name = el4("input");
     name.type = "text";
     name.id = nameId;
     name.maxLength = 255;
     name.value = info.hostname;
-    const save = el3("button");
+    const save = el4("button");
     text(save, "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435");
     save.addEventListener("click", () => handlers.onRename(info.id, name.value));
-    const classLabel = el3("label");
+    const classLabel = el4("label");
     classLabel.setAttribute("for", "edit-class");
     text(classLabel, "\u041A\u043B\u0430\u0441\u0441");
-    const select = el3("select");
+    const select = el4("select");
     select.id = "edit-class";
     for (const [value, label] of CLASSES) {
       const opt = document.createElement("option");
@@ -31238,25 +31444,25 @@
       if (value === info.class) opt.selected = true;
       select.append(opt);
     }
-    const apply2 = el3("button");
+    const apply2 = el4("button");
     text(apply2, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u043A\u043B\u0430\u0441\u0441");
     apply2.addEventListener("click", () => handlers.onClass(info.id, select.value));
-    const verdict = el3("div", "verdict");
-    const check = el3("button");
+    const verdict = el4("div", "verdict");
+    const check = el4("button");
     text(check, "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (ping)");
     check.addEventListener("click", () => handlers.onVerify(info.id));
-    const row1 = el3("div", "row");
+    const row1 = el4("div", "row");
     row1.append(save);
-    const row2 = el3("div", "row");
+    const row2 = el4("div", "row");
     row2.append(apply2);
-    const row3 = el3("div", "row");
+    const row3 = el4("div", "row");
     row3.append(check);
     page.append(nameLabel, name, row1, classLabel, select, row2, verdict, row3);
     if (info.manual) {
-      const del = el3("button");
+      const del = el4("button");
       text(del, "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0440\u0443\u0447\u043D\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442");
       del.addEventListener("click", () => handlers.onDelete(info.id));
-      const row4 = el3("div", "row");
+      const row4 = el4("div", "row");
       row4.append(del);
       page.append(row4);
     }
@@ -31275,8 +31481,8 @@
     known_no_agent: "\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"
   };
-  async function setupScanScreen(cfg, el4) {
-    el4.subnets.textContent = "";
+  async function setupScanScreen(cfg, el5) {
+    el5.subnets.textContent = "";
     for (const cidr of cfg.subnets) {
       const label = document.createElement("label");
       const box = document.createElement("input");
@@ -31284,30 +31490,30 @@
       box.value = cidr;
       box.checked = true;
       label.append(box, document.createTextNode(` ${cidr}`));
-      el4.subnets.append(label);
+      el5.subnets.append(label);
     }
     if (!cfg.snmp) {
-      el4.snmp.disabled = true;
-      el4.snmp.value = "";
-      el4.snmpNote.hidden = false;
+      el5.snmp.disabled = true;
+      el5.snmp.value = "";
+      el5.snmpNote.hidden = false;
     }
   }
-  function startScan(el4) {
-    const subnets = [...el4.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
+  function startScan(el5) {
+    const subnets = [...el5.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
       (b) => b.value
     );
-    const snmpTargets = el4.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    const snmpTargets = el5.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
     const out = {
       subnets,
-      ping: el4.ping.checked,
-      names: el4.names.checked,
+      ping: el5.ping.checked,
+      names: el5.names.checked,
       snmp_targets: snmpTargets,
       confirm: true
     };
-    const path = el4.leasesPath.value.trim();
+    const path = el5.leasesPath.value.trim();
     if (path !== "") {
       out.leases_path = path;
-      out.leases_format = el4.leasesFormat.value;
+      out.leases_format = el5.leasesFormat.value;
     }
     return out;
   }
@@ -31319,18 +31525,18 @@
     if (snmp) n += 2;
     return n;
   }
-  function renderProgress(el4, view, expected) {
-    el4.progressWrap.hidden = false;
+  function renderProgress(el5, view, expected) {
+    el5.progressWrap.hidden = false;
     const done = view.stages.length;
     if (view.status === "done") {
-      el4.progress.style.width = "100%";
-      el4.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
+      el5.progress.style.width = "100%";
+      el5.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
     } else if (view.status === "failed") {
-      el4.progress.style.width = "0";
-      el4.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
+      el5.progress.style.width = "0";
+      el5.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
     } else {
-      el4.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
-      el4.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
+      el5.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
+      el5.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
     }
   }
   function deviceRow(info, onClass) {
@@ -31362,10 +31568,10 @@
     tr.append(actions);
     return tr;
   }
-  function renderAlerts(el4, alerts, onAck) {
-    el4.alertsList.textContent = "";
-    el4.badge.hidden = alerts.length === 0;
-    el4.badge.textContent = String(alerts.length);
+  function renderAlerts(el5, alerts, onAck) {
+    el5.alertsList.textContent = "";
+    el5.badge.hidden = alerts.length === 0;
+    el5.badge.textContent = String(alerts.length);
     for (const a of alerts) {
       const item = document.createElement("div");
       item.className = "alert-item";
@@ -31375,7 +31581,7 @@
       ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
       ack.addEventListener("click", () => onAck(a.id));
       item.append(text2, ack);
-      el4.alertsList.append(item);
+      el5.alertsList.append(item);
     }
   }
 
@@ -31631,6 +31837,7 @@
     $2("screen-computers").hidden = name !== "computers";
     $2("screen-disks").hidden = name !== "disks";
     $2("screen-quality").hidden = name !== "quality";
+    $2("screen-security").hidden = name !== "security";
     document.querySelector(".workspace").hidden = name !== "map";
     document.querySelectorAll("nav .item[data-page]").forEach((item) => {
       const on3 = item.dataset.page === name;
@@ -31643,6 +31850,7 @@
     if (name === "computers") void initComputersScreen();
     if (name === "disks") void initDisksScreen();
     if (name === "quality") void initQualityScreen();
+    if (name === "security") void initSecurityScreen();
     if (name === "map") void reload();
   }
   async function initComputersScreen() {
@@ -31691,6 +31899,40 @@
       renderQuality(root, matrix.matrix, bottlenecks.bottlenecks, series.series);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "\u043E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430", true);
+    }
+  }
+  var securityCardId = null;
+  async function initSecurityScreen() {
+    const root = $2("screen-security");
+    const holder = $2("security-root");
+    try {
+      const summary = await api2.securitySummary();
+      let card = null;
+      if (securityCardId !== null) {
+        try {
+          card = await api2.securityComputer(securityCardId);
+        } catch {
+          card = null;
+        }
+      }
+      renderSecurity(holder, summary, card, {
+        root,
+        onComputer: (id2) => {
+          securityCardId = id2 === "" ? null : id2;
+          void initSecurityScreen();
+        }
+      });
+    } catch (err) {
+      renderSecurity(holder, {
+        score: null,
+        generated_at: "",
+        counts: {},
+        unknown_checks: 0,
+        computers: [],
+        findings: [],
+        network: []
+      }, null, { root, onComputer: () => void 0 });
+      showNotice(err instanceof Error ? err.message : "\u043E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u0438", true);
     }
   }
   var scanEls = {

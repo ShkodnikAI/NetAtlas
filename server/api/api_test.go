@@ -34,6 +34,7 @@ type fakeStore struct {
 	agents        []store.Agent
 	metrics       map[string][]store.MetricAgg
 	inventory     map[string]store.InventoryRow
+	security      map[string]string // agent → тело отчёта (NR-010)
 	agentExists   map[string]bool
 	revokedAgents map[string]bool
 	enrollTokens  int
@@ -41,6 +42,7 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
+		security:      map[string]string{},
 		devices:       map[string]store.DeviceInfo{},
 		notManual:     map[string]bool{},
 		agentExists:   map[string]bool{},
@@ -532,6 +534,14 @@ func (f *fakeStore) LatestMetrics(ctx context.Context, agentID string) ([]store.
 // SeriesMetrics — фейковый ряд метрик (пустой).
 func (f *fakeStore) SeriesMetrics(ctx context.Context, agentID, target, kind string, from, to time.Time, hourly bool) ([]store.MetricAgg, error) {
 	return nil, nil
+}
+
+// LatestSecurity — фейковый отчёт проверок безопасности (NR-010).
+func (f *fakeStore) LatestSecurity(ctx context.Context, agentID string) (store.SecurityRow, error) {
+	if raw, ok := f.security[agentID]; ok {
+		return store.SecurityRow{SchemaVer: 1, CollectedAt: time.Now(), JSON: raw}, nil
+	}
+	return store.SecurityRow{}, store.ErrNotFound
 }
 
 // AgentByID — фейковая карточка агента.

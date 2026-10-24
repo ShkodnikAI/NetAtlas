@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/agent/checks"
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
 	"github.com/ShkodnikAI/NetAtlas/agent/measure"
 	"github.com/ShkodnikAI/NetAtlas/agent/spool"
@@ -42,6 +43,10 @@ type Runner struct {
 	lastMeasure time.Time
 	volume      *measure.Volume
 
+	// Проверки безопасности (NR-010): nil — не собирать; по умолчанию
+	// подключаются в NewRunner. Сценарии только для чтения.
+	SecurityChecks []checks.Checker
+
 	transport Transport
 	spool     *spool.Spool
 
@@ -64,15 +69,16 @@ func NewRunner(serverURL, dir string) (*Runner, error) {
 		return nil, err
 	}
 	return &Runner{
-		Server:      serverURL,
-		Dir:         dir,
-		Interval:    DefaultPollInterval,
-		transport:   client,
-		spool:       sp,
-		Now:         time.Now,
-		Sleep:       defaultSleep,
-		backoffBase: BackoffBase,
-		backoffMax:  BackoffMax,
+		Server:         serverURL,
+		Dir:            dir,
+		Interval:       DefaultPollInterval,
+		transport:      client,
+		spool:          sp,
+		Now:            time.Now,
+		Sleep:          defaultSleep,
+		backoffBase:    BackoffBase,
+		backoffMax:     BackoffMax,
+		SecurityChecks: checks.DefaultChecks(checks.NewPowerShellRunner()),
 	}, nil
 }
 
@@ -85,6 +91,15 @@ func CollectOnce(collectors []collect.Collector) ([]byte, error) {
 		collectors = collect.DefaultCollectors(collect.NewPowerShellRunner())
 	}
 	rep := collect.BuildReport(context.Background(), hostname(), collectors, time.Now())
+	return json.Marshal(rep)
+}
+
+// CollectSecurityOnce — сбор проверок без сети (run --once --dry).
+func CollectSecurityOnce(cs []checks.Checker) ([]byte, error) {
+	if cs == nil {
+		cs = checks.DefaultChecks(checks.NewPowerShellRunner())
+	}
+	rep := checks.BuildReport(context.Background(), hostname(), cs, time.Now())
 	return json.Marshal(rep)
 }
 
@@ -121,6 +136,13 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 		}
 		return err
 	}
+	// Отчёт проверок безопасности (NR-010): ошибка не роняет цикл
+	// и не уходит в очередь — следующий цикл пересоберёт отчёт.
+	if len(r.SecurityChecks) > 0 {
+		if serr := r.sendSecurity(ctx); serr != nil {
+			log.Printf("agent: безопасность: %v", serr)
+		}
+	}
 	// Метрики качества: не чаще раза в 5 минут; ошибки не роняют
 	// цикл (замеры не влияют на работу — NR-008).
 	if r.Measurer != nil {
@@ -132,6 +154,26 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// sendSecurity — сбор проверок и отправка /agent/v1/security.
+func (r *Runner) sendSecurity(ctx context.Context) error {
+	rep := checks.BuildReport(ctx, hostname(), r.SecurityChecks, r.Now())
+	payload, err := json.Marshal(rep)
+	if err != nil {
+		return fmt.Errorf("agent: отчёт проверок: %w", err)
+	}
+	env := InventoryEnvelope{
+		Kind:        "security",
+		SchemaVer:   checks.SchemaVersion,
+		CollectedAt: r.Now().UTC(),
+		Payload:     payload,
+	}
+	body, err := json.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("agent: конверт проверок: %w", err)
+	}
+	return r.transport.SendSecurity(ctx, body)
 }
 
 // runMeasure — цикл замеров и отправка /agent/v1/metrics.
