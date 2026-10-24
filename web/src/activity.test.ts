@@ -9,8 +9,8 @@ import {
   notCollectedList,
   topNamed,
   validateEnableInput,
-  type ActivitySummary,
 } from './activity';
+import type { ActivitySummary } from './api';
 
 // fmtSecs: часы и минуты.
 describe('fmtSecs', () => {
@@ -33,10 +33,12 @@ describe('kpiCards', () => {
     };
     const k = kpiCards(s, 3);
     expect(k).toHaveLength(4);
-    expect(k[0].value).toBe('45 мин');
-    expect(k[0].note).toContain('75%');
-    expect(k[2].value).toBe('3');
-    expect(k[3].value).toBe('12');
+    const [activity, idle, computers, reports] = k;
+    expect(activity?.value).toBe('45 мин');
+    expect(activity?.note).toContain('75%');
+    expect(computers?.value).toBe('3');
+    expect(reports?.value).toBe('12');
+    expect(idle?.label).toContain('Простой');
   });
 
   it('без данных доля не делит на ноль', () => {
@@ -44,8 +46,8 @@ describe('kpiCards', () => {
       from: '', to: '', totals: {}, accounts: [], apps: [], domains: [],
     };
     const k = kpiCards(s, 0);
-    expect(k[0].value).toBe('0 мин');
-    expect(k[0].note).toContain('0%');
+    expect(k[0]?.value).toBe('0 мин');
+    expect(k[0]?.note).toContain('0%');
   });
 });
 
@@ -54,6 +56,7 @@ describe('topNamed', () => {
   it('сортирует по убыванию и обрезает', () => {
     const got = topNamed([{ name: 'a', value: 1 }, { name: 'c', value: 5 }, { name: 'b', value: 3 }], 2);
     expect(got.map((x) => x.name)).toEqual(['c', 'b']);
+    expect(topNamed([{ name: 'a', value: 1 }], 5)).toHaveLength(1);
   });
 });
 

@@ -104,6 +104,7 @@ func createMessageWindow() error {
 	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
 	getModule := kernel32.NewProc("GetModuleHandleW")
 	hInst, _, _ := getModule.Call()
+	classPtr := unsafe.Pointer(windows.StringToUTF16Ptr(msgWindowClass))
 	wc := struct {
 		style      uint32
 		wndProc    uintptr
@@ -116,13 +117,13 @@ func createMessageWindow() error {
 		menuName   uintptr
 		className  uintptr
 	}{wndProc: syscall.NewCallback(wndProc), instance: hInst,
-		className: uintptr(unsafe.Pointer(utf16Ptr(msgWindowClass)))}
+		className: uintptr(classPtr)}
 	if r, _, err := procRegister.Call(uintptr(unsafe.Pointer(&wc))); r == 0 {
 		if err != nil && err.Error() != "Операция успешно завершена." {
 			return err
 		}
 	}
-	hwnd, _, _ = procCreate.Call(0, 0, 0, 0, 0, 0, 0, 0, uintptr(^uintptr(2)), 0, uintptr(unsafe.Pointer(utf16Ptr(msgWindowClass))), 0)
+	hwnd, _, _ = procCreate.Call(0, 0, 0, 0, 0, 0, 0, 0, uintptr(^uintptr(2)), 0, uintptr(classPtr), 0)
 	if hwnd == 0 {
 		return errors.New("notify: окно сообщений не создано")
 	}
@@ -200,18 +201,5 @@ func copyTip(dst []uint16, s string) {
 }
 
 func utf16(s string) []uint16 {
-	w := windows.StringToUTF16Ptr(s)
-	var out []uint16
-	for i := uintptr(0); ; i++ {
-		c := *(*uint16)(unsafe.Pointer(uintptr(unsafe.Pointer(w)) + i*2))
-		if c == 0 {
-			break
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
-func utf16Ptr(s string) uintptr {
-	return uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(s)))
+	return syscall.StringToUTF16(s)
 }
