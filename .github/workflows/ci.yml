@@ -38,16 +38,6 @@ jobs:
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
 
-      - name: diagnostics (windows)
-        if: runner.os == 'Windows' && failure()
-        shell: bash
-        run: |
-          echo "::error::build: $(go build ./... 2>&1 | head -c 500 | tr '\n' '|')"
-          echo "::error::vet: $(go vet ./... 2>&1 | head -c 500 | tr '\n' '|')"
-          echo "::error::fmt: $(gofmt -l . | head -c 400 | tr '\n' ' ')"
-          go test ./internal/standcheck/ -v -run PSScriptAnalyzer 2>&1 | tail -c 1800 > /tmp/t.txt || true
-          echo "::error::test: $(cat /tmp/t.txt | tr '\n' '|')"
-          exit 0
 
 
   web:
