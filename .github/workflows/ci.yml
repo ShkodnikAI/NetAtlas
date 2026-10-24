@@ -42,12 +42,14 @@ jobs:
         if: runner.os == 'Windows' && failure()
         shell: bash
         run: |
-          go test ./... 2>&1 > /tmp/test-out.txt
-          grep -E "FAIL|panic|cannot|undefined" /tmp/test-out.txt | head -c 3000 > /tmp/diag.txt
-          echo "::error::DIAG-begin"
-          split -b 900 /tmp/diag.txt /tmp/diagpart.
+          {
+            echo "build:"; go build ./... 2>&1; echo "rc=$?"
+            echo "vet:"; go vet ./... 2>&1; echo "rc=$?"
+            echo "gofmt:"; gofmt -l . 2>&1; echo "rc=$?"
+            echo "test:"; go test ./... 2>&1 | grep -E "FAIL|panic" ; echo "rc=$?"
+          } > /tmp/diag.txt 2>&1
+          split -b 800 /tmp/diag.txt /tmp/diagpart.
           for f in /tmp/diagpart.*; do echo "::error::$(cat "$f" | tr '\n' '|')"; done
-          echo "::error::DIAG-end"
 
 
   web:
