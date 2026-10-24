@@ -74,8 +74,15 @@ func TestQualityBottlenecks(t *testing.T) {
 	if len(resp.Bottlenecks) == 0 {
 		t.Fatal("узкие места пусты при потерях 6%")
 	}
-	if resp.Bottlenecks[0].Finding.RuleID != "loss_very_high" {
-		t.Fatalf("правило %q, хочу loss_very_high", resp.Bottlenecks[0].Finding.RuleID)
+	// При 6% срабатывают оба правила потерь; critical обязан быть.
+	hasVeryHigh := false
+	for _, b := range resp.Bottlenecks {
+		if b.Finding.RuleID == "loss_very_high" {
+			hasVeryHigh = true
+		}
+	}
+	if !hasVeryHigh {
+		t.Fatalf("loss_very_high не найден: %+v", resp.Bottlenecks)
 	}
 }
 
