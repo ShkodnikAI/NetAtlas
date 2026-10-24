@@ -1,0 +1,60 @@
+{
+  "rules": [
+    {
+      "id": "loss_high",
+      "severity": "warning",
+      "advice": "Потери выше 2%: проверьте кабели, порты коммутатора и загрузку канала на пути до цели.",
+      "source": ["metrics.loss"],
+      "params": { "loss_percent": 2 }
+    },
+    {
+      "id": "loss_very_high",
+      "severity": "critical",
+      "advice": "Потери выше 5% — связь непригодна для работы: ищите деградацию на пути (порт, кабель, Wi-Fi).",
+      "source": ["metrics.loss"],
+      "params": { "loss_percent": 5 }
+    },
+    {
+      "id": "gateway_latency_high",
+      "severity": "warning",
+      "advice": "Задержка до шлюза выше 50 мс: проверьте загрузку шлюза и качество канала до него.",
+      "source": ["metrics.latency"],
+      "params": { "latency_ms": 50, "target_prefix": "gateway" }
+    },
+    {
+      "id": "jitter_high",
+      "severity": "warning",
+      "advice": "Джиттер выше 30 мс: страдают звонки и видеосвязь; ищите переполнения очередей на пути.",
+      "source": ["metrics.jitter"],
+      "params": { "jitter_ms": 30 }
+    },
+    {
+      "id": "port_util_high",
+      "severity": "warning",
+      "advice": "Порт коммутатора загружен выше 80% в среднем за час: узкое место канала, разнесите нагрузки или обновите линк.",
+      "source": ["metrics.port_util"],
+      "params": { "util_percent": 80 }
+    },
+    {
+      "id": "port_errors",
+      "severity": "warning",
+      "advice": "Ошибки на порту растут: проверьте кабель, коннектор и дуплекс.",
+      "source": ["metrics.port_errors"],
+      "params": {}
+    },
+    {
+      "id": "port_discards",
+      "severity": "warning",
+      "advice": "Отбросы на порту: буфер не справляется с нагрузкой — узкое место канала.",
+      "source": ["metrics.port_discards"],
+      "params": {}
+    },
+    {
+      "id": "bufferbloat_high",
+      "severity": "warning",
+      "advice": "Задержка до шлюза растёт во время загрузки канала (bufferbloat выше 100 мс): включите QoS/SQM на шлюзе.",
+      "source": ["metrics.bufferbloat"],
+      "params": { "bloat_ms": 100 }
+    }
+  ]
+}

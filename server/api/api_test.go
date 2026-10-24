@@ -32,6 +32,7 @@ type fakeStore struct {
 	deletedLink   string
 
 	agents        []store.Agent
+	metrics       map[string][]store.MetricAgg
 	inventory     map[string]store.InventoryRow
 	agentExists   map[string]bool
 	revokedAgents map[string]bool
@@ -43,6 +44,7 @@ func newFakeStore() *fakeStore {
 		devices:       map[string]store.DeviceInfo{},
 		notManual:     map[string]bool{},
 		agentExists:   map[string]bool{},
+		metrics:       map[string][]store.MetricAgg{},
 		inventory:     map[string]store.InventoryRow{},
 		revokedAgents: map[string]bool{},
 	}
@@ -520,6 +522,16 @@ func (f *fakeStore) LatestInventory(ctx context.Context, agentID string) (store.
 		return store.InventoryRow{}, store.ErrNotFound
 	}
 	return row, nil
+}
+
+// LatestMetrics — фейковые метрики (пустые).
+func (f *fakeStore) LatestMetrics(ctx context.Context, agentID string) ([]store.MetricAgg, error) {
+	return f.metrics[agentID], nil
+}
+
+// SeriesMetrics — фейковый ряд метрик (пустой).
+func (f *fakeStore) SeriesMetrics(ctx context.Context, agentID, target, kind string, from, to time.Time, hourly bool) ([]store.MetricAgg, error) {
+	return nil, nil
 }
 
 // AgentByID — фейковая карточка агента.

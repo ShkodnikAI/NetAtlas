@@ -57,6 +57,8 @@ type Store interface {
 	LatestInventory(ctx context.Context, agentID string) (store.InventoryRow, error)
 	AgentByID(ctx context.Context, id string) (store.Agent, error)
 	DiskHistory(ctx context.Context, agentID, drive string, days int) ([]store.DiskPoint, error)
+	LatestMetrics(ctx context.Context, agentID string) ([]store.MetricAgg, error)
+	SeriesMetrics(ctx context.Context, agentID, target, kind string, from, to time.Time, hourly bool) ([]store.MetricAgg, error)
 	DB() *sql.DB
 }
 
@@ -128,6 +130,9 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("GET /api/computers", a.handleComputers)
 	mux.HandleFunc("GET /api/computers/{id}", a.handleComputer)
 	mux.HandleFunc("GET /api/disks", a.handleDisks)
+	mux.HandleFunc("GET /api/quality/matrix", a.handleQualityMatrix)
+	mux.HandleFunc("GET /api/quality/series", a.handleQualitySeries)
+	mux.HandleFunc("GET /api/quality/bottlenecks", a.handleQualityBottlenecks)
 	a.mux = mux
 	return a, nil
 }

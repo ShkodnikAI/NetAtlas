@@ -18,7 +18,7 @@
     <button class="item" data-page="devices">Найденные устройства <span id="alerts-badge" class="soon-badge" hidden>0</span></button>
     <button class="item" data-page="computers">Компьютеры</button>
     <button class="item" data-page="disks">Диски</button>
-    <button class="item soon" disabled>Качество сети <span class="soon-badge">скоро</span></button>
+    <button class="item" data-page="quality">Качество сети</button>
     <button class="item soon" disabled>Безопасность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
@@ -98,6 +98,16 @@
 
     <section id="screen-computers" hidden aria-label="Компьютеры">
       <div id="computers-root"></div>
+    </section>
+
+    <section id="screen-quality" hidden aria-label="Качество сети">
+      <h2>Качество сети</h2>
+      <p class="subtitle">Матрица «агент × цель» по последним замерам; график скорости — за сутки, часовые агрегаты.</p>
+      <div id="quality-bottlenecks"></div>
+      <h3>Матрица</h3>
+      <div id="quality-matrix"></div>
+      <h3>Скорость за сутки</h3>
+      <div id="quality-graph"></div>
     </section>
 
     <section id="screen-disks" hidden aria-label="Диски">

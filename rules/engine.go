@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-//go:embed data/rules.json data/os_lifecycle.json data/cpu_generations.json
+//go:embed data/rules.json data/network.json data/os_lifecycle.json data/cpu_generations.json
 var dataFS embed.FS
 
 // Severity — серьёзность замечания.
@@ -81,9 +81,10 @@ type CPURow struct {
 
 // Table — набор правил и справочных таблиц.
 type Table struct {
-	Rules []Rule   `json:"rules"`
-	OS    []OSRow  `json:"-"` // отдельный файл
-	CPU   []CPURow `json:"-"`
+	Rules   []Rule   `json:"rules"`
+	Network []Rule   `json:"-"` // network.json (узкие места)
+	OS      []OSRow  `json:"-"` // отдельный файл
+	CPU     []CPURow `json:"-"`
 }
 
 // Engine — загруженные правила и таблицы.
@@ -160,6 +161,20 @@ func loadFS(fsys fs.FS, base string) (Table, error) {
 	}
 	for _, r := range t.Rules {
 		if err := validateRule(r); err != nil {
+			return t, err
+		}
+	}
+	raw, err = fs.ReadFile(fsys, fsPath(base, "network.json"))
+	if err != nil {
+		return t, fmt.Errorf("network.json: %w", err)
+	}
+	if err := json.Unmarshal(raw, &struct {
+		Rules *[]Rule `json:"rules"`
+	}{&t.Network}); err != nil {
+		return t, fmt.Errorf("network.json: %w", err)
+	}
+	for _, r := range t.Network {
+		if err := validateNetworkRule(r); err != nil {
 			return t, err
 		}
 	}

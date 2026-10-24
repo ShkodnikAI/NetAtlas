@@ -253,4 +253,16 @@ export class NetatlasApi {
   disks(): Promise<{ disks: DiskView[] }> {
     return this.req('GET', '/api/disks');
   }
+
+  qualityMatrix(): Promise<{ matrix: { agent_id: string; target: string; latest: Record<string, number>; worst: string }[] }> {
+    return this.req('GET', '/api/quality/matrix');
+  }
+
+  qualityBottlenecks(): Promise<{ bottlenecks: { agent_id: string; hostname: string; finding: Finding }[] }> {
+    return this.req('GET', '/api/quality/bottlenecks');
+  }
+
+  qualitySeries(kind: string): Promise<{ series: { window: string; avg: number; p95: number; max: number }[] }> {
+    return this.req('GET', `/api/quality/series?agent=_&target=_&kind=${encodeURIComponent(kind)}&hourly=1&from=${encodeURIComponent(new Date(Date.now() - 24 * 3600e3).toISOString())}`);
+  }
 }

@@ -5,6 +5,7 @@ import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type
 import { setAuditBadge } from './audit';
 import { renderComputerCard, renderComputers } from './computers';
 import { renderDisks } from './disks';
+import { renderQuality } from './quality';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import {
@@ -309,7 +310,7 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality';
 
 let openComputerId: string | null = null;
 
@@ -318,6 +319,7 @@ function showScreen(name: ScreenName): void {
   $('screen-devices').hidden = name !== 'devices';
   $('screen-computers').hidden = name !== 'computers';
   $('screen-disks').hidden = name !== 'disks';
+  $('screen-quality').hidden = name !== 'quality';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -329,6 +331,7 @@ function showScreen(name: ScreenName): void {
   if (name === 'devices') void initDevicesScreen();
   if (name === 'computers') void initComputersScreen();
   if (name === 'disks') void initDisksScreen();
+  if (name === 'quality') void initQualityScreen();
   if (name === 'map') void reload();
 }
 
@@ -371,6 +374,20 @@ async function initDisksScreen(): Promise<void> {
 document.querySelectorAll('nav .item[data-page]').forEach((item) => {
   item.addEventListener('click', () => showScreen((item as HTMLElement).dataset.page as ScreenName));
 });
+
+async function initQualityScreen(): Promise<void> {
+  const root = $('screen-quality');
+  try {
+    const [matrix, bottlenecks, series] = await Promise.all([
+      api.qualityMatrix(),
+      api.qualityBottlenecks(),
+      api.qualitySeries('speed'),
+    ]);
+    renderQuality(root, matrix.matrix, bottlenecks.bottlenecks, series.series);
+  } catch (err) {
+    showNotice(err instanceof Error ? err.message : 'ошибка загрузки качества', true);
+  }
+}
 
 // --- мастер сканирования ---------------------------------------------------
 
