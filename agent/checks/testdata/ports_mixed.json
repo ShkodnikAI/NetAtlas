@@ -1,0 +1,1 @@
+{"ports":[{"localAddress":"0.0.0.0","localPort":"3389","process":"TermService"},{"localAddress":"127.0.0.1","localPort":"135","process":"RpcSs"},{"localAddress":"0.0.0.0","localPort":"135","process":"  "},{"localAddress":"::","localPort":"445","process":"System"}]}

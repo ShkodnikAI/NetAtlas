@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -117,7 +118,19 @@ func cmdRun(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(body))
+		// Проверки безопасности (NR-010): тоже только сбор, без сети.
+		sec, err := agent.CollectSecurityOnce(nil)
+		if err != nil {
+			return err
+		}
+		out, err := json.Marshal(map[string]json.RawMessage{
+			"inventory": body,
+			"security":  sec,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(out))
 		return nil
 	}
 	if c.server == "" {

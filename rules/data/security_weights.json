@@ -1,0 +1,74 @@
+{
+  "checked": "2026-10-24",
+  "note": "Веса замечаний безопасности (NR-010). Оценка компьютера: 100 минус сумма весов его активных замечаний, не меньше 0. Общая оценка: среднее по компьютерам с отчётами (округление вниз). Сетевые замечания показываются отдельно и в оценку компьютеров не входят. Номера рекомендаций не приводятся: не подтверждённые точно номера не пишутся, основание — название раздела и страница источника.",
+  "rules": {
+    "sec_smbv1_enabled": {
+      "severity": "critical",
+      "weight": 25,
+      "title": "Включён устаревший протокол SMBv1",
+      "advice": "Отключите компоненты SMB 1.0 (сервер и клиент) на компьютере; современные системы Windows работают без них.",
+      "basis": "CIS Microsoft Windows Benchmark, раздел «SMB Server» (SMBv1 Server and Client); Microsoft Learn: «SMBv1 is not installed by default in Windows 10 Fall Creators Update and Windows Server, version 1709»",
+      "basis_url": "https://learn.microsoft.com/troubleshoot/windows-client/networking/smbv1-not-installed-by-default-in-windows"
+    },
+    "sec_bitlocker_off": {
+      "severity": "warning",
+      "weight": 15,
+      "title": "Шифрование диска (BitLocker) выключено",
+      "advice": "Включите шифрование BitLocker для системного и съёмных томов; заранее убедитесь в наличии резервной копии ключей восстановления.",
+      "basis": "CIS Microsoft Windows Benchmark, раздел «BitLocker Drive Encryption»; Microsoft Learn: «BitLocker overview»",
+      "basis_url": "https://learn.microsoft.com/windows/security/operating-system-security/device-encryption/bitlocker/bitlocker-overview"
+    },
+    "sec_rdp_no_nla": {
+      "severity": "critical",
+      "weight": 20,
+      "title": "Удалённый рабочий стол включён без проверки на уровне сети (NLA)",
+      "advice": "Включите требование проверки на уровне сети (Network Level Authentication) в свойствах RDP или выключите удалённый доступ, если он не нужен.",
+      "basis": "CIS Microsoft Windows Benchmark, раздел «Remote Desktop Services» (Network Level Authentication); Microsoft Learn: страница «Network Level Authentication»"
+    },
+    "sec_firewall_off": {
+      "severity": "critical",
+      "weight": 20,
+      "title": "Брандмауэр Windows выключен",
+      "advice": "Включите брандмауэр для всех профилей (домен, частная, общедоступная сеть); правила для нужных программ настраиваются явно.",
+      "basis": "CIS Microsoft Windows Benchmark, раздел «Windows Firewall» (Firewall state: Domain/Private/Public); Microsoft Learn: «Best practices for Windows Firewall»",
+      "basis_url": "https://learn.microsoft.com/windows/security/operating-system-security/network-security/windows-firewall/best-practices-configuring"
+    },
+    "sec_defender_off": {
+      "severity": "warning",
+      "weight": 15,
+      "title": "Защита Microsoft Defender в реальном времени отключена",
+      "advice": "Включите защиту в реальном времени или убедитесь, что на машине работает актуальный сторонний антивирус и он управляется централизованно.",
+      "basis": "CIS Microsoft Windows Benchmark, раздел «Microsoft Defender Antivirus»; Microsoft Learn: «Microsoft Defender Antivirus on Windows»",
+      "basis_url": "https://learn.microsoft.com/defender-endpoint/microsoft-defender-antivirus-windows"
+    },
+    "sec_software_outdated": {
+      "severity": "warning",
+      "weight": 10,
+      "title": "Устаревшее ПО из таблицы минимальных версий",
+      "advice": "Обновите программы до версий не ниже минимально допустимых (rules/data/software_min_versions.json) или удалите их.",
+      "basis": "Локальная таблица минимально допустимых версий владельца (rules/data/software_min_versions.json); интеграция с NVD — отдельным нарядом"
+    },
+    "os_out_of_support": {
+      "severity": "critical",
+      "weight": 20,
+      "title": "Версия ОС не получает обновления безопасности",
+      "advice": "Обновите ОС до поддерживаемой версии или изолируйте машину. Таблица сроков: rules/data/os_lifecycle.json (правило NR-009, веса для оценки — здесь).",
+      "basis": "Жизненный цикл ОС Microsoft (страницы «Windows 10 Home and Pro lifecycle» и «Windows 11 lifecycle»); таблица rules/data/os_lifecycle.json",
+      "basis_url": "https://learn.microsoft.com/lifecycle/products/windows-10-home-and-pro"
+    },
+    "sec_snmp_v2c_enabled": {
+      "severity": "warning",
+      "weight": 10,
+      "title": "SNMPv1/v2c включён на сетевом устройстве",
+      "advice": "Переведите устройство на SNMPv3 (authPriv) или ограничьте доступ к SNMP списком адресов и сменой community.",
+      "basis": "CIS Network Devices Benchmark, раздел «SNMP» (community-строки передаются открытым текстом); признак получен из метода опроса сканера, новых проб нет"
+    },
+    "sec_snmp_admin_open": {
+      "severity": "info",
+      "weight": 3,
+      "title": "Интерфейс управления устройством доступен по сети (SNMP)",
+      "advice": "Убедитесь, что управление устройством (SNMP, веб-интерфейс) недоступно из гостевой сети и из интернета.",
+      "basis": "Устройство ответило на опрос SNMP из данных сканера; других активных проверок нет"
+    }
+  }
+}

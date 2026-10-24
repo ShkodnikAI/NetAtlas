@@ -34,6 +34,16 @@ const (
 	MaxInventoryBody = 2 << 20
 	// MaxMetricsBody — предел тела отчёта метрик (наряд NR-008: 256 КБ).
 	MaxMetricsBody = 256 << 10
+	// MaxSecurityBody — предел тела отчёта проверок безопасности (NR-010).
+	MaxSecurityBody = 256 << 10
+	// MaxSecurityResults — предел числа проверок в отчёте.
+	MaxSecurityResults = 64
+	// MaxCheckIDLen — предел идентификатора проверки.
+	MaxCheckIDLen = 64
+	// MaxCheckDetailLen — предел текста detail одной проверки.
+	MaxCheckDetailLen = 2000
+	// MaxCheckDataBytes — предел данных одной проверки (порты и т.п.).
+	MaxCheckDataBytes = 64 << 10
 	// MaxBlobBytes — предел замера скорости (наряд: не больше 8 МБ).
 	MaxBlobBytes = 8 << 20
 	// EnrollRatePerMinute — не больше запросов регистрации в минуту с адреса.
@@ -87,6 +97,7 @@ func New(st *store.Store, ca *pki.CA, poll time.Duration) (*API, error) {
 	agentMux.HandleFunc("POST /agent/v1/checkin", a.handleCheckin)
 	agentMux.HandleFunc("POST /agent/v1/inventory", a.handleInventory)
 	agentMux.HandleFunc("POST /agent/v1/metrics", a.handleMetrics)
+	agentMux.HandleFunc("POST /agent/v1/security", a.handleSecurity)
 	agentMux.HandleFunc("GET /agent/v1/blob", a.handleBlobGet)
 	agentMux.HandleFunc("POST /agent/v1/blob", a.handleBlobPost)
 	enrollMux := http.NewServeMux()
@@ -672,6 +683,94 @@ func (a *API) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.st.SaveMetricsRaw(r.Context(), samples); err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorBody{"сохранение метрик"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// securityRequest — конверт отчёта проверок безопасности
+// (схема версии 1). Проверка может нести данные (например, список
+// слушающих портов) — они сохраняются как есть в пределах лимита.
+type securityRequest struct {
+	Kind        string    `json:"kind"` // "security"
+	SchemaVer   int       `json:"schema_ver"`
+	CollectedAt time.Time `json:"collected_at"`
+	Results     []struct {
+		ID     string          `json:"id"`
+		Status string          `json:"status"`
+		Detail string          `json:"detail,omitempty"`
+		Data   json.RawMessage `json:"data,omitempty"`
+	} `json:"results"`
+}
+
+// handleSecurity — POST /agent/v1/security: приём отчёта проверок
+// безопасности агента (тело ≤256 КБ, строгий JSON), всё в аудит.
+func (a *API) handleSecurity(w http.ResponseWriter, r *http.Request) {
+	cn, ok := a.guardAgent(w, r, "agent_security")
+	if !ok {
+		return
+	}
+	body, ok := readBody(w, r, MaxSecurityBody)
+	if !ok {
+		return
+	}
+	var req securityRequest
+	if err := decodeStrict(body, &req); err != nil {
+		a.auditDeny(r.Context(), "agent_security", cn, "тело: "+err.Error())
+		writeJSON(w, http.StatusBadRequest, errorBody{"тело запроса: " + err.Error()})
+		return
+	}
+	if req.Kind != "security" || req.SchemaVer < 1 {
+		a.auditDeny(r.Context(), "agent_security", cn, "kind/schema_ver")
+		writeJSON(w, http.StatusBadRequest, errorBody{"kind=security и schema_ver ≥ 1"})
+		return
+	}
+	if len(req.Results) > MaxSecurityResults {
+		a.auditDeny(r.Context(), "agent_security", cn, "слишком много проверок")
+		writeJSON(w, http.StatusBadRequest, errorBody{"results: не больше 64"})
+		return
+	}
+	seen := map[string]bool{}
+	for _, res := range req.Results {
+		switch {
+		case res.ID == "" || len(res.ID) > MaxCheckIDLen:
+			a.auditDeny(r.Context(), "agent_security", cn, "id проверки пуст или длиннее 64")
+			writeJSON(w, http.StatusBadRequest, errorBody{"id проверки: непустой, до 64 символов"})
+			return
+		case seen[res.ID]:
+			a.auditDeny(r.Context(), "agent_security", cn, "повтор id проверки")
+			writeJSON(w, http.StatusBadRequest, errorBody{"results: повтор id " + res.ID})
+			return
+		case res.Status != "pass" && res.Status != "fail" && res.Status != "unknown":
+			a.auditDeny(r.Context(), "agent_security", cn, "недопустимый статус проверки")
+			writeJSON(w, http.StatusBadRequest, errorBody{"status: pass | fail | unknown"})
+			return
+		case len(res.Detail) > MaxCheckDetailLen:
+			a.auditDeny(r.Context(), "agent_security", cn, "detail длиннее 2000")
+			writeJSON(w, http.StatusBadRequest, errorBody{"detail: до 2000 символов"})
+			return
+		case len(res.Data) > MaxCheckDataBytes:
+			a.auditDeny(r.Context(), "agent_security", cn, "data больше 64 КБ")
+			writeJSON(w, http.StatusBadRequest, errorBody{"data: до 65536 байт"})
+			return
+		case len(res.Data) > 0 && (!json.Valid(res.Data) || strings.TrimSpace(string(res.Data))[0] != '{'):
+			a.auditDeny(r.Context(), "agent_security", cn, "data не JSON-объект")
+			writeJSON(w, http.StatusBadRequest, errorBody{"data: JSON-объект"})
+			return
+		}
+		seen[res.ID] = true
+	}
+	at := req.CollectedAt
+	if at.IsZero() {
+		at = time.Now()
+	}
+	if err := a.st.SaveSecurity(r.Context(), cn, req.SchemaVer, at, body); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			a.auditDeny(r.Context(), "agent_security", cn, "агент не зарегистрирован")
+			writeJSON(w, http.StatusForbidden, errorBody{"агент не зарегистрирован"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorBody{"сохранение отчёта безопасности"})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})

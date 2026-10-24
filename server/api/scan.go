@@ -290,6 +290,7 @@ func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, lea
 
 	// Сохранение результата: SaveScan пишет аудит в той же транзакции.
 	now := time.Now()
+	markSNMPObservations(res, cfg.SNMPAuth.V2C, now)
 	err = a.store.SaveScan(ctx, store.ScanResult{
 		Started:  now.Add(-time.Minute),
 		Finished: now,
@@ -332,6 +333,40 @@ func (a *API) handleScanStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, &snap)
+}
+
+// markSNMPObservations (NR-010): устройствам, ответившим на опрос
+// SNMP, добавляются наблюдения «snmp» (интерфейс управления доступен)
+// и «snmp_v2c» (опрос шёл по небезопасной версии). Признак берётся
+// из метода опроса: новых проб нет. Наблюдения сохранит SaveScan.
+func markSNMPObservations(res pipeline.Result, v2c bool, now time.Time) {
+	answered := map[string]bool{}
+	for _, tr := range res.Snmp {
+		if tr.Error == "" {
+			answered[tr.Target.String()] = true
+		}
+	}
+	if len(answered) == 0 {
+		return
+	}
+	for i := range res.Devices {
+		hit := false
+		for _, ip := range res.Devices[i].IPs {
+			if answered[ip.String()] {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			continue
+		}
+		res.Devices[i].Observations = append(res.Devices[i].Observations,
+			model.Observation{Source: "snmp", Seen: now})
+		if v2c {
+			res.Devices[i].Observations = append(res.Devices[i].Observations,
+				model.Observation{Source: "snmp_v2c", Seen: now})
+		}
+	}
 }
 
 // parseScanTargets — цели SNMP из тела запроса.

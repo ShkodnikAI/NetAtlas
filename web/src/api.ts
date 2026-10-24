@@ -111,6 +111,64 @@ export interface DiskView {
   forecast: Forecast;
 }
 
+export interface SecurityFinding {
+  rule_id: string;
+  severity: string;
+  fact: string;
+  source: string;
+  advice: string;
+  basis: string;
+  basis_url?: string;
+  weight: number;
+  priority: number;
+}
+
+export interface SecurityGroup {
+  rule_id: string;
+  severity: string;
+  title: string;
+  basis: string;
+  basis_url?: string;
+  advice: string;
+  weight: number;
+  where: string[];
+}
+
+export interface SecurityComputerRow {
+  id: string;
+  hostname: string;
+  score: number;
+  worst: string;
+  unknown_checks: number;
+}
+
+export interface SecuritySummary {
+  score: number | null;
+  generated_at: string;
+  counts: Record<string, number>;
+  unknown_checks: number;
+  computers: SecurityComputerRow[];
+  findings: SecurityGroup[];
+  network: SecurityGroup[];
+}
+
+export interface SecurityCheck {
+  id: string;
+  status: string;
+  detail?: string;
+  data?: unknown;
+}
+
+export interface SecurityCard {
+  id: string;
+  hostname: string;
+  score: number | null;
+  collected_at?: string;
+  checks: SecurityCheck[];
+  findings: SecurityFinding[];
+  ports?: { local_address: string; local_port: number; process?: string }[];
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -260,6 +318,14 @@ export class NetatlasApi {
 
   qualityBottlenecks(): Promise<{ bottlenecks: { agent_id: string; hostname: string; finding: Finding }[] }> {
     return this.req('GET', '/api/quality/bottlenecks');
+  }
+
+  securitySummary(): Promise<SecuritySummary> {
+    return this.req('GET', '/api/security/summary');
+  }
+
+  securityComputer(id: string): Promise<SecurityCard> {
+    return this.req<SecurityCard>('GET', `/api/security/computers/${encodeURIComponent(id)}`);
   }
 
   qualitySeries(kind: string): Promise<{ series: { window: string; avg: number; p95: number; max: number }[] }> {

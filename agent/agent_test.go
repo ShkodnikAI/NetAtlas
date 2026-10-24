@@ -169,8 +169,10 @@ type fakeTransport struct {
 	checkins int
 	sent     [][]byte
 	metrics  [][]byte
+	security [][]byte
 	checkErr error
 	sendErr  error
+	secErr   error // отдельная ошибка для /agent/v1/security
 	pollSec  int
 }
 
@@ -195,6 +197,17 @@ func (f *fakeTransport) SendMetrics(ctx context.Context, body []byte) error {
 		return f.sendErr
 	}
 	f.metrics = append(f.metrics, append([]byte(nil), body...))
+	return nil
+}
+
+func (f *fakeTransport) SendSecurity(ctx context.Context, body []byte) error {
+	if f.secErr != nil {
+		return f.secErr
+	}
+	if f.sendErr != nil {
+		return f.sendErr
+	}
+	f.security = append(f.security, append([]byte(nil), body...))
 	return nil
 }
 

@@ -6,6 +6,7 @@ import { setAuditBadge } from './audit';
 import { renderComputerCard, renderComputers } from './computers';
 import { renderDisks } from './disks';
 import { renderQuality } from './quality';
+import { renderSecurity } from './security';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import {
@@ -310,7 +311,7 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security';
 
 let openComputerId: string | null = null;
 
@@ -320,6 +321,7 @@ function showScreen(name: ScreenName): void {
   $('screen-computers').hidden = name !== 'computers';
   $('screen-disks').hidden = name !== 'disks';
   $('screen-quality').hidden = name !== 'quality';
+  $('screen-security').hidden = name !== 'security';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -332,6 +334,7 @@ function showScreen(name: ScreenName): void {
   if (name === 'computers') void initComputersScreen();
   if (name === 'disks') void initDisksScreen();
   if (name === 'quality') void initQualityScreen();
+  if (name === 'security') void initSecurityScreen();
   if (name === 'map') void reload();
 }
 
@@ -386,6 +389,39 @@ async function initQualityScreen(): Promise<void> {
     renderQuality(root, matrix.matrix, bottlenecks.bottlenecks, series.series);
   } catch (err) {
     showNotice(err instanceof Error ? err.message : 'ошибка загрузки качества', true);
+  }
+}
+
+// --- безопасность (NR-010) --------------------------------------------------
+
+let securityCardId: string | null = null;
+
+async function initSecurityScreen(): Promise<void> {
+  const root = $('screen-security');
+  const holder = $('security-root');
+  try {
+    const summary = await api.securitySummary();
+    let card = null;
+    if (securityCardId !== null) {
+      try {
+        card = await api.securityComputer(securityCardId);
+      } catch {
+        card = null;
+      }
+    }
+    renderSecurity(holder, summary, card, {
+      root,
+      onComputer: (id: string) => {
+        securityCardId = id === '' ? null : id;
+        void initSecurityScreen();
+      },
+    });
+  } catch (err) {
+    renderSecurity(holder, {
+      score: null, generated_at: '', counts: {}, unknown_checks: 0,
+      computers: [], findings: [], network: [],
+    }, null, { root, onComputer: () => undefined });
+    showNotice(err instanceof Error ? err.message : 'ошибка загрузки безопасности', true);
   }
 }
 
