@@ -61,9 +61,10 @@ describe('renderComputers', () => {
     renderComputers(root, [summary], (id) => opened.push(id));
     const rows = root.querySelectorAll('tbody tr');
     expect(rows.length).toBe(1);
-    expect(rows[0].textContent).toContain('PC-1');
-    expect(rows[0].textContent).toContain('критично: 1');
-    (rows[0] as HTMLTableRowElement).click();
+    const row0 = rows[0] as HTMLElement;
+    expect(row0.textContent).toContain('PC-1');
+    expect(row0.textContent).toContain('критично: 1');
+    (row0 as HTMLTableRowElement).click();
     expect(opened).toEqual(['agent:one']);
   });
   it('пустой список — нет данных', () => {
