@@ -41,7 +41,13 @@ jobs:
       - name: diagnostics (windows)
         if: runner.os == 'Windows' && failure()
         shell: bash
-        run: go test ./... 2>&1 | tail -c 3000 | while IFS= read -r line; do echo "::error::$line"; done
+        run: |
+          go test ./... 2>&1 > /tmp/test-out.txt
+          grep -E "FAIL|panic|cannot|undefined" /tmp/test-out.txt | head -c 3000 > /tmp/diag.txt
+          echo "::error::DIAG-begin"
+          split -b 900 /tmp/diag.txt /tmp/diagpart.
+          for f in /tmp/diagpart.*; do echo "::error::$(cat "$f" | tr '\n' '|')"; done
+          echo "::error::DIAG-end"
 
 
   web:
