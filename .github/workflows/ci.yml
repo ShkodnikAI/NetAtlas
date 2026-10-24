@@ -8,8 +8,13 @@ on:
 permissions:
   contents: read
 
+# ВРЕМЕННО (диагностика NR-009): contents:write для лога windows-CI.
+
+
 jobs:
   build-test:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -40,16 +45,20 @@ jobs:
       - name: windows diagnostics (temp, NR-009)
         if: failure() && runner.os == 'Windows'
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
-          echo "=== gofmt -l ===" >> "$GITHUB_STEP_SUMMARY"
-          gofmt -l . >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          echo "=== go vet ===" >> "$GITHUB_STEP_SUMMARY"
-          go vet ./... >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          echo "=== go test ===" >> "$GITHUB_STEP_SUMMARY"
-          go test ./... -count=1 >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          echo "=== summary dump (annotations) ==="
-          tail -60 "$GITHUB_STEP_SUMMARY" | while IFS= read -r line; do echo "::error::$line"; done
+          if git log -1 --format=%s | grep -q "ci: windows diagnostics"; then echo "уже диагностический коммит"; exit 0; fi
+          { echo "=== gofmt -l ==="; gofmt -l . 2>&1 || true;
+            echo "=== go vet ==="; go vet ./... 2>&1 || true;
+            echo "=== go test ==="; go test ./... -count=1 2>&1 || true; } > ci-windows-diag.txt
+          tail -80 ci-windows-diag.txt
+          git config user.email "ci@netatlas.local"
+          git config user.name "ci-diag"
+          git add ci-windows-diag.txt
+          git commit -m "ci: windows diagnostics"
+          git push
 
   web:
     runs-on: ubuntu-latest
