@@ -6,7 +6,10 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,13 +17,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
+	"github.com/ShkodnikAI/NetAtlas/agent/exec"
 	"github.com/ShkodnikAI/NetAtlas/agent/spool"
+	"github.com/ShkodnikAI/NetAtlas/agent/verify"
 	"github.com/ShkodnikAI/NetAtlas/pki"
 	"github.com/ShkodnikAI/NetAtlas/server/agentapi"
+	"github.com/ShkodnikAI/NetAtlas/server/signing"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 )
 
@@ -170,10 +177,13 @@ type fakeTransport struct {
 	sent     [][]byte
 	metrics  [][]byte
 	security [][]byte
+	results  map[int64][][]byte
 	checkErr error
 	sendErr  error
 	secErr   error // отдельная ошибка для /agent/v1/security
+	resErr   error // отдельная ошибка для /agent/v1/jobs/{id}/result
 	pollSec  int
+	jobs     []json.RawMessage // задания в ответе checkin (NR-025)
 }
 
 func (f *fakeTransport) Checkin(ctx context.Context) (Checkin, error) {
@@ -181,7 +191,7 @@ func (f *fakeTransport) Checkin(ctx context.Context) (Checkin, error) {
 	if f.checkErr != nil {
 		return Checkin{}, f.checkErr
 	}
-	return Checkin{PollSec: f.pollSec}, nil
+	return Checkin{PollSec: f.pollSec, Jobs: f.jobs}, nil
 }
 
 func (f *fakeTransport) SendInventory(ctx context.Context, body []byte) error {
@@ -197,6 +207,17 @@ func (f *fakeTransport) SendMetrics(ctx context.Context, body []byte) error {
 		return f.sendErr
 	}
 	f.metrics = append(f.metrics, append([]byte(nil), body...))
+	return nil
+}
+
+func (f *fakeTransport) SendJobResult(ctx context.Context, jobID int64, body []byte) error {
+	if f.resErr != nil {
+		return f.resErr
+	}
+	if f.results == nil {
+		f.results = map[int64][][]byte{}
+	}
+	f.results[jobID] = append(f.results[jobID], append([]byte(nil), body...))
 	return nil
 }
 
@@ -411,4 +432,110 @@ func assertTokenNotOnDisk(t *testing.T, dir, token string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Задание из checkin проходит полный путь агента (NR-025): проверка,
+// исполнение подставным раннером, результат на сервер.
+func TestRunnerHandlesCheckinJobs(t *testing.T) {
+	tr := &fakeTransport{}
+	r := newTestRunner(t, tr)
+	// Исполнитель с включённой политикой и подставным раннером.
+	const agentID = "agent:cycle-test"
+	h := newExecHarnessFor(t, agentID)
+	r.Exec = h.deps
+
+	content := "Write-Output 'via-checkin'"
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		t.Fatalf("nonce: %v", err)
+	}
+	env := signing.Envelope{
+		JobID:         "job:11:" + agentID,
+		AgentID:       agentID,
+		Kind:          "catalog",
+		ContentSHA256: signing.HashContent([]byte(content)),
+		IssuedAt:      time.Now().Add(-time.Minute).UTC(),
+		ExpiresAt:     time.Now().Add(time.Hour).UTC(),
+		Nonce:         nonce,
+	}
+	sj, err := signing.Sign(env, h.priv)
+	if err != nil {
+		t.Fatalf("подпись: %v", err)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"job_id": 11, "name": "Интеграционное", "kind": "catalog", "content": content,
+		"envelope": env, "signature": base64.StdEncoding.EncodeToString(sj.Signature),
+		"expires_at": env.ExpiresAt.UTC().Format(time.RFC3339), "changes_system": false,
+	})
+	if err != nil {
+		t.Fatalf("payload: %v", err)
+	}
+	tr.jobs = []json.RawMessage{payload}
+
+	if err := r.RunOnce(context.Background()); err != nil {
+		t.Fatalf("цикл: %v", err)
+	}
+	sent := tr.results[11]
+	if len(sent) != 1 {
+		t.Fatalf("результат не отправлен: %v", tr.results)
+	}
+	var outcome exec.Outcome
+	if err := json.Unmarshal(sent[0], &outcome); err != nil {
+		t.Fatalf("результат: %v", err)
+	}
+	if !outcome.OK {
+		t.Fatalf("результат не успех: %+v", outcome)
+	}
+	if got := h.runner.scripts(); len(got) != 1 || got[0] != content {
+		t.Fatalf("раннер получил не то содержимое: %v", got)
+	}
+}
+
+// cycleRunner — раннер-шпион для интеграционного теста цикла.
+type cycleRunner struct {
+	mu   sync.Mutex
+	got  []string
+	code int
+}
+
+func (r *cycleRunner) Run(_ context.Context, script string, _ time.Duration) (int, []byte, error) {
+	r.mu.Lock()
+	r.got = append(r.got, script)
+	r.mu.Unlock()
+	return r.code, []byte("ok"), nil
+}
+
+func (r *cycleRunner) scripts() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.got...)
+}
+
+// newExecHarnessFor — исполнитель с включённой политикой для
+// интеграционного теста цикла (отдельно от exec-тестов).
+type execHarness struct {
+	deps   *exec.Deps
+	runner *cycleRunner
+	priv   ed25519.PrivateKey
+}
+
+func newExecHarnessFor(t *testing.T, agentID string) *execHarness {
+	t.Helper()
+	dir := t.TempDir()
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	seen, err := verify.NewFileSeen(filepath.Join(dir, "exec_seen.txt"))
+	if err != nil {
+		t.Fatalf("seen: %v", err)
+	}
+	t.Cleanup(func() { seen.Close() })
+	logger, err := exec.NewFileLogger(filepath.Join(dir, "exec.log"))
+	if err != nil {
+		t.Fatalf("журнал: %v", err)
+	}
+	runner := &cycleRunner{}
+	deps, err := exec.NewDeps(func() bool { return true }, pub, agentID, seen, nil, runner, logger)
+	if err != nil {
+		t.Fatalf("deps: %v", err)
+	}
+	return &execHarness{deps: deps, runner: runner, priv: priv}
 }

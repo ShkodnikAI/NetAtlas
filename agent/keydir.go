@@ -3,6 +3,9 @@
 package agent
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -102,4 +105,31 @@ func writePublic(path string, data []byte) error {
 		return fmt.Errorf("agent: запись %s: %w", filepath.Base(path), err)
 	}
 	return nil
+}
+
+// signingPubFile — открытый ключ подписи заданий сервера в каталоге
+// состояния: копируется владельцем с сервера (pki export-pub) при
+// настройке исполнения заданий. Нет файла — задания отклоняются
+// (NewExecutor вернёт ошибку, агент не может проверять подписи).
+const signingPubFile = "signing.pub"
+
+// loadSigningPub читает открытый ключ подписи заданий (ed25519).
+func loadSigningPub(dir string) (ed25519.PublicKey, error) {
+	pubPEM, err := os.ReadFile(filepath.Join(dir, signingPubFile))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", signingPubFile, err)
+	}
+	block, _ := pem.Decode(pubPEM)
+	if block == nil {
+		return nil, fmt.Errorf("%s: не PEM", signingPubFile)
+	}
+	k, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", signingPubFile, err)
+	}
+	pub, ok := k.(ed25519.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("%s: ключ не ed25519", signingPubFile)
+	}
+	return pub, nil
 }

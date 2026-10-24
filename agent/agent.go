@@ -7,17 +7,22 @@ package agent
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/agent/checks"
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
+	"github.com/ShkodnikAI/NetAtlas/agent/exec"
 	"github.com/ShkodnikAI/NetAtlas/agent/measure"
 	"github.com/ShkodnikAI/NetAtlas/agent/spool"
+	"github.com/ShkodnikAI/NetAtlas/agent/verify"
 )
 
 // BackoffBase — начальная пауза повторов; BackoffMax — предел
@@ -47,6 +52,11 @@ type Runner struct {
 	// подключаются в NewRunner. Сценарии только для чтения.
 	SecurityChecks []checks.Checker
 
+	// Исполнение заданий (NR-025): исполнитель с политикой
+	// exec_enabled (выключено по умолчанию); nil — задания из checkin
+	// игнорируются (так было до NR-025 и остаётся в тестах).
+	Exec *exec.Deps
+
 	transport Transport
 	spool     *spool.Spool
 
@@ -68,7 +78,7 @@ func NewRunner(serverURL, dir string) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{
+	r := &Runner{
 		Server:         serverURL,
 		Dir:            dir,
 		Interval:       DefaultPollInterval,
@@ -79,7 +89,54 @@ func NewRunner(serverURL, dir string) (*Runner, error) {
 		backoffBase:    BackoffBase,
 		backoffMax:     BackoffMax,
 		SecurityChecks: checks.DefaultChecks(checks.NewPowerShellRunner()),
-	}, nil
+	}
+	ex, err := NewExecutor(dir)
+	if err != nil {
+		return nil, err
+	}
+	r.Exec = ex
+	return r, nil
+}
+
+// NewExecutor — исполнитель заданий по каталогу состояния: политика
+// из exec.json (выключено по умолчанию), ключ проверки подписи из
+// signing.pub, журнал seen и журнал исполнений рядом.
+func NewExecutor(dir string) (*exec.Deps, error) {
+	pub, err := loadSigningPub(dir)
+	if err != nil {
+		return nil, fmt.Errorf("agent: ключ проверки заданий: %w", err)
+	}
+	seen, err := verify.NewFileSeen(filepath.Join(dir, "exec_seen.txt"))
+	if err != nil {
+		return nil, fmt.Errorf("agent: журнал seen: %w", err)
+	}
+	log, err := exec.NewFileLogger(filepath.Join(dir, "exec.log"))
+	if err != nil {
+		return nil, fmt.Errorf("agent: журнал исполнений: %w", err)
+	}
+	return exec.NewDeps(
+		func() bool { return exec.LoadConfig(dir).ExecEnabled },
+		pub, agentSelfID(dir), seen,
+		exec.NewSnapshotter(), exec.NewScriptRunner(), log,
+	)
+}
+
+// agentSelfID — личность агента из клиентского сертификата каталога
+// состояния (CN=agent:<uuid>).
+func agentSelfID(dir string) string {
+	certPEM, err := os.ReadFile(filepath.Join(dir, certFile))
+	if err != nil {
+		return ""
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return ""
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return ""
+	}
+	return cert.Subject.CommonName
 }
 
 // SpoolDir — подкаталог очереди внутри каталога состояния.
@@ -136,6 +193,16 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 		}
 		return err
 	}
+	// Задания из checkin (NR-025): последовательно, без параллели;
+	// ошибка отправки результата не роняет цикл (результат уйдёт
+	// со следующим отчётом... нет: результат одноразовый, потеря —
+	// цель останется sent; журнал агента фиксирует).
+	for _, raw := range check.Jobs {
+		if r.Exec == nil {
+			break // исполнитель не настроен: задания игнорируются
+		}
+		r.handleJob(ctx, raw)
+	}
 	// Отчёт проверок безопасности (NR-010): ошибка не роняет цикл
 	// и не уходит в очередь — следующий цикл пересоберёт отчёт.
 	if len(r.SecurityChecks) > 0 {
@@ -154,6 +221,26 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// handleJob — одно задание из checkin: исполнение и отправка
+// результата. Всё — с локальным журналом; ошибки отправки не роняют
+// цикл (причина фиксируется в журнале агента).
+func (r *Runner) handleJob(ctx context.Context, raw json.RawMessage) {
+	var job exec.AgentJob
+	if err := json.Unmarshal(raw, &job); err != nil {
+		log.Printf("agent: задание не разбирается: %v", err)
+		return
+	}
+	outcome := exec.Process(ctx, job, r.Exec)
+	body, err := json.Marshal(outcome)
+	if err != nil {
+		log.Printf("agent: результат задания %d: %v", job.JobID, err)
+		return
+	}
+	if err := r.transport.SendJobResult(ctx, job.JobID, body); err != nil {
+		log.Printf("agent: результат задания %d не доставлен: %v", job.JobID, err)
+	}
 }
 
 // sendSecurity — сбор проверок и отправка /agent/v1/security.
