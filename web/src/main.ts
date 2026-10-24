@@ -11,7 +11,6 @@ import {
   renderStages,
   renderVersionCard,
   validateSignInput,
-  type CatalogTemplate,
   type ScriptHandlers,
 } from './scripts';
 import { renderDisks } from './disks';
@@ -29,11 +28,6 @@ import {
 } from './scan';
 
 let scriptsSelected: number | null = null;
-let scriptsCache: {
-  scripts: import('./api').ScriptRow[];
-  versions: import('./api').VersionRow[];
-  stages: Record<string, number>;
-} = { scripts: [], versions: [], stages: {} };
 
 const api = new NetatlasApi();
 
@@ -459,19 +453,20 @@ async function initScriptsScreen(): Promise<void> {
       api.jobs(),
       api.auditList(200),
     ]);
-    scriptsCache = { scripts: list.scripts, versions: list.versions, stages: list.stages };
     renderStages(stagesRoot, list.stages);
     renderScriptAudit(auditRoot, audit.entries);
 
     const versionsByScript: Record<number, import('./api').VersionRow | undefined> = {};
     for (const v of list.versions) versionsByScript[v.script_id] = v;
-    if (scriptsSelected === null && list.scripts.length > 0) scriptsSelected = list.scripts[0].id;
+    if (scriptsSelected === null && list.scripts.length > 0) scriptsSelected = list.scripts[0]?.id ?? null;
     renderScriptList(listRoot, list.scripts, versionsByScript, scriptsSelected, (id) => {
       scriptsSelected = id;
       void initScriptsScreen();
     });
 
-    renderDraftForm(draftRoot, catalog.templates, handlersFor(list, jobs, audit));
+    const handlers = handlersFor();
+
+    renderDraftForm(draftRoot, catalog.templates, handlers);
 
     const script = list.scripts.find((s) => s.id === scriptsSelected);
     const version = script === undefined ? undefined : versionsByScript[script.id];
@@ -481,7 +476,7 @@ async function initScriptsScreen(): Promise<void> {
       return;
     }
     const card = await api.scriptCard(script.id);
-    renderVersionCard(cardRoot, script, version, card.checks[version.id] ?? [], card.signatures[version.id], jobs.jobs, handlersFor(list, jobs, audit));
+    renderVersionCard(cardRoot, script, version, card.checks[version.id] ?? [], card.signatures[version.id], jobs.jobs, handlers);
   } catch (err) {
     if (!(err instanceof ApiError && err.status === 401)) {
       showNotice(errMessage(err), true);
@@ -489,11 +484,7 @@ async function initScriptsScreen(): Promise<void> {
   }
 }
 
-function handlersFor(
-  list: { scripts: import('./api').ScriptRow[]; versions: import('./api').VersionRow[]; stages: Record<string, number> },
-  jobs: { jobs: import('./api').JobRow[] },
-  audit: { entries: import('./api').AuditEntry[] },
-): ScriptHandlers {
+function handlersFor(): ScriptHandlers {
   return {
     onSelect: (id) => {
       scriptsSelected = id;

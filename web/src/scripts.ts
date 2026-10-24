@@ -53,10 +53,10 @@ export interface ScriptHandlers {
   onSelect: (scriptId: number) => void;
   onCreateDraft: (body: Record<string, unknown>) => Promise<void>;
   onStatus: (sid: number, vid: number, to: string, comment: string) => Promise<void>;
-  onSign: (sid: number, vid: number, name: string, sha: string) => Promise<void>;
+  onSign: (sid: number, vid: number, name: string, sha: string) => void;
   onCheckRun: (sid: number, vid: number) => Promise<void>;
   onCheckResult: (sid: number, vid: number, body: Record<string, unknown>) => Promise<void>;
-  onViewCode: (sid: number, vid: number) => Promise<string>;
+  onViewCode: (sid: number, vid: number) => Promise<void>;
   onCreateJob: (body: Record<string, unknown>) => Promise<void>;
   onStopJob: (jobId: number) => Promise<void>;
 }

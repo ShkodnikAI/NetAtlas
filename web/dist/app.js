@@ -31914,7 +31914,6 @@
 
   // src/main.ts
   var scriptsSelected = null;
-  var scriptsCache = { scripts: [], versions: [], stages: {} };
   var api2 = new NetatlasApi();
   var $2 = (id2) => {
     const e = document.getElementById(id2);
@@ -32279,17 +32278,17 @@
         api2.jobs(),
         api2.auditList(200)
       ]);
-      scriptsCache = { scripts: list.scripts, versions: list.versions, stages: list.stages };
       renderStages(stagesRoot, list.stages);
       renderScriptAudit(auditRoot, audit.entries);
       const versionsByScript = {};
       for (const v of list.versions) versionsByScript[v.script_id] = v;
-      if (scriptsSelected === null && list.scripts.length > 0) scriptsSelected = list.scripts[0].id;
+      if (scriptsSelected === null && list.scripts.length > 0) scriptsSelected = list.scripts[0]?.id ?? null;
       renderScriptList(listRoot, list.scripts, versionsByScript, scriptsSelected, (id2) => {
         scriptsSelected = id2;
         void initScriptsScreen();
       });
-      renderDraftForm(draftRoot, catalog.templates, handlersFor(list, jobs, audit));
+      const handlers = handlersFor();
+      renderDraftForm(draftRoot, catalog.templates, handlers);
       const script = list.scripts.find((s) => s.id === scriptsSelected);
       const version2 = script === void 0 ? void 0 : versionsByScript[script.id];
       if (script === void 0 || version2 === void 0) {
@@ -32298,14 +32297,14 @@
         return;
       }
       const card = await api2.scriptCard(script.id);
-      renderVersionCard(cardRoot, script, version2, card.checks[version2.id] ?? [], card.signatures[version2.id], jobs.jobs, handlersFor(list, jobs, audit));
+      renderVersionCard(cardRoot, script, version2, card.checks[version2.id] ?? [], card.signatures[version2.id], jobs.jobs, handlers);
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 401)) {
         showNotice(errMessage(err), true);
       }
     }
   }
-  function handlersFor(list, jobs, audit) {
+  function handlersFor() {
     return {
       onSelect: (id2) => {
         scriptsSelected = id2;
