@@ -578,3 +578,62 @@ func (f *fakeStore) addAgent(id string) {
 	f.agentExists[id] = true
 	f.agents = append(f.agents, store.Agent{ID: id, Hostname: "pc", Status: "active", MACList: []string{}})
 }
+
+// --- Конвейер скриптов (NR-011): фейковые заглушки. Скриптовые
+// маршруты тестируются на настоящем store (api_scripts_test.go);
+// вызов фейка — ошибка теста, а не тихое поведение.
+func (f *fakeStore) CreateScript(ctx context.Context, in store.CreateScriptInput, actor string) (int64, int64, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) CreateVersion(ctx context.Context, scriptID int64, in store.CreateScriptInput, actor string) (int64, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) ListScripts(ctx context.Context) ([]store.ScriptRow, []store.VersionRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) ScriptCard(ctx context.Context, id int64) (store.ScriptRow, []store.VersionRow, map[int64][]store.CheckRow, map[int64]store.SignatureRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) VersionContent(ctx context.Context, scriptID, versionID int64) (store.VersionFull, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) AdvanceStatus(ctx context.Context, scriptID, versionID int64, to, comment, actor string) (store.VersionRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) RecordCheck(ctx context.Context, scriptID, versionID int64, in store.CheckRow, pass bool) (store.VersionRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) SignVersion(ctx context.Context, scriptID, versionID int64, sha, signature string, expires time.Time, actor string) (store.VersionRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) StageCounts(ctx context.Context) (map[string]int, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) CreateJob(ctx context.Context, in store.CreateJobInput, actor string) (int64, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) ListJobs(ctx context.Context, versionID int64) ([]store.JobRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) JobByID(ctx context.Context, jobID int64) (store.JobRow, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) StopJob(ctx context.Context, jobID int64, reason, actor string) error {
+	panic("скриптовые тесты используют настоящий store")
+}
+
+func (f *fakeStore) SaveSecurity(ctx context.Context, agentID string, schemaVer int, collectedAt time.Time, raw []byte) error {
+	panic("скриптовые тесты используют настоящий store")
+}

@@ -102,3 +102,57 @@ func Sign(env Envelope, key ed25519.PrivateKey) (SignedJob, error) {
 	sig := ed25519.Sign(key, data)
 	return SignedJob{Envelope: env, Signature: sig}, nil
 }
+
+// scriptDomain — домен подписи скрипта: байты конверта задания и
+// подписи содержимого скрипта не путаются никогда.
+var scriptDomain = []byte("NETATLAS-SCRIPT-1\x00")
+
+// ScriptSignBytes — канонические байты подписи скрипта: домен, хэш
+// содержимого (32 байта), срок подписи (UTC RFC3339Nano,
+// длинно-префиксно). Публично: проверяющий пересобирает байты.
+func ScriptSignBytes(contentSHA []byte, expires time.Time) ([]byte, error) {
+	if len(contentSHA) != NonceSize {
+		return nil, fmt.Errorf("signing: content_sha256: нужно %d байт, получено %d", NonceSize, len(contentSHA))
+	}
+	if expires.IsZero() {
+		return nil, fmt.Errorf("signing: подпись скрипта без срока")
+	}
+	buf := make([]byte, 0, 128)
+	buf = append(buf, scriptDomain...)
+	buf = binary.AppendUvarint(buf, uint64(len(contentSHA)))
+	buf = append(buf, contentSHA...)
+	exp := []byte(expires.UTC().Format(time.RFC3339Nano))
+	buf = binary.AppendUvarint(buf, uint64(len(exp)))
+	buf = append(buf, exp...)
+	return buf, nil
+}
+
+// SignScript — подпись владельца на содержимое скрипта: ed25519 над
+// ScriptSignBytes(хэш, срок). Вызывается только владельческим
+// маршрутом подписи (кнопка «Подписать» с подтверждением вводом);
+// автоматика и ИИ этого маршрута не имеют.
+func SignScript(contentSHA []byte, expires time.Time, key ed25519.PrivateKey) ([]byte, error) {
+	if len(key) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("signing: ключ подписи неверного размера")
+	}
+	data, err := ScriptSignBytes(contentSHA, expires)
+	if err != nil {
+		return nil, err
+	}
+	return ed25519.Sign(key, data), nil
+}
+
+// VerifyScript — проверка подписи скрипта открытым ключом.
+func VerifyScript(contentSHA []byte, expires time.Time, sig []byte, pub ed25519.PublicKey) error {
+	if len(pub) != ed25519.PublicKeySize {
+		return fmt.Errorf("signing: ключ проверки неверного размера")
+	}
+	data, err := ScriptSignBytes(contentSHA, expires)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(pub, data, sig) {
+		return fmt.Errorf("signing: подпись скрипта не сходится")
+	}
+	return nil
+}

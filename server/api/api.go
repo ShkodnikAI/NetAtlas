@@ -60,6 +60,20 @@ type Store interface {
 	LatestMetrics(ctx context.Context, agentID string) ([]store.MetricAgg, error)
 	SeriesMetrics(ctx context.Context, agentID, target, kind string, from, to time.Time, hourly bool) ([]store.MetricAgg, error)
 	LatestSecurity(ctx context.Context, agentID string) (store.SecurityRow, error)
+	// Конвейер скриптов (NR-011).
+	CreateScript(ctx context.Context, in store.CreateScriptInput, actor string) (int64, int64, error)
+	CreateVersion(ctx context.Context, scriptID int64, in store.CreateScriptInput, actor string) (int64, error)
+	ListScripts(ctx context.Context) ([]store.ScriptRow, []store.VersionRow, error)
+	ScriptCard(ctx context.Context, id int64) (store.ScriptRow, []store.VersionRow, map[int64][]store.CheckRow, map[int64]store.SignatureRow, error)
+	VersionContent(ctx context.Context, scriptID, versionID int64) (store.VersionFull, error)
+	AdvanceStatus(ctx context.Context, scriptID, versionID int64, to, comment, actor string) (store.VersionRow, error)
+	RecordCheck(ctx context.Context, scriptID, versionID int64, in store.CheckRow, pass bool) (store.VersionRow, error)
+	SignVersion(ctx context.Context, scriptID, versionID int64, sha, signature string, expires time.Time, actor string) (store.VersionRow, error)
+	StageCounts(ctx context.Context) (map[string]int, error)
+	CreateJob(ctx context.Context, in store.CreateJobInput, actor string) (int64, error)
+	ListJobs(ctx context.Context, versionID int64) ([]store.JobRow, error)
+	JobByID(ctx context.Context, jobID int64) (store.JobRow, error)
+	StopJob(ctx context.Context, jobID int64, reason, actor string) error
 	DB() *sql.DB
 }
 
@@ -85,6 +99,10 @@ type API struct {
 	// Движок правил (NR-009): подключается ConfigureRules на старте;
 	// nil → маршруты компьютеров отвечают 503.
 	rules *rules.Engine
+
+	// scriptKeyDir — каталог ключей подписи владельца (NR-011):
+	// подключается ConfigureScripts; пустой → подпись отвечает 503.
+	scriptKeyDir string
 
 	// Скан (NR-005): конфигурация и подменяемые зависимости;
 	// ConfigureScan подключает, до вызова — 503.
@@ -136,6 +154,21 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("GET /api/quality/bottlenecks", a.handleQualityBottlenecks)
 	mux.HandleFunc("GET /api/security/summary", a.handleSecuritySummary)
 	mux.HandleFunc("GET /api/security/computers/{id}", a.handleSecurityComputer)
+	// Конвейер скриптов и заданий (NR-011).
+	mux.HandleFunc("GET /api/scripts", a.handleScriptsList)
+	mux.HandleFunc("POST /api/scripts", a.handleScriptCreate)
+	mux.HandleFunc("GET /api/scripts/{id}", a.handleScriptCard)
+	mux.HandleFunc("POST /api/scripts/{id}/versions", a.handleScriptNewVersion)
+	mux.HandleFunc("GET /api/scripts/{id}/versions/{vid}", a.handleScriptVersion)
+	mux.HandleFunc("POST /api/scripts/{id}/versions/{vid}/status", a.handleScriptStatus)
+	mux.HandleFunc("POST /api/scripts/{id}/versions/{vid}/check-result", a.handleCheckResult)
+	mux.HandleFunc("POST /api/scripts/{id}/versions/{vid}/check-run", a.handleCheckRun)
+	mux.HandleFunc("POST /api/scripts/{id}/versions/{vid}/sign", a.handleSign)
+	mux.HandleFunc("GET /api/catalog", a.handleCatalog)
+	mux.HandleFunc("GET /api/jobs", a.handleJobsList)
+	mux.HandleFunc("POST /api/jobs", a.handleJobCreate)
+	mux.HandleFunc("GET /api/jobs/{id}", a.handleJob)
+	mux.HandleFunc("POST /api/jobs/{id}/stop", a.handleJobStop)
 	a.mux = mux
 	return a, nil
 }
@@ -227,6 +260,10 @@ func fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, errorBody{"файл уже существует"})
 	case errors.Is(err, store.ErrAgentRevoked):
 		writeJSON(w, http.StatusConflict, errorBody{"агент уже отозван"})
+	case errors.Is(err, store.ErrScriptValue):
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+	case errors.Is(err, store.ErrScriptState):
+		writeJSON(w, http.StatusConflict, errorBody{err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, errorBody{"внутренняя ошибка"})
 	}

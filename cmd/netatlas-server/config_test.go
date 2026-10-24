@@ -146,3 +146,51 @@ func TestParseConfigAgentAddressPolicy(t *testing.T) {
 		t.Fatalf("без каталога ключей: %v", err)
 	}
 }
+
+// Диспетчеризация (NR-011): выключена по умолчанию; с флагом нужны
+// ключи и слушатель агентов; произвольные скрипты — отдельный флаг.
+func TestParseConfigDispatchFlags(t *testing.T) {
+	env := func(k string) string {
+		if k == "NETATLAS_TOKEN" {
+			return "tok-" + strings.Repeat("e", 30)
+		}
+		return "" // ключей и SNMP-переменных нет
+	}
+
+	cfg, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24"}, env)
+	if err != nil {
+		t.Fatalf("без флагов: %v", err)
+	}
+	if cfg.enableDispatch || cfg.allowCustomScripts {
+		t.Fatal("диспетчеризация должна быть выключена по умолчанию")
+	}
+
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24", "--enable-dispatch"}, env); err == nil ||
+		!strings.Contains(err.Error(), "NETATLAS_KEYDIR") {
+		t.Fatalf("dispatch без ключей: %v", err)
+	}
+
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--enable-dispatch"}, func(k string) string {
+		if k == "NETATLAS_TOKEN" {
+			return "tok-" + strings.Repeat("e", 30)
+		}
+		return "/tmp/keys"
+	}); err == nil || !strings.Contains(err.Error(), "--agent-listen") {
+		t.Fatalf("dispatch без слушателя агентов: %v", err)
+	}
+
+	cfg, err = parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--enable-dispatch", "--allow-custom-scripts", "--agent-listen", "127.0.0.1:9001"}, func(k string) string {
+		if k == "NETATLAS_TOKEN" {
+			return "tok-" + strings.Repeat("e", 30)
+		}
+		return "/tmp/keys"
+	})
+	if err != nil {
+		t.Fatalf("полная конфигурация: %v", err)
+	}
+	if !cfg.enableDispatch || !cfg.allowCustomScripts {
+		t.Fatal("флаги не прочитаны")
+	}
+}

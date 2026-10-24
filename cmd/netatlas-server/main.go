@@ -87,6 +87,10 @@ func run(cfg config) error {
 	}
 	handler.ConfigureRules(rulesEngine)
 
+	// Подпись скриптов (NR-011): ключ читается маршрутом подписи из
+	// каталога ключей в момент подписания; без каталога — 503.
+	handler.ConfigureScripts(api.ScriptsConfig{KeyDir: cfg.keyDir})
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -192,6 +196,20 @@ func startAgentListeners(ctx context.Context, cfg config, st *store.Store, errCh
 	aa, err := agentapi.New(st, ca, 0)
 	if err != nil {
 		return fmt.Errorf("agentapi: %w", err)
+	}
+	// Диспетчеризация заданий (NR-011): только при явном флаге, ключ
+	// подписи читается здесь один раз; без флага checkin задания не
+	// отдаёт никогда.
+	if cfg.enableDispatch {
+		key, err := pki.LoadSigningKey(cfg.keyDir)
+		if err != nil {
+			return fmt.Errorf("pki: ключ подписи заданий: %w", err)
+		}
+		aa.ConfigureDispatch(&agentapi.DispatchDeps{
+			AllowCustomScripts: cfg.allowCustomScripts,
+			Key:                key,
+		})
+		fmt.Fprintf(os.Stderr, "netatlas-server: диспетчеризация заданий включена (произвольные скрипты: %v)\n", cfg.allowCustomScripts)
 	}
 	certPEM, keyPEM, err := pki.EnsureServerCert(cfg.keyDir)
 	if err != nil {
