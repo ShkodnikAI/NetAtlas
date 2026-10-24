@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,5 +297,63 @@ func TestScriptValidation(t *testing.T) {
 	}
 	if _, _, err := s.CreateScript(ctx, CreateScriptInput{Name: "x", Kind: gate.KindScript}, scriptActor); !errors.Is(err, ErrScriptValue) {
 		t.Fatalf("пустое содержимое: %v", err)
+	}
+}
+
+// VersionBySHA256: связывание результата со стенда по хэшу.
+func TestVersionBySHA256(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	_, versionID, sha := createTestScript(t, s, "По хэшу")
+	sid, vid, err := s.VersionBySHA256(ctx, sha)
+	if err != nil {
+		t.Fatalf("по хэшу: %v", err)
+	}
+	if vid != versionID {
+		t.Fatalf("версия %d, хочу %d", vid, versionID)
+	}
+	if sid == 0 {
+		t.Fatal("id скрипта пустой")
+	}
+	// Неизвестный хэш — ErrNotFound.
+	if _, _, err := s.VersionBySHA256(ctx, strings.Repeat("ab", 32)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("неизвестный хэш: %v", err)
+	}
+	// Битый хэш — ErrScriptValue.
+	if _, _, err := s.VersionBySHA256(ctx, "zz"); !errors.Is(err, ErrScriptValue) {
+		t.Fatalf("битый хэш: %v", err)
+	}
+}
+
+// Журнал теста со стенда хранится вместе с проверкой (NR-026).
+func TestRecordCheckWithLog(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	scriptID, versionID, _ := createTestScript(t, s, "С журналом")
+	// Сначала статпроверка (draft → checked), затем тест ВМ со стенда.
+	if _, err := s.RecordCheck(ctx, scriptID, versionID, CheckRow{
+		Kind: "static", Source: "stand", Actor: "stand", Log: "PSScriptAnalyzer: 0 ошибок",
+	}, true); err != nil {
+		t.Fatalf("статпроверка: %v", err)
+	}
+	if _, err := s.RecordCheck(ctx, scriptID, versionID, CheckRow{
+		Kind: "vm", Source: "stand", Actor: "stand",
+		Detail: `{"metrics":{"free_space_gb":42.5}}`,
+		Log:    "Hyper-V: снимок восстановлен, скрипт выполнен за 12 с",
+	}, true); err != nil {
+		t.Fatalf("запись с журналом: %v", err)
+	}
+	_, versions, checks, _, _ := s.ScriptCard(ctx, scriptID)
+	if versions[0].Status != gate.StatusTested {
+		t.Fatalf("статус после vm pass: %q", versions[0].Status)
+	}
+	if got := checks[versionID][0].Log; got == "" {
+		t.Fatal("журнал теста не прочитался")
+	}
+	// Журнал больше 256 КБ — отказ.
+	if _, err := s.RecordCheck(ctx, scriptID, versionID, CheckRow{
+		Kind: "vm", Source: "stand", Actor: "stand", Log: strings.Repeat("x", MaxTestRunLogBytes+1),
+	}, true); !errors.Is(err, ErrScriptValue) {
+		t.Fatalf("журнал без лимита: %v", err)
 	}
 }

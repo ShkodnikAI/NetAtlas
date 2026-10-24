@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -49,40 +50,49 @@ func (PowerShellRunner) Run(ctx context.Context, script string, timeout time.Dur
 	defer cancel()
 	cmd := exec.CommandContext(cctx, "powershell.exe",
 		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
-	var out bytes.Buffer
-	// Предел вывода: читаем не больше MaxOutputBytes+1 — превышение
-	// видно по размеру.
-	cmd.Stdout = &limitWriter{w: &out, limit: MaxOutputBytes}
-	cmd.Stderr = &limitWriter{w: &out, limit: MaxOutputBytes}
+	// Предел вывода: stdout и stderr пишут в общий буфер через
+	// мьютекс — exec копирует их в отдельных горутинах.
+	w := &limitWriter{limit: MaxOutputBytes}
+	cmd.Stdout = w
+	cmd.Stderr = w
 	runErr := cmd.Run()
-	_ = cctx.Err() // таймаут виден в runErr от контекста
 	if cctx.Err() == context.DeadlineExceeded {
-		return 0, out.Bytes(), fmt.Errorf("exec: таймаут задания истёк")
+		return 0, w.Bytes(), fmt.Errorf("exec: таймаут задания истёк")
 	}
 	if runErr != nil {
 		var ee *exec.ExitError
 		if errors.As(runErr, &ee) {
-			return ee.ExitCode(), out.Bytes(), nil // код возврата — не сбой запуска
+			return ee.ExitCode(), w.Bytes(), nil // код возврата — не сбой запуска
 		}
-		return 0, out.Bytes(), fmt.Errorf("exec: powershell: %w", runErr)
+		return 0, w.Bytes(), fmt.Errorf("exec: powershell: %w", runErr)
 	}
-	return 0, out.Bytes(), nil
+	return 0, w.Bytes(), nil
 }
 
-// limitWriter — буфер с жёстким пределом: сверх лимита байты
-// отбрасываются (вывод не раздувает память).
+// limitWriter — общий буфер stdout/stderr с жёстким пределом:
+// сверх лимита байты отбрасываются (вывод не раздувает память).
+// Потокобезопасен: exec копирует stdout и stderr параллельно.
 type limitWriter struct {
-	w     *bytes.Buffer
+	mu    sync.Mutex
+	buf   bytes.Buffer
 	limit int
 }
 
 func (l *limitWriter) Write(p []byte) (int, error) {
-	if l.w.Len()+len(p) > l.limit {
-		room := l.limit - l.w.Len()
-		if room > 0 {
-			l.w.Write(p[:room])
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.buf.Len()+len(p) > l.limit {
+		if room := l.limit - l.buf.Len(); room > 0 {
+			l.buf.Write(p[:room])
 		}
 		return len(p), nil // остальное отброшено без ошибки
 	}
-	return l.w.Write(p)
+	return l.buf.Write(p)
+}
+
+// Bytes — накопленный вывод (без превышения лимита).
+func (l *limitWriter) Bytes() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]byte(nil), l.buf.Bytes()...)
 }

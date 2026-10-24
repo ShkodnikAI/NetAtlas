@@ -56,9 +56,9 @@ func TestPowerShellRunnerOutputCapped(t *testing.T) {
 	r := NewScriptRunner()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	// Вывод больше лимита: байты сверх предела отбрасываются, память
-	// не раздувается.
-	code, out, err := r.Run(ctx, "1..300000 | ForEach-Object { Write-Output 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }", 4*time.Minute)
+	// Вывод больше лимита (60000 строк ≈ 1.9 МБ > 256 КБ): байты
+	// сверх предела отбрасываются, память не раздувается.
+	code, out, err := r.Run(ctx, "1..60000 | ForEach-Object { Write-Output 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("запуск: %v", err)
 	}

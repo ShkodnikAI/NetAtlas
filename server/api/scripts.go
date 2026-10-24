@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -407,6 +408,79 @@ func normalizeHex(s string) string {
 	}
 	return string(out)
 }
+
+// testRunBody — тело POST /api/test-runs: результат со стенда
+// Hyper-V (NR-026). Связь с версией — по хэшу содержимого: владелец
+// запускает локальный файл, сервер находит версию сам. Лог —
+// недоверенный текст (вывод с целевой машины).
+type testRunBody struct {
+	ScriptSHA256 string             `json:"script_sha256"`
+	Stage        string             `json:"stage"`  // static | vm
+	Result       string             `json:"result"` // pass | fail
+	Metrics      map[string]float64 `json:"metrics,omitempty"`
+	Log          string             `json:"log,omitempty"`
+}
+
+// handleTestRun — POST /api/test-runs: запись результата стенда.
+// Хэш должен совпасть с существующей версией — иначе отказ (результат
+// без совпадающего хэша отвергается). Проходной vm-результат переводит
+// статус checked → tested через gate (store), неуспех оставляет статус
+// и пишется в аудит (script_check/fail).
+func (a *API) handleTestRun(w http.ResponseWriter, r *http.Request) {
+	var body testRunBody
+	r.Body = http.MaxBytesReader(w, r.Body, maxJobsBody+MaxTestRunBodySlack)
+	if err := decodeJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		return
+	}
+	if body.Stage != "static" && body.Stage != "vm" {
+		writeJSON(w, http.StatusBadRequest, errorBody{"stage: static или vm"})
+		return
+	}
+	if body.Result != "pass" && body.Result != "fail" {
+		writeJSON(w, http.StatusBadRequest, errorBody{"result: pass или fail"})
+		return
+	}
+	sha := normalizeHex(body.ScriptSHA256)
+	if sha == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{"script_sha256: 64 hex-символа"})
+		return
+	}
+	if len(body.Log) > MaxTestRunLogBytes {
+		writeJSON(w, http.StatusBadRequest, errorBody{fmt.Sprintf("log длиннее %d байт", MaxTestRunLogBytes)})
+		return
+	}
+	scriptID, versionID, err := a.store.VersionBySHA256(r.Context(), sha)
+	if err != nil {
+		failScripts(w, err)
+		return
+	}
+	detail := ""
+	if len(body.Metrics) > 0 {
+		raw, err := json.Marshal(map[string]any{"metrics": body.Metrics})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorBody{"метрики"})
+			return
+		}
+		detail = string(raw)
+	}
+	updated, err := a.store.RecordCheck(r.Context(), scriptID, versionID, store.CheckRow{
+		Kind: body.Stage, Source: "stand", Detail: detail, Log: body.Log, Actor: "stand",
+	}, body.Result == "pass")
+	if err != nil {
+		failScripts(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"script_id": scriptID, "version_id": versionID, "status": updated.Status,
+	})
+}
+
+// MaxTestRunBodySlack — запас тела test-runs поверх журнала (метрики).
+const MaxTestRunBodySlack = 64 << 10
+
+// MaxTestRunLogBytes — предел журнала теста (как в store).
+const MaxTestRunLogBytes = 256 << 10
 
 // createJobBody — тело POST /api/jobs.
 type createJobBody struct {
