@@ -21,6 +21,7 @@
     <button class="item" data-page="quality">Качество сети</button>
     <button class="item" data-page="security">Безопасность</button>
     <button class="item" data-page="scripts">Скрипты и тесты</button>
+    <button class="item" data-page="activity">Активность</button>
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
     <div id="audit-badge" class="audit-badge" role="status" hidden></div>
@@ -120,6 +121,12 @@
       <h2>Диски</h2>
       <p class="subtitle">Заполнение томов всех компьютеров с агентами; прогноз — линейная регрессия за 30 дней, если данных достаточно.</p>
       <div id="disks-root"></div>
+    </section>
+
+    <section id="screen-activity" hidden aria-label="Активность">
+      <h2>Активность сотрудников</h2>
+      <p class="subtitle">Минимальные сведения о работе за компьютером: активное приложение, домены сайтов, время активности и простоя. Сбор выключен по умолчанию и включается только с подтверждением, что сотрудники уведомлены. Клавиши, переписка, пароли, адреса страниц и скриншоты не собираются — в коде их нет.</p>
+      <div id="activity-root"></div>
     </section>
 
     <section id="screen-scripts" hidden aria-label="Скрипты и тесты">

@@ -641,3 +641,37 @@ func (f *fakeStore) StopJob(ctx context.Context, jobID int64, reason, actor stri
 func (f *fakeStore) SaveSecurity(ctx context.Context, agentID string, schemaVer int, collectedAt time.Time, raw []byte) error {
 	panic("скриптовые тесты используют настоящий store")
 }
+
+// --- Активность (NR-012): фейковые заглушки; настоящие тесты на
+// store (api_activity_test.go использует настоящий store).
+func (f *fakeStore) EnableActivity(ctx context.Context, agentID, phrase, actor string) error {
+	panic("активность тестируется на настоящем store")
+}
+
+func (f *fakeStore) DisableActivity(ctx context.Context, agentID, actor string) error {
+	panic("активность тестируется на настоящем store")
+}
+
+func (f *fakeStore) ActivityEnabled(ctx context.Context, agentID string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeStore) ListActivityEnabled(ctx context.Context) ([]store.ActivityStatus, error) {
+	panic("активность тестируется на настоящем store")
+}
+
+func (f *fakeStore) SaveActivity(ctx context.Context, row store.ActivityRow) error {
+	panic("активность тестируется на настоящем store")
+}
+
+func (f *fakeStore) ActivityAggregates(ctx context.Context, from, to time.Time, agentID, account string) (store.ActivitySummary, error) {
+	panic("активность тестируется на настоящем store")
+}
+
+func (f *fakeStore) PurgeOldActivity(ctx context.Context, now time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeStore) DeleteActivityFor(ctx context.Context, agentID, actor string) (int64, error) {
+	panic("активность тестируется на настоящем store")
+}

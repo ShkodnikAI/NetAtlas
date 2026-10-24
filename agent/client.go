@@ -229,6 +229,8 @@ type Transport interface {
 	SendSecurity(ctx context.Context, body []byte) error
 	// SendJobResult отправляет результат исполнения задания (NR-025).
 	SendJobResult(ctx context.Context, jobID int64, body []byte) error
+	// SendActivity отправляет агрегат активности (NR-012).
+	SendActivity(ctx context.Context, body []byte) error
 }
 
 // Client — HTTP-клиент агентских маршрутов по mTLS.
@@ -280,6 +282,19 @@ func (c *Client) SendJobResult(ctx context.Context, jobID int64, body []byte) er
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("agent: job result: код %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// SendActivity — POST /agent/v1/activity: 5-минутный агрегат.
+func (c *Client) SendActivity(ctx context.Context, body []byte) error {
+	resp, err := c.hc.Post(c.base+"/agent/v1/activity", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("agent: activity: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("agent: activity: код %d", resp.StatusCode)
 	}
 	return nil
 }

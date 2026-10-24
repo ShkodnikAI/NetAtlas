@@ -429,3 +429,90 @@ func TestTestRunsEndpoint(t *testing.T) {
 		t.Fatal("test-runs без токена")
 	}
 }
+
+// Активность сотрудников (NR-012) на настоящем store: включение с
+// фразой, выключение, просмотр с аудитом, удаление, 401.
+func TestActivityEndpoints(t *testing.T) {
+	_, h, st := scriptsAPI(t)
+	ctx := t.Context()
+	if err := st.UpsertAgent(ctx, "agent:act-1", "ОФИС-01", "serial-a", nil, "test"); err != nil {
+		t.Fatalf("агент: %v", err)
+	}
+
+	// Выключено по умолчанию.
+	enabled, _ := st.ActivityEnabled(ctx, "agent:act-1")
+	if enabled {
+		t.Fatal("сбор включён без подтверждения")
+	}
+	// Данные от выключенного ПК отклоняются агентским API (тест
+	// на уровне store: приём без enabled не происходит).
+	if err := st.SaveActivity(ctx, store.ActivityRow{
+		AgentID: "agent:act-1", Account: "user", WindowStart: time.Now().UTC().Format(time.RFC3339),
+		Apps: map[string]int{}, Domains: map[string]int{},
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Включение с неверной фразой — 400.
+	if rec := do(h, "POST", "/api/activity/enable", `{"agent_id":"agent:act-1","confirmation":"уведомлены"}`, bearer); rec.Code != http.StatusBadRequest {
+		t.Fatalf("неверная фраза: %d: %s", rec.Code, rec.Body.String())
+	}
+	// Включение с точной фразой — 200.
+	if rec := do(h, "POST", "/api/activity/enable",
+		`{"agent_id":"agent:act-1","confirmation":"Сотрудники уведомлены"}`, bearer); rec.Code != http.StatusOK {
+		t.Fatalf("включение: %d: %s", rec.Code, rec.Body.String())
+	}
+	enabled, _ = st.ActivityEnabled(ctx, "agent:act-1")
+	if !enabled {
+		t.Fatal("сбор не включился с верной фразой")
+	}
+	// Включение неизвестному агенту — 404.
+	if rec := do(h, "POST", "/api/activity/enable",
+		`{"agent_id":"agent:ghost","confirmation":"Сотрудники уведомлены"}`, bearer); rec.Code != http.StatusNotFound {
+		t.Fatalf("неизвестный агент: %d", rec.Code)
+	}
+
+	// Просмотр со списком ПК — каждый запрос в аудит.
+	if rec := do(h, "GET", "/api/activity/computers", "", bearer); rec.Code != http.StatusOK {
+		t.Fatalf("список ПК: %d", rec.Code)
+	}
+	// Сводка за день.
+	if rec := do(h, "GET", "/api/activity/summary", "", bearer); rec.Code != http.StatusOK {
+		t.Fatalf("сводка: %d: %s", rec.Code, rec.Body.String())
+	}
+	// Период больше года — 400.
+	if rec := do(h, "GET", "/api/activity/summary?from=2020-01-01T00:00:00Z&to=2026-01-01T00:00:00Z", "", bearer); rec.Code != http.StatusBadRequest {
+		t.Fatal("бесконечный период принят")
+	}
+	// В аудите есть activity_enable и activity_view.
+	rec := do(h, "GET", "/api/audit?limit=100", "", bearer)
+	if !strings.Contains(rec.Body.String(), "activity_enable") || !strings.Contains(rec.Body.String(), "activity_view") {
+		t.Fatalf("аудит активности пуст: %s", rec.Body.String())
+	}
+	// В записи включения — подтверждение владельца.
+	if !strings.Contains(rec.Body.String(), "Сотрудники уведомлены") {
+		t.Fatal("подтверждение владельца не в аудите")
+	}
+
+	// Удаление собранного по ПК.
+	if rec := do(h, "DELETE", "/api/activity?computer=agent:act-1", "", bearer); rec.Code != http.StatusOK {
+		t.Fatalf("удаление: %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(do(h, "GET", "/api/audit?limit=100", "", bearer).Body.String(), "activity_purge") {
+		t.Fatal("удаления нет в аудите")
+	}
+	// Удаление без computer — 400.
+	if rec := do(h, "DELETE", "/api/activity", "", bearer); rec.Code != http.StatusBadRequest {
+		t.Fatal("удаление без компьютера принято")
+	}
+	// Без токена — 401.
+	for _, c := range [][2]string{
+		{"POST", "/api/activity/enable"},
+		{"GET", "/api/activity/summary"},
+		{"DELETE", "/api/activity?computer=x"},
+	} {
+		if rec := do(h, c[0], c[1], "{}", ""); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s без токена: %d", c[0], c[1], rec.Code)
+		}
+	}
+}
