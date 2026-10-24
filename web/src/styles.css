@@ -375,3 +375,33 @@ dialog .error { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-si
 }
 
 .muted { color: var(--muted); }
+
+/* --- Компьютеры и диски (NR-009) --- */
+.data-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.data-table th { text-align: left; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.data-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.row-click { cursor: pointer; }
+.row-click:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 11px; border: 1px solid var(--line); }
+.severity-critical { background: color-mix(in srgb, #c0392b 18%, transparent); border-color: #c0392b; }
+.severity-warning { background: color-mix(in srgb, #d4a017 20%, transparent); border-color: #d4a017; }
+.severity-info { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.finding { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; display: grid; gap: 4px; }
+.finding-fact { font-weight: 600; }
+.kv { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.kv-label { color: var(--muted); min-width: 180px; }
+.kv-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tabs2 { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; }
+.tabs2 .tab { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.tabs2 .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tabpage2 { display: none; }
+.tabpage2.active { display: block; }
+.card-head { display: flex; align-items: center; gap: 12px; }
+.card-head .back { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.disk-row { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; display: grid; gap: 6px; }
+.disk-title { font-weight: 600; }
+.disk-forecast { font-size: 12px; color: var(--muted); }
+.fill-bar { height: 8px; border: 1px solid var(--line2); border-radius: 5px; overflow: hidden; background: transparent; }
+.fill-bar-inner { height: 100%; background: var(--accent); }
+.fill-bar-inner.warn { background: #d4a017; }
+.fill-bar-inner.danger { background: #c0392b; }

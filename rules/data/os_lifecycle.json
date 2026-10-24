@@ -1,0 +1,74 @@
+{
+  "rows": [
+    {
+      "name": "Windows 10 (Home, Pro, Enterprise, Education)",
+      "caption_contains": "Windows 10",
+      "build_prefixes": ["19041", "19042", "19043", "19044", "19045"],
+      "eol_home_pro": "2025-10-14",
+      "eol_ent_edu": "2025-10-14",
+      "source_url": "https://support.microsoft.com/en-us/windows/deployment/updates-lifecycle/windows-10-support-has-ended-on-october-14-2025",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "name": "Windows 11 21H2/22H2 (Home, Pro)",
+      "caption_contains": "Windows 11",
+      "build_prefixes": ["22000", "22621"],
+      "eol_home_pro": "2024-10-08",
+      "eol_ent_edu": "2025-10-14",
+      "source_url": "https://learn.microsoft.com/en-us/lifecycle/announcements/october-14-2025-products-end-of-support",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "name": "Windows 11 23H2 (Home, Pro)",
+      "caption_contains": "Windows 11",
+      "build_prefixes": ["22631"],
+      "eol_home_pro": "2025-11-11",
+      "eol_ent_edu": "2026-11-10",
+      "source_url": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "name": "Windows 11 24H2 (Home, Pro)",
+      "caption_contains": "Windows 11",
+      "build_prefixes": ["26100"],
+      "eol_home_pro": "2026-10-13",
+      "eol_ent_edu": "2027-10-12",
+      "source_url": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "name": "Windows 11 25H2 (Home, Pro)",
+      "caption_contains": "Windows 11",
+      "build_prefixes": ["26200"],
+      "eol_home_pro": "2027-10-12",
+      "eol_ent_edu": "2028-10-10",
+      "source_url": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "name": "Windows 11 26H1 (новые устройства)",
+      "caption_contains": "Windows 11",
+      "build_prefixes": ["28000"],
+      "eol_home_pro": "2028-03-14",
+      "eol_ent_edu": "2029-03-13",
+      "source_url": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "name": "Windows 11 26H2",
+      "caption_contains": "Windows 11",
+      "build_prefixes": ["26300"],
+      "eol_home_pro": "2028-10-10",
+      "eol_ent_edu": "2029-10-09",
+      "source_url": "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information",
+      "checked": "2026-10-24",
+      "verified": true
+    }
+  ]
+}

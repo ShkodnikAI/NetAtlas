@@ -16,8 +16,8 @@
     <button class="item active" data-page="map">Карта сети</button>
     <button class="item" data-page="scan">Мастер сканирования</button>
     <button class="item" data-page="devices">Найденные устройства <span id="alerts-badge" class="soon-badge" hidden>0</span></button>
-    <button class="item soon" disabled>Компьютеры <span class="soon-badge">скоро</span></button>
-    <button class="item soon" disabled>Диски <span class="soon-badge">скоро</span></button>
+    <button class="item" data-page="computers">Компьютеры</button>
+    <button class="item" data-page="disks">Диски</button>
     <button class="item soon" disabled>Качество сети <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Безопасность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
@@ -94,6 +94,16 @@
         </thead>
         <tbody></tbody>
       </table>
+    </section>
+
+    <section id="screen-computers" hidden aria-label="Компьютеры">
+      <div id="computers-root"></div>
+    </section>
+
+    <section id="screen-disks" hidden aria-label="Диски">
+      <h2>Диски</h2>
+      <p class="subtitle">Заполнение томов всех компьютеров с агентами; прогноз — линейная регрессия за 30 дней, если данных достаточно.</p>
+      <div id="disks-root"></div>
     </section>
 
     <div class="workspace">

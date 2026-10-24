@@ -1,0 +1,60 @@
+{
+  "rules": [
+    {
+      "id": "ram_low",
+      "severity": "warning",
+      "advice": "Добавьте память: 8 ГБ — практический минимум для Windows 11 и рабочих приложений. Проверьте свободные слоты в документации платы.",
+      "source": ["hardware.total_physical_memory", "hardware.memory_modules"],
+      "params": { "min_gb": 8 }
+    },
+    {
+      "id": "ssd_wear_high",
+      "severity": "warning",
+      "advice": "Диск близок к износу: спланируйте замену SSD и убедитесь в актуальности резервных копий.",
+      "source": ["disks.disks.wear"],
+      "params": { "wear_percent": 80 }
+    },
+    {
+      "id": "disk_temp_high",
+      "severity": "warning",
+      "advice": "Проверьте охлаждение корпуса и поток воздуха на накопители; перегрев сокращает срок службы диска.",
+      "source": ["disks.disks.temperature"],
+      "params": { "temp_c": 70 }
+    },
+    {
+      "id": "os_out_of_support",
+      "severity": "critical",
+      "advice": "Обновления безопасности не выпускаются: обновите ОС или изолируйте машину. Таблица сроков: rules/data/os_lifecycle.json.",
+      "source": ["os.build_number", "os.caption"],
+      "params": { "days_ahead": 180 }
+    },
+    {
+      "id": "cpu_generation_old",
+      "severity": "info",
+      "advice": "Процессор не относится к поколениям из таблицы минимальных требований Windows 11: машина не получит обновление ОС.",
+      "source": ["hardware.cpus.name"],
+      "params": { "min_generation_intel": 8, "min_series_amd": 2000 }
+    },
+    {
+      "id": "os_updates_stale",
+      "severity": "warning",
+      "advice": "Обновления не ставились дольше 60 дней: запустите Windows Update и проверьте ошибки установки.",
+      "source": ["os.latest_hotfix", "os.hotfixes.installed_on"],
+      "params": { "stale_days": 60 }
+    },
+    {
+      "id": "volume_free_low",
+      "severity": "warning",
+      "advice": "Системный том заполнен: очистите место или расширьте том, иначе обновления перестанут ставиться.",
+      "source": ["disks.volumes.size_remaining"],
+      "params": { "free_percent": 15, "drive": "C" }
+    },
+    {
+      "id": "drivers_old",
+      "severity": "info",
+      "advice": "Драйвер сетевой карты или видеокарты старше трёх лет: обновите с сайта производителя (информационно).",
+      "source": ["drivers.date", "drivers.device_name"],
+      "params": { "years": 3 }
+    }
+  ]
+}

@@ -27,6 +27,9 @@ type config struct {
 	agentListen       string
 	agentEnrollListen string
 	keyDir            string
+
+	// Правила (NR-009): пусто — встроенные.
+	rulesDir string
 }
 
 // errUsage — ошибки конфигурации: завершение с кодом 2.
@@ -49,6 +52,8 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		"адрес mTLS-слушателя агентов (по умолчанию выключен)")
 	fs.StringVar(&cfg.agentEnrollListen, "agent-enroll-listen", "",
 		"адрес слушателя регистрации агентов (по умолчанию выключен)")
+	fs.StringVar(&cfg.rulesDir, "rules-dir", "",
+		"каталог правил (по умолчанию — встроенные rules/data)")
 	if err := fs.Parse(args); err != nil {
 		return config{}, fmt.Errorf("%w: %v", errUsage, err)
 	}
