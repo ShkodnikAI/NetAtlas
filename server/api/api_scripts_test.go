@@ -350,3 +350,82 @@ func TestScriptRoutesRequireToken(t *testing.T) {
 
 // Тесты быстрые: никаких реальных ожиданий и сети.
 var _ = time.Second
+
+// Приём результатов стенда (NR-026): привязка по хэшу, статусы
+// через gate, отказ без совпадающего хэша.
+func TestTestRunsEndpoint(t *testing.T) {
+	_, h, _ := scriptsAPI(t)
+	sid, vid := draftFromBody(t, h, `{"name":"Стенд","kind":"script","content":"Write-Output stand"}`)
+	rec := do(h, "GET", "/api/scripts/"+sid+"/versions/"+vid, "", bearer)
+	var v struct {
+		SHA256 string `json:"sha256"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &v)
+
+	// Статическая проверка со стенда: draft → checked.
+	rec = do(h, "POST", "/api/test-runs",
+		`{"script_sha256":"`+v.SHA256+`","stage":"static","result":"pass","log":"PSScriptAnalyzer: 0 ошибок"}`, bearer)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("static со стенда: %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Status string `json:"status"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Status != gate.StatusChecked {
+		t.Fatalf("статус после static: %q", resp.Status)
+	}
+	// Тест ВМ со стенда с метриками и логом: checked → tested.
+	rec = do(h, "POST", "/api/test-runs",
+		`{"script_sha256":"`+v.SHA256+`","stage":"vm","result":"pass","metrics":{"free_space_gb":42.5,"ping_ms":1.2},"log":"снимок восстановлен, выполнено за 12 с"}`, bearer)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("vm со стенда: %d: %s", rec.Code, rec.Body.String())
+	}
+	// Результат без совпадающего хэша — 404.
+	if rec := do(h, "POST", "/api/test-runs",
+		`{"script_sha256":"`+strings.Repeat("ab", 32)+`","stage":"vm","result":"pass"}`, bearer); rec.Code != http.StatusNotFound {
+		t.Fatalf("чужой хэш: %d", rec.Code)
+	}
+	// Битая схема: stage — 400.
+	if rec := do(h, "POST", "/api/test-runs",
+		`{"script_sha256":"`+v.SHA256+`","stage":"deploy","result":"pass"}`, bearer); rec.Code != http.StatusBadRequest {
+		t.Fatalf("чужая стадия: %d", rec.Code)
+	}
+	// Журнал больше 256 КБ — 400.
+	big := strings.Repeat("x", 256<<10)
+	if rec := do(h, "POST", "/api/test-runs",
+		`{"script_sha256":"`+v.SHA256+`","stage":"vm","result":"pass","log":"`+big+`"}`, bearer); rec.Code != http.StatusBadRequest {
+		t.Fatalf("журнал без лимита: %d", rec.Code)
+	}
+	// Провальный тест оставляет статус и пишется в аудит.
+	sid2, vid2 := draftFromBody(t, h, `{"name":"Стенд-2","kind":"script","content":"Write-Output stand2"}`)
+	rec = do(h, "GET", "/api/scripts/"+sid2+"/versions/"+vid2, "", bearer)
+	var v2 struct {
+		SHA256 string `json:"sha256"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &v2)
+	do(h, "POST", "/api/test-runs", `{"script_sha256":"`+v2.SHA256+`","stage":"static","result":"pass"}`, bearer)
+	do(h, "POST", "/api/test-runs", `{"script_sha256":"`+v2.SHA256+`","stage":"vm","result":"fail","log":"служба не поднялась"}`, bearer)
+	rec = do(h, "GET", "/api/scripts/"+sid2, "", bearer)
+	var card struct {
+		Versions []store.VersionRow         `json:"versions"`
+		Checks   map[int64][]store.CheckRow `json:"checks"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &card)
+	if card.Versions[0].Status != gate.StatusChecked {
+		t.Fatalf("провал теста изменил статус: %q", card.Versions[0].Status)
+	}
+	last := card.Checks[card.Versions[0].ID][0]
+	if last.Result != "fail" {
+		t.Fatalf("провал не записан: %+v", last)
+	}
+	// В аудите есть script_check с result=fail.
+	rec = do(h, "GET", "/api/audit?limit=100", "", bearer)
+	if !strings.Contains(rec.Body.String(), `"result":"fail"`) || !strings.Contains(rec.Body.String(), "script_check") {
+		t.Fatal("провала нет в аудите")
+	}
+	// Без токена — 401.
+	if rec := do(h, "POST", "/api/test-runs", `{}`, ""); rec.Code != http.StatusUnauthorized {
+		t.Fatal("test-runs без токена")
+	}
+}

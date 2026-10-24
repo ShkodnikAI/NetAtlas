@@ -29,6 +29,8 @@ const (
 	MaxScriptContentLen = 256 << 10 // 256 КБ текста скрипта
 	MaxScriptCommentLen = 2000
 	MaxScriptDetailLen  = 4000
+	// MaxTestRunLogBytes — предел журнала теста со стенда.
+	MaxTestRunLogBytes = 256 << 10
 	// ScriptSignValidity — срок подписи владельца: задание, выданное
 	// позже, не отдаётся и помечается expired.
 	ScriptSignValidity = 30 * 24 * time.Hour
@@ -84,6 +86,9 @@ type CheckRow struct {
 	Comment string `json:"comment,omitempty"`
 	RanAt   string `json:"ran_at"`
 	Actor   string `json:"actor"`
+	// Log — журнал теста со стенда (NR-026): недоверенный текст,
+	// до 256 КБ; для остальных источников пустой.
+	Log string `json:"log,omitempty"`
 }
 
 // SignatureRow — подпись владельца версии.
@@ -455,6 +460,9 @@ func (s *Store) RecordCheck(ctx context.Context, scriptID, versionID int64, in C
 	if len(in.Detail) > MaxScriptDetailLen {
 		return VersionRow{}, fmt.Errorf("%w: detail длиннее %d", ErrScriptValue, MaxScriptDetailLen)
 	}
+	if len(in.Log) > MaxTestRunLogBytes {
+		return VersionRow{}, fmt.Errorf("%w: журнал теста длиннее %d", ErrScriptValue, MaxTestRunLogBytes)
+	}
 	if in.Actor == "" {
 		return VersionRow{}, fmt.Errorf("%w: актор не задан", ErrScriptValue)
 	}
@@ -472,10 +480,10 @@ func (s *Store) RecordCheck(ctx context.Context, scriptID, versionID int64, in C
 		return VersionRow{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
-                INSERT INTO test_runs (script_version_id, kind, source, result, detail, comment, ran_at, actor)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                INSERT INTO test_runs (script_version_id, kind, source, result, detail, comment, ran_at, actor, log)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		versionID, in.Kind, in.Source, result, in.Detail, in.Comment,
-		time.Now().UTC().Format(time.RFC3339Nano), in.Actor); err != nil {
+		time.Now().UTC().Format(time.RFC3339Nano), in.Actor, in.Log); err != nil {
 		return VersionRow{}, fmt.Errorf("store: запись проверки: %w", err)
 	}
 	if pass {
@@ -576,6 +584,27 @@ func (s *Store) SignVersion(ctx context.Context, scriptID, versionID int64, sha,
 	return v, nil
 }
 
+// VersionBySHA256 — версия по хэшу содержимого: результаты со
+// стенда приходят с хэшем скрипта (владелец запускает локальный
+// файл), связываем с версией без участия клиента. Несколько версий
+// с одним содержимым — берём последнюю по времени.
+func (s *Store) VersionBySHA256(ctx context.Context, sha string) (int64, int64, error) {
+	if len(sha) != 64 {
+		return 0, 0, fmt.Errorf("%w: хэш не 64 hex-символа", ErrScriptValue)
+	}
+	var scriptID, versionID int64
+	err := s.db.QueryRowContext(ctx, `
+                SELECT script_id, id FROM script_versions WHERE sha256 = ? ORDER BY id DESC LIMIT 1`, sha).
+		Scan(&scriptID, &versionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, 0, fmt.Errorf("store: версия по хэшу: %w", err)
+	}
+	return scriptID, versionID, nil
+}
+
 // StageCounts — счётчики версий по статусам конвейера (карточки
 // этапов на экране).
 func (s *Store) StageCounts(ctx context.Context) (map[string]int, error) {
@@ -644,7 +673,7 @@ func (s *Store) listVersions(ctx context.Context, scriptID int64) ([]VersionRow,
 
 func (s *Store) listChecks(ctx context.Context, versionID int64) ([]CheckRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-                SELECT id, kind, source, result, detail, comment, ran_at, actor
+                SELECT id, kind, source, result, detail, comment, ran_at, actor, log
                 FROM test_runs WHERE script_version_id = ? ORDER BY id DESC LIMIT 50`, versionID)
 	if err != nil {
 		return nil, fmt.Errorf("store: проверки версии %d: %w", versionID, err)
@@ -653,7 +682,7 @@ func (s *Store) listChecks(ctx context.Context, versionID int64) ([]CheckRow, er
 	out := []CheckRow{}
 	for rows.Next() {
 		var c CheckRow
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Source, &c.Result, &c.Detail, &c.Comment, &c.RanAt, &c.Actor); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Source, &c.Result, &c.Detail, &c.Comment, &c.RanAt, &c.Actor, &c.Log); err != nil {
 			return nil, fmt.Errorf("store: проверки версии %d: строка: %w", versionID, err)
 		}
 		out = append(out, c)

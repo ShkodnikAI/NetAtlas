@@ -610,6 +610,10 @@ func (f *fakeStore) RecordCheck(ctx context.Context, scriptID, versionID int64, 
 	panic("скриптовые тесты используют настоящий store")
 }
 
+func (f *fakeStore) VersionBySHA256(ctx context.Context, sha string) (int64, int64, error) {
+	panic("скриптовые тесты используют настоящий store")
+}
+
 func (f *fakeStore) SignVersion(ctx context.Context, scriptID, versionID int64, sha, signature string, expires time.Time, actor string) (store.VersionRow, error) {
 	panic("скриптовые тесты используют настоящий store")
 }
