@@ -14,7 +14,8 @@ permissions:
 jobs:
   build-test:
     permissions:
-      contents: write
+      contents: read
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -49,16 +50,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
-          if git log -1 --format=%s | grep -q "ci: windows diagnostics"; then echo "уже диагностический коммит"; exit 0; fi
+          gh pr comment "${{ github.event.number }}" --body "windows CI diag стартует..." >/dev/null 2>&1 || true
           { echo "=== gofmt -l ==="; gofmt -l . 2>&1 || true;
             echo "=== go vet ==="; go vet ./... 2>&1 || true;
-            echo "=== go test ==="; go test ./... -count=1 2>&1 || true; } > ci-windows-diag.txt
-          tail -80 ci-windows-diag.txt
-          git config user.email "ci@netatlas.local"
-          git config user.name "ci-diag"
-          git add ci-windows-diag.txt
-          git commit -m "ci: windows diagnostics"
-          git push
+            echo "=== go test ==="; go test ./... -count=1 2>&1 || true; } > diag.txt
+          gh pr comment "${{ github.event.number }}" --body-file diag.txt || true
 
   web:
     runs-on: ubuntu-latest
