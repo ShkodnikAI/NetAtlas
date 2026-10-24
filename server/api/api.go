@@ -53,6 +53,7 @@ type Store interface {
 	IssueEnrollToken(ctx context.Context, actor string) (string, error)
 	ListAgents(ctx context.Context) ([]store.Agent, error)
 	RevokeAgent(ctx context.Context, id, actor string) error
+	LatestInventory(ctx context.Context, agentID string) (store.InventoryRow, error)
 	DB() *sql.DB
 }
 
@@ -116,6 +117,7 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("POST /api/agents/enrollment", a.handleAgentEnrollment)
 	mux.HandleFunc("GET /api/agents", a.handleAgentsList)
 	mux.HandleFunc("POST /api/agents/{id}/revoke", a.handleAgentRevoke)
+	mux.HandleFunc("GET /api/agents/{id}/inventory", a.handleAgentInventory)
 	a.mux = mux
 	return a, nil
 }
@@ -506,4 +508,25 @@ func (a *API) handleAgentRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleAgentInventory — GET /api/agents/{id}/inventory: последняя
+// порция инвентаря агента (NR-024 хранит, NR-006 отдаёт).
+func (a *API) handleAgentInventory(w http.ResponseWriter, r *http.Request) {
+	row, err := a.store.LatestInventory(r.Context(), r.PathValue("id"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	var report any
+	if json.Unmarshal([]byte(row.JSON), &report) != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{"отчёт инвентаря не разбирается"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"kind":         row.Kind,
+		"schema_ver":   row.SchemaVer,
+		"collected_at": row.CollectedAt,
+		"report":       report,
+	})
 }

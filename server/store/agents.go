@@ -182,6 +182,37 @@ func (s *Store) AgentByID(ctx context.Context, id string) (Agent, error) {
 	return a, err
 }
 
+// InventoryRow — последняя порция инвентаря агента.
+type InventoryRow struct {
+	Kind        string    `json:"kind"`
+	SchemaVer   int       `json:"schema_ver"`
+	CollectedAt time.Time `json:"collected_at"`
+	JSON        string    `json:"json"`
+}
+
+// LatestInventory — последняя порция инвентаря агента (для
+// GET /api/agents/{id}/inventory). Нет ни агента, ни порций —
+// ErrNotFound.
+func (s *Store) LatestInventory(ctx context.Context, agentID string) (InventoryRow, error) {
+	var row InventoryRow
+	var collected string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT kind, schema_ver, collected_at, json
+		 FROM agent_inventory WHERE agent_id = ? ORDER BY id DESC LIMIT 1`, agentID).
+		Scan(&row.Kind, &row.SchemaVer, &collected, &row.JSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return InventoryRow{}, ErrNotFound
+	}
+	if err != nil {
+		return InventoryRow{}, fmt.Errorf("store: инвентарь %s: %w", agentID, err)
+	}
+	row.CollectedAt, err = time.Parse(time.RFC3339Nano, collected)
+	if err != nil {
+		return InventoryRow{}, fmt.Errorf("store: время инвентаря %s: %w", agentID, err)
+	}
+	return row, nil
+}
+
 // ListRevokedAgents — идентификаторы отозванных агентов: список
 // поднимается при handshake (кэш не дольше 10 секунд).
 func (s *Store) ListRevokedAgents(ctx context.Context) ([]string, error) {

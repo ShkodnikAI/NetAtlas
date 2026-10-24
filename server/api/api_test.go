@@ -32,6 +32,7 @@ type fakeStore struct {
 	deletedLink   string
 
 	agents        []store.Agent
+	inventory     map[string]store.InventoryRow
 	agentExists   map[string]bool
 	revokedAgents map[string]bool
 	enrollTokens  int
@@ -42,6 +43,7 @@ func newFakeStore() *fakeStore {
 		devices:       map[string]store.DeviceInfo{},
 		notManual:     map[string]bool{},
 		agentExists:   map[string]bool{},
+		inventory:     map[string]store.InventoryRow{},
 		revokedAgents: map[string]bool{},
 	}
 }
@@ -509,6 +511,15 @@ func (f *fakeStore) IssueEnrollToken(ctx context.Context, actor string) (string,
 // ListAgents — фейковый список агентов.
 func (f *fakeStore) ListAgents(ctx context.Context) ([]store.Agent, error) {
 	return f.agents, nil
+}
+
+// LatestInventory — фейковая последняя порция инвентаря.
+func (f *fakeStore) LatestInventory(ctx context.Context, agentID string) (store.InventoryRow, error) {
+	row, ok := f.inventory[agentID]
+	if !ok {
+		return store.InventoryRow{}, store.ErrNotFound
+	}
+	return row, nil
 }
 
 // RevokeAgent — фейковый отзыв: состояния как в настоящем store.
