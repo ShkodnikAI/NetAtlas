@@ -30,12 +30,19 @@ type fakeStore struct {
 	}
 	deletedDevice string
 	deletedLink   string
+
+	agents        []store.Agent
+	agentExists   map[string]bool
+	revokedAgents map[string]bool
+	enrollTokens  int
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		devices:   map[string]store.DeviceInfo{},
-		notManual: map[string]bool{},
+		devices:       map[string]store.DeviceInfo{},
+		notManual:     map[string]bool{},
+		agentExists:   map[string]bool{},
+		revokedAgents: map[string]bool{},
 	}
 }
 
@@ -492,3 +499,32 @@ func TestVerifyWritesAuditWithRealStore(t *testing.T) {
 
 // realStoreWrap — *store.Store подходит под интерфейс API.
 type realStoreWrap struct{ *store.Store }
+
+// IssueEnrollToken — фейковая выдача токена регистрации.
+func (f *fakeStore) IssueEnrollToken(ctx context.Context, actor string) (string, error) {
+	f.enrollTokens++
+	return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil
+}
+
+// ListAgents — фейковый список агентов.
+func (f *fakeStore) ListAgents(ctx context.Context) ([]store.Agent, error) {
+	return f.agents, nil
+}
+
+// RevokeAgent — фейковый отзыв: состояния как в настоящем store.
+func (f *fakeStore) RevokeAgent(ctx context.Context, id, actor string) error {
+	if !f.agentExists[id] {
+		return store.ErrNotFound
+	}
+	if f.revokedAgents[id] {
+		return store.ErrAgentRevoked
+	}
+	f.revokedAgents[id] = true
+	return nil
+}
+
+// addAgent — фикстура агента для тестов маршрутов владельца.
+func (f *fakeStore) addAgent(id string) {
+	f.agentExists[id] = true
+	f.agents = append(f.agents, store.Agent{ID: id, Hostname: "pc", Status: "active", MACList: []string{}})
+}

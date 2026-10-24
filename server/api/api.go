@@ -50,6 +50,9 @@ type Store interface {
 	SaveScan(ctx context.Context, scan store.ScanResult, actor string) error
 	ListAlerts(ctx context.Context) ([]store.Alert, error)
 	AckAlert(ctx context.Context, id int64, actor string) error
+	IssueEnrollToken(ctx context.Context, actor string) (string, error)
+	ListAgents(ctx context.Context) ([]store.Agent, error)
+	RevokeAgent(ctx context.Context, id, actor string) error
 	DB() *sql.DB
 }
 
@@ -110,6 +113,9 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("GET /api/alerts", a.handleAlerts)
 	mux.HandleFunc("POST /api/alerts/{id}/ack", a.handleAlertAck)
 	mux.HandleFunc("GET /api/config", a.handleConfig)
+	mux.HandleFunc("POST /api/agents/enrollment", a.handleAgentEnrollment)
+	mux.HandleFunc("GET /api/agents", a.handleAgentsList)
+	mux.HandleFunc("POST /api/agents/{id}/revoke", a.handleAgentRevoke)
 	a.mux = mux
 	return a, nil
 }
@@ -199,6 +205,8 @@ func fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, errorBody{"элемент не ручной: удаление запрещено"})
 	case errors.Is(err, store.ErrBackupExists):
 		writeJSON(w, http.StatusConflict, errorBody{"файл уже существует"})
+	case errors.Is(err, store.ErrAgentRevoked):
+		writeJSON(w, http.StatusConflict, errorBody{"агент уже отозван"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, errorBody{"внутренняя ошибка"})
 	}
@@ -460,4 +468,42 @@ func (a *API) handleAuditVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, auditVerifyResponse{OK: true})
+}
+
+// handleAgentEnrollment — POST /api/agents/enrollment: выдача
+// одноразового токена регистрации. Токен показывается один раз: в
+// базе и аудите только хэш (NR-007).
+func (a *API) handleAgentEnrollment(w http.ResponseWriter, r *http.Request) {
+	token, err := a.store.IssueEnrollToken(r.Context(), ActorOwner)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{"выдача токена регистрации"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"token":        token,
+		"expires_in_s": int(store.EnrollTokenTTL / time.Second),
+		"enroll_route": "/agent/v1/enroll",
+	})
+}
+
+// handleAgentsList — GET /api/agents: карточки зарегистрированных
+// агентов (состояния, серийники, MAC-списки).
+func (a *API) handleAgentsList(w http.ResponseWriter, r *http.Request) {
+	agents, err := a.store.ListAgents(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{"список агентов"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"agents": agents})
+}
+
+// handleAgentRevoke — POST /api/agents/{id}/revoke: отзыв агента.
+// Следующий handshake отозванного отвергается (кэш списка отзыва
+// агентского API не дольше 10 секунд).
+func (a *API) handleAgentRevoke(w http.ResponseWriter, r *http.Request) {
+	if err := a.store.RevokeAgent(r.Context(), r.PathValue("id"), ActorOwner); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
