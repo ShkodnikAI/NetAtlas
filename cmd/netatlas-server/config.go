@@ -21,6 +21,12 @@ type config struct {
 	subnetList  []string
 	scope       *scanner.Scope
 	token       string
+
+	// Агентский API (NR-024): оба адреса пустые по умолчанию —
+	// сервер без явных флагов агентов не принимает.
+	agentListen       string
+	agentEnrollListen string
+	keyDir            string
 }
 
 // errUsage — ошибки конфигурации: завершение с кодом 2.
@@ -39,6 +45,10 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 	fs.BoolVar(&cfg.allowRemote, "allow-remote", false, "разрешить нелокальный адрес")
 	fs.StringVar(&cidrs, "subnets", "", "подсети проверки, через запятую")
 	fs.BoolVar(&cfg.allowLarge, "allow-large", false, "разрешить большие подсети")
+	fs.StringVar(&cfg.agentListen, "agent-listen", "",
+		"адрес mTLS-слушателя агентов (по умолчанию выключен)")
+	fs.StringVar(&cfg.agentEnrollListen, "agent-enroll-listen", "",
+		"адрес слушателя регистрации агентов (по умолчанию выключен)")
 	if err := fs.Parse(args); err != nil {
 		return config{}, fmt.Errorf("%w: %v", errUsage, err)
 	}
@@ -63,6 +73,36 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		return config{}, fmt.Errorf("%w: --subnets: %v", errUsage, err)
 	}
 	cfg.scope = scope
+
+	// Каталог ключей PKI: только окружение, как и токен.
+	cfg.keyDir = getenv("NETATLAS_KEYDIR")
+
+	// Агентские слушатели: адреса проверяются как порт владельца
+	// (локальные по умолчанию), совпадения портов запрещены, для
+	// работы нужен каталог ключей.
+	agentsOn := cfg.agentListen != "" || cfg.agentEnrollListen != ""
+	if agentsOn {
+		if cfg.agentListen == "" {
+			return config{}, fmt.Errorf("%w: --agent-enroll-listen без --agent-listen: некуда принимать агентов", errUsage)
+		}
+		if err := checkListen(cfg.agentListen, cfg.allowRemote); err != nil {
+			return config{}, fmt.Errorf("--agent-listen: %w", err)
+		}
+		if cfg.agentEnrollListen != "" {
+			if err := checkListen(cfg.agentEnrollListen, cfg.allowRemote); err != nil {
+				return config{}, fmt.Errorf("--agent-enroll-listen: %w", err)
+			}
+		}
+		if cfg.agentListen == cfg.agentEnrollListen {
+			return config{}, fmt.Errorf("%w: --agent-listen и --agent-enroll-listen совпадают", errUsage)
+		}
+		if cfg.agentListen == cfg.listen || cfg.agentEnrollListen == cfg.listen {
+			return config{}, fmt.Errorf("%w: порт агентов не смешивается с портом владельца", errUsage)
+		}
+		if cfg.keyDir == "" {
+			return config{}, fmt.Errorf("%w: переменная окружения NETATLAS_KEYDIR не задана", errUsage)
+		}
+	}
 
 	cfg.token = getenv("NETATLAS_TOKEN")
 	if cfg.token == "" {

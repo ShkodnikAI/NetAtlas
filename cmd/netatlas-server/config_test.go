@@ -74,3 +74,75 @@ func TestParseConfigRejectsBadSubnet(t *testing.T) {
 		t.Fatalf("неверная подсеть прошла")
 	}
 }
+
+// Агентские слушатели выключены по умолчанию: без флагов конфиг не
+// содержит адресов, run() не открывает порты агентов.
+func TestParseConfigAgentsOffByDefault(t *testing.T) {
+	cfg, err := parseConfig([]string{"--db", "/tmp/x.db", "--subnets", "10.0.0.0/24"},
+		getenv(map[string]string{"NETATLAS_TOKEN": goodToken}))
+	if err != nil {
+		t.Fatalf("конфигурация: %v", err)
+	}
+	if cfg.agentListen != "" || cfg.agentEnrollListen != "" {
+		t.Fatalf("агентские слушатели включены по умолчанию: %q / %q", cfg.agentListen, cfg.agentEnrollListen)
+	}
+}
+
+// Порт агентов не может совпадать с портом владельца.
+func TestParseConfigRejectsAgentPortClash(t *testing.T) {
+	env := getenv(map[string]string{
+		"NETATLAS_TOKEN":  goodToken,
+		"NETATLAS_KEYDIR": "/keys",
+	})
+	for _, args := range [][]string{
+		{"--db", "/x", "--subnets", "10.0.0.0/24", "--listen", "127.0.0.1:8484",
+			"--agent-listen", "127.0.0.1:8484"},
+		{"--db", "/x", "--subnets", "10.0.0.0/24", "--listen", "127.0.0.1:8484",
+			"--agent-listen", "127.0.0.1:9000", "--agent-enroll-listen", "127.0.0.1:8484"},
+	} {
+		if _, err := parseConfig(args, env); err == nil || !strings.Contains(err.Error(), "не смешивается") {
+			t.Fatalf("args %v: ошибка = %v, хочу запрет совпадения портов", args, err)
+		}
+	}
+}
+
+// Слушатель регистрации без mTLS-слушателя — ошибка конфигурации,
+// как и совпадение двух агентских адресов.
+func TestParseConfigRejectsBrokenAgentSetup(t *testing.T) {
+	env := getenv(map[string]string{
+		"NETATLAS_TOKEN":  goodToken,
+		"NETATLAS_KEYDIR": "/keys",
+	})
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--agent-enroll-listen", "127.0.0.1:9001"}, env); err == nil ||
+		!strings.Contains(err.Error(), "--agent-listen") {
+		t.Fatalf("enroll без mTLS: %v", err)
+	}
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--agent-listen", "127.0.0.1:9000", "--agent-enroll-listen", "127.0.0.1:9000"}, env); err == nil ||
+		!strings.Contains(err.Error(), "совпадают") {
+		t.Fatalf("одинаковые агентские адреса: %v", err)
+	}
+}
+
+// Агентские адреса следуют той же локальной политике, что и порт
+// владельца; без NETATLAS_KEYDIR сервер с агентами не стартует.
+func TestParseConfigAgentAddressPolicy(t *testing.T) {
+	tokenEnv := getenv(map[string]string{"NETATLAS_TOKEN": goodToken})
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--agent-listen", "0.0.0.0:9000"}, tokenEnv); err == nil || !strings.Contains(err.Error(), "--allow-remote") {
+		t.Fatalf("нелокальный --agent-listen без --allow-remote: %v", err)
+	}
+	env := getenv(map[string]string{
+		"NETATLAS_TOKEN":  goodToken,
+		"NETATLAS_KEYDIR": "/keys",
+	})
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--agent-listen", "127.0.0.1:9000", "--agent-enroll-listen", "127.0.0.1:9001"}, env); err != nil {
+		t.Fatalf("корректная настройка агентов: %v", err)
+	}
+	if _, err := parseConfig([]string{"--db", "/x", "--subnets", "10.0.0.0/24",
+		"--agent-listen", "127.0.0.1:9000"}, tokenEnv); err == nil || !strings.Contains(err.Error(), "NETATLAS_KEYDIR") {
+		t.Fatalf("без каталога ключей: %v", err)
+	}
+}

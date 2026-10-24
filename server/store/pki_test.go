@@ -121,7 +121,7 @@ func TestRevokeCertListedAndIdempotent(t *testing.T) {
 
 // auditListAll — весь журнал для проверок утечек.
 func auditListAll(s *Store) ([]auditEntry, error) {
-	rows, err := s.DB().Query(`SELECT actor, action, detail FROM audit_log ORDER BY id`)
+	rows, err := s.DB().Query(`SELECT actor, action, target, detail FROM audit_log ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func auditListAll(s *Store) ([]auditEntry, error) {
 	var out []auditEntry
 	for rows.Next() {
 		var e auditEntry
-		if err := rows.Scan(&e.actor, &e.action, &e.detail); err != nil {
+		if err := rows.Scan(&e.actor, &e.action, &e.target, &e.detail); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -140,5 +140,6 @@ func auditListAll(s *Store) ([]auditEntry, error) {
 type auditEntry struct {
 	actor  string
 	action string
+	target string
 	detail string
 }

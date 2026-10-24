@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -16,10 +17,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/pki"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
+	"github.com/ShkodnikAI/NetAtlas/server/agentapi"
 	"github.com/ShkodnikAI/NetAtlas/server/api"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
@@ -113,7 +116,16 @@ func run(cfg config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 3)
+
+	// Агентские слушатели (NR-024): только при явных флагах, свои
+	// обработчики, свой TLS; порт владельца не разделяется.
+	if cfg.agentListen != "" {
+		if err := startAgentListeners(ctx, cfg, st, errCh); err != nil {
+			return err
+		}
+	}
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
@@ -121,6 +133,12 @@ func run(cfg config) error {
 	}()
 
 	fmt.Fprintf(os.Stderr, "netatlas-server: слушаю %s (база %s)\n", cfg.listen, cfg.dbPath)
+	if cfg.agentListen != "" {
+		fmt.Fprintf(os.Stderr, "netatlas-server: агентский API %s (mTLS)\n", cfg.agentListen)
+		if cfg.agentEnrollListen != "" {
+			fmt.Fprintf(os.Stderr, "netatlas-server: регистрация агентов %s (по токену)\n", cfg.agentEnrollListen)
+		}
+	}
 	select {
 	case err := <-errCh:
 		return fmt.Errorf("http: %w", err)
@@ -131,6 +149,51 @@ func run(cfg config) error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("остановка http: %w", err)
+	}
+	return nil
+}
+
+// startAgentListeners поднимает агентские слушатели: mTLS для
+// checkin/inventory и, при --agent-enroll-listen, отдельный
+// слушатель регистрации. Сертификат сервера один на оба слушателя
+// (выпускается один раз и хранится в каталоге ключей).
+func startAgentListeners(ctx context.Context, cfg config, st *store.Store, errCh chan<- error) error {
+	ca, err := pki.LoadCA(cfg.keyDir)
+	if err != nil {
+		return fmt.Errorf("pki: %w", err)
+	}
+	aa, err := agentapi.New(st, ca, 0)
+	if err != nil {
+		return fmt.Errorf("agentapi: %w", err)
+	}
+	certPEM, keyPEM, err := pki.EnsureServerCert(cfg.keyDir)
+	if err != nil {
+		return fmt.Errorf("pki: сертификат сервера: %w", err)
+	}
+	serverCert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("pki: пара сервера: %w", err)
+	}
+	ln, err := net.Listen("tcp", cfg.agentListen)
+	if err != nil {
+		return fmt.Errorf("agentapi: слушатель %s: %w", cfg.agentListen, err)
+	}
+	go func() {
+		if err := agentapi.Serve(ctx, ln, aa.MTLSConfig(serverCert), aa.MTLSHandler()); err != nil {
+			errCh <- err
+		}
+	}()
+	if cfg.agentEnrollListen != "" {
+		lnE, err := net.Listen("tcp", cfg.agentEnrollListen)
+		if err != nil {
+			ln.Close()
+			return fmt.Errorf("agentapi: слушатель регистрации %s: %w", cfg.agentEnrollListen, err)
+		}
+		go func() {
+			if err := agentapi.Serve(ctx, lnE, aa.EnrollConfig(serverCert), aa.EnrollHandler()); err != nil {
+				errCh <- err
+			}
+		}()
 	}
 	return nil
 }

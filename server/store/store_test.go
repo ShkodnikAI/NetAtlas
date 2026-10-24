@@ -67,7 +67,7 @@ func scanFix(t *testing.T, now time.Time, mac, ip, name string) ScanResult {
 	}
 }
 
-// Миграции на пустой базе: версия 3, повторный запуск ничего не меняет.
+// Миграции на пустой базе: версия 8, повторный запуск ничего не меняет.
 func TestMigrationsEmptyAndRepeat(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "netatlas.db")
@@ -77,8 +77,8 @@ func TestMigrationsEmptyAndRepeat(t *testing.T) {
 	}
 	ctx := context.Background()
 	v, err := s.SchemaVersion(ctx)
-	if err != nil || v != 7 {
-		t.Fatalf("версия = %d (err %v), хочу 7", v, err)
+	if err != nil || v != 8 {
+		t.Fatalf("версия = %d (err %v), хочу 8", v, err)
 	}
 	if _, err := s.AddManualDevice(ctx, model.NodeKindDevice, "ручной", "owner"); err != nil {
 		t.Fatalf("ручной элемент: %v", err)
@@ -91,8 +91,8 @@ func TestMigrationsEmptyAndRepeat(t *testing.T) {
 		t.Fatalf("повторное открытие: %v", err)
 	}
 	defer s2.Close()
-	if v, err := s2.SchemaVersion(ctx); err != nil || v != 7 {
-		t.Fatalf("версия после повтора = %d (err %v), хочу 7", v, err)
+	if v, err := s2.SchemaVersion(ctx); err != nil || v != 8 {
+		t.Fatalf("версия после повтора = %d (err %v), хочу 8", v, err)
 	}
 	devs, err := s2.ListDevices(ctx)
 	if err != nil || len(devs) != 1 {

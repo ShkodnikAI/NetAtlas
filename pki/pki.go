@@ -388,3 +388,80 @@ func newSerial() (*big.Int, error) {
 
 // ErrNoCertPEM — распознаваемая ошибка отсутствия PEM.
 var ErrNoCertPEM = errors.New("pki: PEM-блок не найден")
+
+// Файлы сертификата сервера в каталоге ключей и его CN.
+const (
+	serverCertFile = "server.pem"
+	serverKeyFile  = "server.key"
+	ServerCertCN   = "netatlas-server"
+)
+
+// EnsureServerCert возвращает PEM-сертификат и ключ сервера для
+// агентских слушателей: уже выпущенный в каталоге ключей
+// переиспользуется, иначе выпускается один раз нашим CA и
+// сохраняется (ключ 0600). Повторный запуск с тем же каталогом
+// даёт тот же сертификат — клиенты не замечают перезапуска.
+func EnsureServerCert(dir string) (certPEM, keyPEM []byte, err error) {
+	certPath := filepath.Join(dir, serverCertFile)
+	keyPath := filepath.Join(dir, serverKeyFile)
+	if c, k, readErr := readCertKeyPair(certPath, keyPath); readErr == nil {
+		return c, k, nil
+	} else if !os.IsNotExist(readErr) {
+		// Пара неполная или нечитаемая: это состояние каталога
+		// чинит владелец, автоматом перезаписывать ключи нельзя.
+		return nil, nil, readErr
+	}
+	ca, err := LoadCA(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	certPEM, keyPEM, err = ca.IssueServerCert(ServerCertCN, time.Now())
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := writeFileExclusive(keyPath, keyPEM, 0o600); err != nil {
+		return nil, nil, err
+	}
+	if err := writeFileExclusive(certPath, certPEM, 0o644); err != nil {
+		os.Remove(keyPath) // не оставляем ключ без пары
+		return nil, nil, err
+	}
+	return certPEM, keyPEM, nil
+}
+
+// readCertKeyPair читает готовую пару; отсутствие любого файла —
+// os.ErrNotExist, неполная пара (есть только один файл) — тоже.
+func readCertKeyPair(certPath, keyPath string) (certPEM, keyPEM []byte, err error) {
+	c, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	k, err := os.ReadFile(keyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, fmt.Errorf("pki: %s есть без %s: каталог ключей в неполном состоянии", filepath.Base(certPath), filepath.Base(keyPath))
+		}
+		return nil, nil, err
+	}
+	return c, k, nil
+}
+
+// writeFileExclusive создаёт файл с указанными правами и пишет
+// данные; существующий файл не перезаписывается.
+func writeFileExclusive(path string, data []byte, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("pki: %s уже существует", path)
+		}
+		return dirErr("создание "+filepath.Base(path), err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return dirErr("запись "+filepath.Base(path), err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return dirErr("права "+filepath.Base(path), err)
+	}
+	return nil
+}
