@@ -20,9 +20,9 @@
     <button class="item" data-page="disks">Диски</button>
     <button class="item" data-page="quality">Качество сети</button>
     <button class="item" data-page="security">Безопасность</button>
+    <button class="item" data-page="scripts">Скрипты и тесты</button>
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
     <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
-    <button class="item soon" disabled>Скрипты и тесты <span class="soon-badge">скоро</span></button>
     <div id="audit-badge" class="audit-badge" role="status" hidden></div>
   </nav>
 
@@ -120,6 +120,23 @@
       <h2>Диски</h2>
       <p class="subtitle">Заполнение томов всех компьютеров с агентами; прогноз — линейная регрессия за 30 дней, если данных достаточно.</p>
       <div id="disks-root"></div>
+    </section>
+
+    <section id="screen-scripts" hidden aria-label="Скрипты и тесты">
+      <h2>Скрипты, тесты и подпись</h2>
+      <p class="subtitle">Путь любого действия: черновик, проверка, тест на виртуальной машине, подпись, один компьютер, группа. Скрипт без статуса «протестирован» и вашей подписи не отправляется ни на один агент.</p>
+      <div id="scripts-stages" class="scr-stages"></div>
+      <div class="scr-columns">
+        <div id="scripts-list"></div>
+        <div id="scripts-card"></div>
+      </div>
+      <div class="scr-columns">
+        <div id="scripts-draft"></div>
+        <div>
+          <div class="scr-section-title">Журнал действий</div>
+          <div id="scripts-audit"></div>
+        </div>
+      </div>
     </section>
 
     <div class="workspace">

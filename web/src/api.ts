@@ -331,4 +331,159 @@ export class NetatlasApi {
   qualitySeries(kind: string): Promise<{ series: { window: string; avg: number; p95: number; max: number }[] }> {
     return this.req('GET', `/api/quality/series?agent=_&target=_&kind=${encodeURIComponent(kind)}&hourly=1&from=${encodeURIComponent(new Date(Date.now() - 24 * 3600e3).toISOString())}`);
   }
+
+  // --- Конвейер скриптов (NR-011) ---
+
+  scripts(): Promise<{ scripts: ScriptRow[]; versions: VersionRow[]; stages: Record<string, number> }> {
+    return this.req('GET', '/api/scripts');
+  }
+
+  catalog(): Promise<{ templates: CatalogTemplate[] }> {
+    return this.req('GET', '/api/catalog');
+  }
+
+  scriptCard(id: number): Promise<{
+    script: ScriptRow;
+    versions: VersionRow[];
+    checks: Record<number, CheckRow[]>;
+    signatures: Record<number, SignatureRow>;
+  }> {
+    return this.req('GET', `/api/scripts/${id}`);
+  }
+
+  scriptVersion(sid: number, vid: number): Promise<VersionRow & { content: string }> {
+    return this.req('GET', `/api/scripts/${sid}/versions/${vid}`);
+  }
+
+  createScript(body: Record<string, unknown>): Promise<{ script_id: number; version_id: number }> {
+    return this.req('POST', '/api/scripts', body);
+  }
+
+  setScriptStatus(sid: number, vid: number, to: string, comment: string): Promise<VersionRow> {
+    return this.req('POST', `/api/scripts/${sid}/versions/${vid}/status`, { to, comment });
+  }
+
+  checkResult(sid: number, vid: number, body: Record<string, unknown>): Promise<VersionRow> {
+    return this.req('POST', `/api/scripts/${sid}/versions/${vid}/check-result`, body);
+  }
+
+  checkRun(sid: number, vid: number): Promise<{ report: { ok: boolean; findings: { rule_name: string; severity: string; message: string }[] }; version: VersionRow }> {
+    return this.req('POST', `/api/scripts/${sid}/versions/${vid}/check-run`, {});
+  }
+
+  sign(sid: number, vid: number, name: string, sha256: string): Promise<VersionRow> {
+    return this.req('POST', `/api/scripts/${sid}/versions/${vid}/sign`, { name, sha256 });
+  }
+
+  jobs(): Promise<{ jobs: JobRow[] }> {
+    return this.req('GET', '/api/jobs');
+  }
+
+  createJob(body: Record<string, unknown>): Promise<{ id: number }> {
+    return this.req('POST', '/api/jobs', body);
+  }
+
+  stopJob(id: number): Promise<{ ok: boolean }> {
+    return this.req('POST', `/api/jobs/${id}/stop`, {});
+  }
+
+  auditList(limit: number): Promise<{ entries: AuditEntry[] }> {
+    return this.req('GET', `/api/audit?limit=${limit}`);
+  }
+}
+
+export interface AuditEntry {
+  id: number;
+  ts: string;
+  actor: string;
+  action: string;
+  target: string;
+  result: string;
+  detail?: string;
+}
+
+// --- Конвейер скриптов (NR-011) ---------------------------------------------
+
+export interface ScriptRow {
+  id: number;
+  name: string;
+  kind: string;
+  category: string;
+  catalog_key?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VersionRow {
+  id: number;
+  script_id: number;
+  version: number;
+  status: string;
+  sha256: string;
+  params?: string;
+  pilot_ok: boolean;
+  created_at: string;
+}
+
+export interface CheckRow {
+  id: number;
+  kind: string;
+  source: string;
+  result: string;
+  detail?: string;
+  comment?: string;
+  ran_at: string;
+  actor: string;
+}
+
+export interface SignatureRow {
+  id: number;
+  sha256: string;
+  signed_by: string;
+  signed_at: string;
+  expires_at: string;
+  signature: string;
+}
+
+export interface JobTarget {
+  agent_id: string;
+  state: string;
+  result?: string;
+  error?: string;
+  sent_at?: string;
+  updated_at: string;
+}
+
+export interface JobRow {
+  id: number;
+  script_version_id: number;
+  script_id: number;
+  name: string;
+  kind: string;
+  status: string;
+  pilot: boolean;
+  window_start?: string;
+  window_end?: string;
+  deadline?: string;
+  metric_threshold: number;
+  created_at: string;
+  created_by: string;
+  targets: JobTarget[];
+}
+
+export interface CatalogTemplate {
+  key: string;
+  title: string;
+  description: string;
+  read_only: boolean;
+  params: {
+    key: string;
+    title: string;
+    type: string;
+    default: string;
+    required?: boolean;
+    pattern?: string;
+    min?: number;
+    max?: number;
+  }[];
 }

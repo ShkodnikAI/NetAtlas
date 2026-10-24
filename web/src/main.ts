@@ -4,6 +4,16 @@
 import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type NodeInfo } from './api';
 import { setAuditBadge } from './audit';
 import { renderComputerCard, renderComputers } from './computers';
+import {
+  renderDraftForm,
+  renderScriptAudit,
+  renderScriptList,
+  renderStages,
+  renderVersionCard,
+  validateSignInput,
+  type CatalogTemplate,
+  type ScriptHandlers,
+} from './scripts';
 import { renderDisks } from './disks';
 import { renderQuality } from './quality';
 import { renderSecurity } from './security';
@@ -17,6 +27,13 @@ import {
   setupScanScreen,
   startScan,
 } from './scan';
+
+let scriptsSelected: number | null = null;
+let scriptsCache: {
+  scripts: import('./api').ScriptRow[];
+  versions: import('./api').VersionRow[];
+  stages: Record<string, number>;
+} = { scripts: [], versions: [], stages: {} };
 
 const api = new NetatlasApi();
 
@@ -311,7 +328,7 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts';
 
 let openComputerId: string | null = null;
 
@@ -322,6 +339,7 @@ function showScreen(name: ScreenName): void {
   $('screen-disks').hidden = name !== 'disks';
   $('screen-quality').hidden = name !== 'quality';
   $('screen-security').hidden = name !== 'security';
+  $('screen-scripts').hidden = name !== 'scripts';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -335,6 +353,7 @@ function showScreen(name: ScreenName): void {
   if (name === 'disks') void initDisksScreen();
   if (name === 'quality') void initQualityScreen();
   if (name === 'security') void initSecurityScreen();
+  if (name === 'scripts') void initScriptsScreen();
   if (name === 'map') void reload();
 }
 
@@ -423,6 +442,144 @@ async function initSecurityScreen(): Promise<void> {
     }, null, { root, onComputer: () => undefined });
     showNotice(err instanceof Error ? err.message : 'ошибка загрузки безопасности', true);
   }
+}
+
+// --- скрипты и тесты (NR-011) ----------------------------------------------
+
+async function initScriptsScreen(): Promise<void> {
+  const listRoot = $('scripts-list');
+  const cardRoot = $('scripts-card');
+  const stagesRoot = $('scripts-stages');
+  const auditRoot = $('scripts-audit');
+  const draftRoot = $('scripts-draft');
+  try {
+    const [list, catalog, jobs, audit] = await Promise.all([
+      api.scripts(),
+      api.catalog(),
+      api.jobs(),
+      api.auditList(200),
+    ]);
+    scriptsCache = { scripts: list.scripts, versions: list.versions, stages: list.stages };
+    renderStages(stagesRoot, list.stages);
+    renderScriptAudit(auditRoot, audit.entries);
+
+    const versionsByScript: Record<number, import('./api').VersionRow | undefined> = {};
+    for (const v of list.versions) versionsByScript[v.script_id] = v;
+    if (scriptsSelected === null && list.scripts.length > 0) scriptsSelected = list.scripts[0].id;
+    renderScriptList(listRoot, list.scripts, versionsByScript, scriptsSelected, (id) => {
+      scriptsSelected = id;
+      void initScriptsScreen();
+    });
+
+    renderDraftForm(draftRoot, catalog.templates, handlersFor(list, jobs, audit));
+
+    const script = list.scripts.find((s) => s.id === scriptsSelected);
+    const version = script === undefined ? undefined : versionsByScript[script.id];
+    if (script === undefined || version === undefined) {
+      cardRoot.textContent = '';
+      cardRoot.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'Выберите скрипт слева.' }));
+      return;
+    }
+    const card = await api.scriptCard(script.id);
+    renderVersionCard(cardRoot, script, version, card.checks[version.id] ?? [], card.signatures[version.id], jobs.jobs, handlersFor(list, jobs, audit));
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 401)) {
+      showNotice(errMessage(err), true);
+    }
+  }
+}
+
+function handlersFor(
+  list: { scripts: import('./api').ScriptRow[]; versions: import('./api').VersionRow[]; stages: Record<string, number> },
+  jobs: { jobs: import('./api').JobRow[] },
+  audit: { entries: import('./api').AuditEntry[] },
+): ScriptHandlers {
+  return {
+    onSelect: (id) => {
+      scriptsSelected = id;
+      void initScriptsScreen();
+    },
+    onCreateDraft: async (body) => {
+      try {
+        await api.createScript(body);
+        await initScriptsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onStatus: async (sid, vid, to, comment) => {
+      try {
+        await api.setScriptStatus(sid, vid, to, comment);
+        await initScriptsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onSign: (sid, vid, name, sha) => {
+      // Подтверждение вводом имени и хэша: подписывается то, что на экране.
+      const dlgName = window.prompt(`Подпись. Введите имя скрипта целиком («${name}»):`);
+      if (dlgName === null) return;
+      const dlgSha = window.prompt('Введите хэш содержимого (скопируйте из карточки):');
+      if (dlgSha === null) return;
+      const problem = validateSignInput(dlgName, name, dlgSha, sha);
+      if (problem !== '') {
+        showNotice(problem, true);
+        return;
+      }
+      void (async () => {
+        try {
+          await api.sign(sid, vid, dlgName, dlgSha.trim().toLowerCase());
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      })();
+    },
+    onCheckRun: async (sid, vid) => {
+      try {
+        const res = await api.checkRun(sid, vid);
+        showNotice(
+          res.report.ok ? 'Статические проверки пройдены: статус «Проверка кода».' : 'Статические проверки нашли ошибки уровня Error.',
+          !res.report.ok,
+        );
+        await initScriptsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onCheckResult: async (sid, vid, body) => {
+      try {
+        await api.checkResult(sid, vid, body);
+        await initScriptsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onViewCode: async (sid, vid) => {
+      try {
+        const v = await api.scriptVersion(sid, vid);
+        window.alert(v.content);
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onCreateJob: async (body) => {
+      try {
+        await api.createJob(body);
+        await initScriptsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onStopJob: async (jobId) => {
+      try {
+        await api.stopJob(jobId);
+        await initScriptsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+  };
 }
 
 // --- мастер сканирования ---------------------------------------------------

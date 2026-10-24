@@ -134,13 +134,53 @@
     qualitySeries(kind) {
       return this.req("GET", `/api/quality/series?agent=_&target=_&kind=${encodeURIComponent(kind)}&hourly=1&from=${encodeURIComponent(new Date(Date.now() - 24 * 36e5).toISOString())}`);
     }
+    // --- Конвейер скриптов (NR-011) ---
+    scripts() {
+      return this.req("GET", "/api/scripts");
+    }
+    catalog() {
+      return this.req("GET", "/api/catalog");
+    }
+    scriptCard(id2) {
+      return this.req("GET", `/api/scripts/${id2}`);
+    }
+    scriptVersion(sid, vid) {
+      return this.req("GET", `/api/scripts/${sid}/versions/${vid}`);
+    }
+    createScript(body) {
+      return this.req("POST", "/api/scripts", body);
+    }
+    setScriptStatus(sid, vid, to, comment) {
+      return this.req("POST", `/api/scripts/${sid}/versions/${vid}/status`, { to, comment });
+    }
+    checkResult(sid, vid, body) {
+      return this.req("POST", `/api/scripts/${sid}/versions/${vid}/check-result`, body);
+    }
+    checkRun(sid, vid) {
+      return this.req("POST", `/api/scripts/${sid}/versions/${vid}/check-run`, {});
+    }
+    sign(sid, vid, name, sha256) {
+      return this.req("POST", `/api/scripts/${sid}/versions/${vid}/sign`, { name, sha256 });
+    }
+    jobs() {
+      return this.req("GET", "/api/jobs");
+    }
+    createJob(body) {
+      return this.req("POST", "/api/jobs", body);
+    }
+    stopJob(id2) {
+      return this.req("POST", `/api/jobs/${id2}/stop`, {});
+    }
+    auditList(limit2) {
+      return this.req("GET", `/api/audit?limit=${limit2}`);
+    }
   };
 
   // src/audit.ts
-  function setAuditBadge(el5, ok) {
-    el5.classList.add("audit-badge");
-    el5.hidden = ok;
-    if (!ok) el5.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
+  function setAuditBadge(el6, ok) {
+    el6.classList.add("audit-badge");
+    el6.hidden = ok;
+    if (!ok) el6.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
   }
 
   // src/computers.ts
@@ -330,6 +370,293 @@
     }
   }
 
+  // src/scripts.ts
+  var stageNames = {
+    draft: "\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A",
+    checked: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043A\u043E\u0434\u0430",
+    tested: "\u0422\u0435\u0441\u0442 \u043D\u0430 \u0412\u041C",
+    signed: "\u041F\u043E\u0434\u043F\u0438\u0441\u044C",
+    pilot: "\u041E\u0434\u0438\u043D \u041F\u041A",
+    released: "\u0420\u0430\u0441\u043A\u0430\u0442\u043A\u0430",
+    rejected: "\u041E\u0442\u043A\u043B\u043E\u043D\u0451\u043D"
+  };
+  var stageColors = {
+    draft: "#7C8798",
+    checked: "#7C8798",
+    tested: "#F5B83D",
+    signed: "#5AA9FF",
+    pilot: "#5AA9FF",
+    released: "#5FD38D",
+    rejected: "#E06060"
+  };
+  var chain = ["draft", "checked", "tested", "signed", "pilot", "released"];
+  function nextStatus(status) {
+    const i2 = chain.indexOf(status);
+    if (i2 < 0 || i2 + 1 >= chain.length) return null;
+    return chain[i2 + 1] ?? null;
+  }
+  function allowedActions(status) {
+    const out = [];
+    if (status === "rejected") return out;
+    const next = nextStatus(status);
+    if (next !== null) {
+      if (next === "signed") {
+        out.push({ kind: "sign", to: "signed", label: "\u041F\u043E\u0434\u043F\u0438\u0441\u0430\u0442\u044C" });
+      } else {
+        out.push({ kind: "status", to: next, label: `\u041F\u0435\u0440\u0435\u0432\u0435\u0441\u0442\u0438: ${stageNames[next]}` });
+      }
+    }
+    out.push({ kind: "rejected", to: "rejected", label: "\u0412\u0435\u0440\u043D\u0443\u0442\u044C \u043D\u0430 \u0434\u043E\u0440\u0430\u0431\u043E\u0442\u043A\u0443" });
+    return out;
+  }
+  function validateSignInput(name, expectedName, sha, expectedSha) {
+    if (name !== expectedName) return "\u0418\u043C\u044F \u0441\u043A\u0440\u0438\u043F\u0442\u0430 \u043D\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442: \u043F\u043E\u0434\u043F\u0438\u0441\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0442\u043E, \u0447\u0442\u043E \u0432\u044B \u0432\u0438\u0434\u0438\u0442\u0435.";
+    const normalized = sha.trim().toLowerCase().replace(/[\s:-]/g, "");
+    if (normalized !== expectedSha.toLowerCase()) return "\u0425\u044D\u0448 \u043D\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u0432\u0435\u0440\u0441\u0438\u0435\u0439: \u0441\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043E \u0438\u0437 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438.";
+    return "";
+  }
+  var scriptActions = /* @__PURE__ */ new Set([
+    "script_create",
+    "script_version_create",
+    "script_status",
+    "script_check",
+    "script_sign",
+    "job_create",
+    "job_stop",
+    "job_dispatch",
+    "job_result",
+    "job_autostop",
+    "job_expired"
+  ]);
+  function filterScriptAudit(entries) {
+    return entries.filter((e) => scriptActions.has(e.action));
+  }
+  function el2(tag, cls = "", text2) {
+    const e = document.createElement(tag);
+    if (cls !== "") e.className = cls;
+    if (text2 !== void 0) e.textContent = text2;
+    return e;
+  }
+  function renderStages(root, stages) {
+    root.textContent = "";
+    for (const status of chain) {
+      const card = el2("div", "scr-stage");
+      card.style.borderTopColor = stageColors[status] ?? "";
+      card.append(el2("div", "scr-stage-name", stageNames[status]));
+      card.append(el2("div", "scr-stage-count", String(stages[status] ?? 0)));
+      root.append(card);
+    }
+  }
+  function renderScriptList(root, scripts, versions, selectedId, onSelect) {
+    root.textContent = "";
+    if (scripts.length === 0) {
+      root.append(el2("p", "muted", "\u0421\u043A\u0440\u0438\u043F\u0442\u043E\u0432 \u0435\u0449\u0451 \u043D\u0435\u0442: \u0441\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0438\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430 \u0438\u043B\u0438 \u0438\u0437 \u0442\u0435\u043A\u0441\u0442\u0430."));
+      return;
+    }
+    for (const s of scripts) {
+      const row = el2("div", "scr-item");
+      if (s.id === selectedId) row.classList.add("selected");
+      const v = versions[s.id];
+      const head = el2("div", "scr-item-head");
+      head.append(el2("div", "scr-item-name", s.name));
+      head.append(el2("div", "scr-item-ver", v ? `v${v.version}` : ""));
+      row.append(head);
+      const status = el2("div", "scr-item-status", v ? `${stageNames[v.status] ?? v.status}` : "");
+      if (v) status.style.color = stageColors[v.status] ?? "";
+      row.append(status);
+      row.addEventListener("click", () => onSelect(s.id));
+      root.append(row);
+    }
+  }
+  function renderVersionCard(root, script, version2, checks, signature, jobs, handlers) {
+    root.textContent = "";
+    const head = el2("div", "scr-card-head");
+    const title = el2("div", "scr-card-title", script.name);
+    head.append(title);
+    head.append(el2("div", "scr-item-ver", `v${version2.version} \xB7 ${script.kind === "catalog" ? "\u043A\u0430\u0442\u0430\u043B\u043E\u0433" : "\u0441\u043A\u0440\u0438\u043F\u0442"} \xB7 ${script.category}`));
+    root.append(head);
+    const statusRow = el2("div", "scr-status-row");
+    const badge = el2("span", "scr-badge", stageNames[version2.status] ?? version2.status);
+    badge.style.borderColor = stageColors[version2.status] ?? "";
+    badge.style.color = stageColors[version2.status] ?? "";
+    statusRow.append(badge);
+    if (version2.pilot_ok) statusRow.append(el2("span", "scr-badge", "\u043F\u0438\u043B\u043E\u0442 \u043F\u0440\u043E\u0439\u0434\u0435\u043D"));
+    if (signature) {
+      statusRow.append(el2("span", "scr-badge", `\u043F\u043E\u0434\u043F\u0438\u0441\u044C \u0434\u043E ${signature.expires_at.slice(0, 10)}`));
+    }
+    root.append(statusRow);
+    const btnRow = el2("div", "scr-buttons");
+    for (const a of allowedActions(version2.status)) {
+      const b = el2("button", "", a.label);
+      if (a.kind === "sign") b.classList.add("primary");
+      b.addEventListener("click", () => {
+        if (a.kind === "sign") {
+          handlers.onSign(script.id, version2.id, script.name, version2.sha256);
+        } else if (a.kind === "rejected") {
+          const comment = window.prompt("\u041F\u0440\u0438\u0447\u0438\u043D\u0430 \u0432\u043E\u0437\u0432\u0440\u0430\u0442\u0430 \u043D\u0430 \u0434\u043E\u0440\u0430\u0431\u043E\u0442\u043A\u0443 (\u0437\u0430\u043F\u0438\u0441\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0432 \u0430\u0443\u0434\u0438\u0442):");
+          if (comment === null || comment.trim() === "") return;
+          void handlers.onStatus(script.id, version2.id, "rejected", comment.trim());
+        } else {
+          const comment = window.prompt(`\u041A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0439 \u043A \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0443 \xAB${stageNames[a.to]}\xBB (\u0440\u0443\u0447\u043D\u0430\u044F \u043E\u0442\u043C\u0435\u0442\u043A\u0430 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u043F\u0440\u0438\u0447\u0438\u043D\u044B):`);
+          if (comment === null || comment.trim() === "") return;
+          void handlers.onStatus(script.id, version2.id, a.to, comment.trim());
+        }
+      });
+      btnRow.append(b);
+    }
+    const runBtn = el2("button", "", "\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0441\u0442\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438");
+    runBtn.addEventListener("click", () => void handlers.onCheckRun(script.id, version2.id));
+    btnRow.append(runBtn);
+    const standBtn = el2("button", "", "\u0417\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0442\u0435\u0441\u0442\u0430 \u043D\u0430 \u0412\u041C");
+    standBtn.addEventListener("click", () => {
+      const detail = window.prompt("\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0441\u043E \u0441\u0442\u0435\u043D\u0434\u0430 (\u0447\u0442\u043E \u043D\u0430\u0431\u043B\u044E\u0434\u0430\u043B\u0438):");
+      if (detail === null || detail.trim() === "") return;
+      void handlers.onCheckResult(script.id, version2.id, { kind: "vm", source: "stand", result: "pass", detail: detail.trim() });
+    });
+    btnRow.append(standBtn);
+    const codeBtn = el2("button", "", "\u041F\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C \u043A\u043E\u0434");
+    codeBtn.addEventListener("click", () => {
+      void handlers.onViewCode(script.id, version2.id);
+    });
+    btnRow.append(codeBtn);
+    root.append(btnRow);
+    const shaRow = el2("div", "scr-sha");
+    shaRow.append(el2("span", "muted", "SHA-256 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0433\u043E: "));
+    shaRow.append(el2("code", "scr-sha-value", version2.sha256));
+    root.append(shaRow);
+    if (checks.length > 0) {
+      const box = el2("div", "scr-section");
+      box.append(el2("div", "scr-section-title", "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0438 \u0442\u0435\u0441\u0442\u044B"));
+      for (const c of checks.slice(0, 8)) {
+        const row = el2("div", "scr-check");
+        const verdict = c.result === "pass" ? "\u043F\u0440\u043E\u0439\u0434\u0435\u043D\u043E" : "\u043F\u0440\u043E\u0432\u0430\u043B\u0435\u043D\u043E";
+        row.append(el2("span", `scr-check-result ${c.result === "pass" ? "ok" : "bad"}`, verdict));
+        row.append(el2("span", "muted", `${c.kind === "vm" ? "\u0442\u0435\u0441\u0442 \u043D\u0430 \u0412\u041C" : "\u0441\u0442\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0430\u044F"} \xB7 ${c.source} \xB7 ${c.actor}`));
+        if (c.comment !== "") row.append(el2("span", "", ` \u2014 ${c.comment}`));
+        box.append(row);
+      }
+      root.append(box);
+    }
+    const jobsBox = el2("div", "scr-section");
+    jobsBox.append(el2("div", "scr-section-title", "\u0417\u0430\u0434\u0430\u043D\u0438\u044F"));
+    if (jobs.length === 0) {
+      jobsBox.append(el2("p", "muted", "\u0417\u0430\u0434\u0430\u043D\u0438\u0439 \u043D\u0435\u0442. \u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u043D\u0438\u044F \u043D\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u0442 \u0435\u0433\u043E \u0430\u0433\u0435\u043D\u0442\u0430\u043C: \u0432\u044B\u0434\u0430\u0447\u0430 \u0438\u0434\u0451\u0442 \u0447\u0435\u0440\u0435\u0437 \u0448\u043B\u044E\u0437 \u0432 checkin."));
+    }
+    for (const j of jobs) {
+      const row = el2("div", "scr-job");
+      const left = el2("div", "scr-job-info");
+      left.append(el2("div", "", `#${j.id} \xB7 ${j.name} \xB7 ${j.status}${j.pilot ? " \xB7 \u043F\u0438\u043B\u043E\u0442" : ""}`));
+      const states = j.targets.map((t) => `${t.agent_id.replace("agent:", "")}: ${t.state}`).join(", ");
+      left.append(el2("div", "muted", states));
+      row.append(left);
+      if (j.status === "pending" || j.status === "running") {
+        const stop5 = el2("button", "", "\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C");
+        stop5.addEventListener("click", () => void handlers.onStopJob(j.id));
+        row.append(stop5);
+      }
+      jobsBox.append(row);
+    }
+    const newJob = el2("button", "", "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0437\u0430\u0434\u0430\u043D\u0438\u0435");
+    if (version2.status === "draft" || version2.status === "checked" || version2.status === "rejected") {
+      newJob.disabled = true;
+      newJob.title = "\u0417\u0430\u0434\u0430\u043D\u0438\u0435 \u0441\u043E\u0437\u0434\u0430\u0451\u0442\u0441\u044F \u043D\u0430 \u043F\u043E\u0434\u043F\u0438\u0441\u0430\u043D\u043D\u0443\u044E \u0432\u0435\u0440\u0441\u0438\u044E";
+    }
+    newJob.addEventListener("click", () => {
+      const targetsRaw = window.prompt("\u0410\u0433\u0435\u043D\u0442\u044B \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E (\u0438\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440\u044B agent:\u2026):");
+      if (targetsRaw === null) return;
+      const targets = targetsRaw.split(",").map((s) => s.trim()).filter((s) => s !== "");
+      if (targets.length === 0) return;
+      void handlers.onCreateJob({
+        script_version_id: version2.id,
+        targets,
+        pilot: window.confirm("\u041F\u0438\u043B\u043E\u0442\u043D\u043E\u0435 \u0437\u0430\u0434\u0430\u043D\u0438\u0435 \u043D\u0430 \u043E\u0434\u0438\u043D \u041F\u041A?")
+      });
+    });
+    jobsBox.append(newJob);
+    root.append(jobsBox);
+  }
+  function renderDraftForm(root, templates, handlers) {
+    root.textContent = "";
+    const title = el2("div", "scr-section-title", "\u041D\u043E\u0432\u044B\u0439 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A");
+    root.append(title);
+    const row = el2("div", "scr-draft-row");
+    const mode = el2("select");
+    mode.append(new Option("\u0418\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439", "catalog"));
+    mode.append(new Option("\u0418\u0437 \u0442\u0435\u043A\u0441\u0442\u0430 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0438\u0437 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u0438)", "script"));
+    row.append(mode);
+    const tpl = el2("select");
+    for (const t of templates) tpl.append(new Option(`${t.title}${t.read_only ? " (\u0442\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u0435\u043D\u0438\u0435)" : ""}`, t.key));
+    row.append(tpl);
+    const name = el2("input");
+    name.placeholder = "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0441\u043A\u0440\u0438\u043F\u0442\u0430";
+    name.maxLength = 200;
+    row.append(name);
+    const params = el2("div", "scr-draft-params");
+    const fillParams = () => {
+      params.textContent = "";
+      const t = templates.find((x2) => x2.key === tpl.value);
+      if (!t) return;
+      for (const p2 of t.params) {
+        const input = el2("input");
+        input.dataset.param = p2.key;
+        input.placeholder = `${p2.title} (${p2.type}${p2.min !== void 0 ? `, ${p2.min}..${p2.max ?? ""}` : ""})`;
+        input.value = p2.default ?? "";
+        params.append(input);
+      }
+    };
+    fillParams();
+    tpl.addEventListener("change", fillParams);
+    root.append(row);
+    root.append(params);
+    const text2 = el2("textarea");
+    text2.placeholder = "\u0422\u0435\u043A\u0441\u0442 PowerShell-\u0441\u043A\u0440\u0438\u043F\u0442\u0430 (\u0434\u043B\u044F \u0440\u0435\u0436\u0438\u043C\u0430 \xAB\u0438\u0437 \u0442\u0435\u043A\u0441\u0442\u0430\xBB)";
+    text2.hidden = true;
+    root.append(text2);
+    mode.addEventListener("change", () => {
+      const isCatalog = mode.value === "catalog";
+      tpl.hidden = !isCatalog;
+      params.hidden = !isCatalog;
+      text2.hidden = isCatalog;
+    });
+    const create2 = el2("button", "primary", "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A");
+    create2.addEventListener("click", () => {
+      const body = {
+        name: name.value.trim(),
+        kind: mode.value,
+        category: "general"
+      };
+      if (mode.value === "catalog") {
+        body.catalog_key = tpl.value;
+        const map2 = {};
+        for (const input of Array.from(params.querySelectorAll("input"))) {
+          const key = input.dataset.param;
+          if (key) map2[key] = input.value;
+        }
+        body.params = map2;
+      } else {
+        body.content = text2.value;
+      }
+      void handlers.onCreateDraft(body);
+    });
+    root.append(create2);
+  }
+  function renderScriptAudit(root, entries) {
+    root.textContent = "";
+    const list = filterScriptAudit(entries).slice(0, 12);
+    if (list.length === 0) {
+      root.append(el2("p", "muted", "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0439 \u043A\u043E\u043D\u0432\u0435\u0439\u0435\u0440\u0430 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442."));
+      return;
+    }
+    for (const e of list) {
+      const row = el2("div", "scr-audit-row");
+      row.append(el2("span", "scr-audit-time", e.ts.replace("T", " ").slice(0, 19)));
+      row.append(el2("span", "scr-audit-actor", e.actor));
+      row.append(el2("span", "scr-audit-action", `${e.action} \u2192 ${e.target}`));
+      row.append(el2("span", `scr-check-result ${e.result === "ok" ? "ok" : "bad"}`, e.result));
+      root.append(row);
+    }
+  }
+
   // src/disks.ts
   function barFill(freePct) {
     const bar = document.createElement("div");
@@ -376,7 +703,7 @@
   }
 
   // src/quality.ts
-  function el2(tag, cls, text2) {
+  function el3(tag, cls, text2) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
     if (text2 !== void 0) e.textContent = text2;
@@ -399,26 +726,26 @@
   function renderQualityMatrix(root, cells) {
     root.textContent = "";
     if (cells.length === 0) {
-      root.append(el2("p", "muted", "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445: \u0437\u0430\u043C\u0435\u0440\u043E\u0432 \u043D\u0435\u0442"));
+      root.append(el3("p", "muted", "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445: \u0437\u0430\u043C\u0435\u0440\u043E\u0432 \u043D\u0435\u0442"));
       return;
     }
-    const table = el2("table", "data-table");
-    const thead = el2("thead", "");
-    const hr = el2("tr", "");
+    const table = el3("table", "data-table");
+    const thead = el3("thead", "");
+    const hr = el3("tr", "");
     for (const h of ["\u0410\u0433\u0435\u043D\u0442", "\u0426\u0435\u043B\u044C", "\u0417\u0430\u0434\u0435\u0440\u0436\u043A\u0430, \u043C\u0441", "\u041F\u043E\u0442\u0435\u0440\u0438", "\u0421\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435"]) {
-      hr.append(el2("th", "", h));
+      hr.append(el3("th", "", h));
     }
     thead.append(hr);
     table.append(thead);
-    const tbody = el2("tbody", "");
+    const tbody = el3("tbody", "");
     for (const c of cells) {
-      const tr = el2("tr", "");
-      tr.append(el2("td", "", c.agent_id));
-      tr.append(el2("td", "", c.target));
-      tr.append(el2("td", "", c.latest["latency"] !== void 0 ? c.latest["latency"].toFixed(1) : "\u2014"));
-      tr.append(el2("td", "", c.latest["loss"] !== void 0 ? `${(c.latest["loss"] * 100).toFixed(1)}%` : "\u2014"));
+      const tr = el3("tr", "");
+      tr.append(el3("td", "", c.agent_id));
+      tr.append(el3("td", "", c.target));
+      tr.append(el3("td", "", c.latest["latency"] !== void 0 ? c.latest["latency"].toFixed(1) : "\u2014"));
+      tr.append(el3("td", "", c.latest["loss"] !== void 0 ? `${(c.latest["loss"] * 100).toFixed(1)}%` : "\u2014"));
       const worst = c.worst !== "ok" ? c.worst : cellWorst(c.latest);
-      tr.append(el2("td", `severity-${worst}`, worstNames[worst] ?? worst));
+      tr.append(el3("td", `severity-${worst}`, worstNames[worst] ?? worst));
       tbody.append(tr);
     }
     table.append(tbody);
@@ -451,13 +778,13 @@
   function renderBottlenecks(root, list) {
     root.textContent = "";
     if (list.length === 0) {
-      root.append(el2("p", "muted", "\u0443\u0437\u043A\u0438\u0445 \u043C\u0435\u0441\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E"));
+      root.append(el3("p", "muted", "\u0443\u0437\u043A\u0438\u0445 \u043C\u0435\u0441\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E"));
       return;
     }
     for (const b of list) {
-      const div = el2("div", `finding severity-${b.finding.severity}`);
-      div.append(el2("span", "finding-fact", `${b.hostname}: ${b.finding.fact}`));
-      div.append(el2("div", "muted", `\u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F: ${b.finding.advice}`));
+      const div = el3("div", `finding severity-${b.finding.severity}`);
+      div.append(el3("span", "finding-fact", `${b.hostname}: ${b.finding.fact}`));
+      div.append(el3("div", "muted", `\u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F: ${b.finding.advice}`));
       root.append(div);
     }
   }
@@ -472,7 +799,7 @@
   }
 
   // src/security.ts
-  function el3(tag, cls, text2) {
+  function el4(tag, cls, text2) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
     if (text2 !== void 0) e.textContent = text2;
@@ -503,13 +830,13 @@
   }
   function renderScore(root, score) {
     root.textContent = "";
-    const big = el3("div", "sec-score-value", scoreText(score));
+    const big = el4("div", "sec-score-value", scoreText(score));
     if (score === null) big.classList.add("muted");
     else if (score < 50) big.classList.add("severity-critical");
     else if (score < 80) big.classList.add("severity-warning");
     root.append(big);
-    const bar = el3("div", "sec-score-bar");
-    const fill = el3("div", "sec-score-fill");
+    const bar = el4("div", "sec-score-bar");
+    const fill = el4("div", "sec-score-fill");
     if (score !== null) {
       fill.style.width = `${score}%`;
       if (score < 50) fill.classList.add("fill-critical");
@@ -523,56 +850,56 @@
   function renderCounts(root, counts, unknownChecks) {
     root.textContent = "";
     for (const [key, label] of [["critical", "\u041A\u0440\u0438\u0442\u0438\u0447\u043D\u044B\u0435"], ["warning", "\u0412\u0430\u0436\u043D\u044B\u0435"], ["info", "\u041F\u0440\u043E\u0447\u0438\u0435"]]) {
-      const cell = el3("div", "sec-count");
-      cell.append(el3("div", `severity-${key}`, `${label}`));
-      cell.append(el3("div", "sec-count-value", String(counts[key] ?? 0)));
+      const cell = el4("div", "sec-count");
+      cell.append(el4("div", `severity-${key}`, `${label}`));
+      cell.append(el4("div", "sec-count-value", String(counts[key] ?? 0)));
       root.append(cell);
     }
     if (unknownChecks > 0) {
-      const cell = el3("div", "sec-count");
-      cell.append(el3("div", "severity-unknown", "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"));
-      cell.append(el3("div", "sec-count-value", String(unknownChecks)));
+      const cell = el4("div", "sec-count");
+      cell.append(el4("div", "severity-unknown", "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"));
+      cell.append(el4("div", "sec-count-value", String(unknownChecks)));
       root.append(cell);
     }
   }
   function renderGroups(root, groups) {
     root.textContent = "";
     if (groups.length === 0) {
-      root.append(el3("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
+      root.append(el4("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
       return;
     }
     for (const g of groups) {
-      const row = el3("div", `finding severity-${g.severity}`);
-      row.append(el3("span", "finding-sev", sevNames[g.severity] ?? g.severity));
-      const body = el3("div", "finding-body");
-      body.append(el3("div", "finding-fact", g.title));
-      body.append(el3("div", "muted", `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${g.basis}`));
-      body.append(el3("div", "muted", `\u041A\u0430\u043A \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C: ${g.advice}`));
+      const row = el4("div", `finding severity-${g.severity}`);
+      row.append(el4("span", "finding-sev", sevNames[g.severity] ?? g.severity));
+      const body = el4("div", "finding-body");
+      body.append(el4("div", "finding-fact", g.title));
+      body.append(el4("div", "muted", `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${g.basis}`));
+      body.append(el4("div", "muted", `\u041A\u0430\u043A \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C: ${g.advice}`));
       row.append(body);
-      row.append(el3("span", "finding-where", g.where.join(", ")));
+      row.append(el4("span", "finding-where", g.where.join(", ")));
       root.append(row);
     }
   }
   function renderComputers2(root, computers, onComputer) {
     root.textContent = "";
     if (computers.length === 0) {
-      root.append(el3("p", "muted", "\u043D\u0435\u0442 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u043E\u0432 \u0441 \u0434\u0430\u043D\u043D\u044B\u043C\u0438"));
+      root.append(el4("p", "muted", "\u043D\u0435\u0442 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u043E\u0432 \u0441 \u0434\u0430\u043D\u043D\u044B\u043C\u0438"));
       return;
     }
-    const table = el3("table", "data-table");
-    const thead = el3("thead", "");
-    const hr = el3("tr", "");
-    for (const h of ["\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440", "\u041E\u0446\u0435\u043D\u043A\u0430", "\u0421\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435", "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"]) hr.append(el3("th", "", h));
+    const table = el4("table", "data-table");
+    const thead = el4("thead", "");
+    const hr = el4("tr", "");
+    for (const h of ["\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440", "\u041E\u0446\u0435\u043D\u043A\u0430", "\u0421\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435", "\u041D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"]) hr.append(el4("th", "", h));
     thead.append(hr);
     table.append(thead);
-    const tbody = el3("tbody", "");
+    const tbody = el4("tbody", "");
     for (const c of computers) {
-      const tr = el3("tr", "sec-computer-row");
+      const tr = el4("tr", "sec-computer-row");
       tr.setAttribute("data-agent", c.id);
-      tr.append(el3("td", "", c.hostname));
-      tr.append(el3("td", "", String(c.score)));
-      tr.append(el3("td", `severity-${c.worst}`, sevNames[c.worst] ?? c.worst));
-      tr.append(el3("td", "", String(c.unknown_checks)));
+      tr.append(el4("td", "", c.hostname));
+      tr.append(el4("td", "", String(c.score)));
+      tr.append(el4("td", `severity-${c.worst}`, sevNames[c.worst] ?? c.worst));
+      tr.append(el4("td", "", String(c.unknown_checks)));
       tr.addEventListener("click", () => onComputer(c.id));
       tbody.append(tr);
     }
@@ -580,57 +907,57 @@
     root.append(table);
   }
   function checkLine(chk) {
-    const row = el3("div", `sec-check sec-check-${chk.status}`);
-    row.append(el3("span", "sec-check-status", checkStatusName(chk.status)));
-    row.append(el3("span", "", chk.id));
-    if (chk.detail !== void 0) row.append(el3("span", "muted", chk.detail));
+    const row = el4("div", `sec-check sec-check-${chk.status}`);
+    row.append(el4("span", "sec-check-status", checkStatusName(chk.status)));
+    row.append(el4("span", "", chk.id));
+    if (chk.detail !== void 0) row.append(el4("span", "muted", chk.detail));
     return row;
   }
   function renderSecurityCard(root, card, onBack) {
     root.textContent = "";
-    const head = el3("div", "sec-card-head");
-    const back = el3("button", "ghost", "\u2190 \u0412\u0441\u0435 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u044B");
+    const head = el4("div", "sec-card-head");
+    const back = el4("button", "ghost", "\u2190 \u0412\u0441\u0435 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u044B");
     back.addEventListener("click", onBack);
-    head.append(back, el3("h3", "", `\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C: ${card.hostname}`));
+    head.append(back, el4("h3", "", `\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C: ${card.hostname}`));
     if (card.score !== null) {
-      head.append(el3("span", "sec-card-score", `\u043E\u0446\u0435\u043D\u043A\u0430 ${card.score} / 100`));
+      head.append(el4("span", "sec-card-score", `\u043E\u0446\u0435\u043D\u043A\u0430 ${card.score} / 100`));
     }
     root.append(head);
     if (card.collected_at !== void 0) {
-      root.append(el3("div", "muted", `\u043E\u0442\u0447\u0451\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A: ${card.collected_at}`));
+      root.append(el4("div", "muted", `\u043E\u0442\u0447\u0451\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A: ${card.collected_at}`));
     }
-    root.append(el3("h4", "", "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438"));
-    const checksBox = el3("div", "sec-checks");
+    root.append(el4("h4", "", "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438"));
+    const checksBox = el4("div", "sec-checks");
     if (card.checks.length === 0) {
-      checksBox.append(el3("p", "muted", "\u043E\u0442\u0447\u0451\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u0438\u0445\u043E\u0434\u0438\u043B"));
+      checksBox.append(el4("p", "muted", "\u043E\u0442\u0447\u0451\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u0438\u0445\u043E\u0434\u0438\u043B"));
     }
     for (const chk of card.checks) checksBox.append(checkLine(chk));
     root.append(checksBox);
-    root.append(el3("h4", "", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"));
-    const fbox = el3("div", "");
+    root.append(el4("h4", "", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"));
+    const fbox = el4("div", "");
     if (card.findings.length === 0) {
-      fbox.append(el3("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
+      fbox.append(el4("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
     }
     for (const f of card.findings) {
-      const row = el3("div", `finding severity-${f.severity}`);
-      row.append(el3("span", "finding-sev", sevNames[f.severity] ?? f.severity));
-      const body = el3("div", "finding-body");
-      body.append(el3("div", "finding-fact", f.fact));
-      body.append(el3("div", "muted", `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${f.basis}`));
-      body.append(el3("div", "muted", `\u041A\u0430\u043A \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C: ${f.advice}`));
+      const row = el4("div", `finding severity-${f.severity}`);
+      row.append(el4("span", "finding-sev", sevNames[f.severity] ?? f.severity));
+      const body = el4("div", "finding-body");
+      body.append(el4("div", "finding-fact", f.fact));
+      body.append(el4("div", "muted", `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${f.basis}`));
+      body.append(el4("div", "muted", `\u041A\u0430\u043A \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C: ${f.advice}`));
       row.append(body);
       fbox.append(row);
     }
     root.append(fbox);
     if (card.ports !== void 0 && card.ports.length > 0) {
-      root.append(el3("h4", "", `\u0421\u043B\u0443\u0448\u0430\u044E\u0449\u0438\u0435 \u043F\u043E\u0440\u0442\u044B (${card.ports.length})`));
-      const table = el3("table", "data-table");
-      const tbody = el3("tbody", "");
+      root.append(el4("h4", "", `\u0421\u043B\u0443\u0448\u0430\u044E\u0449\u0438\u0435 \u043F\u043E\u0440\u0442\u044B (${card.ports.length})`));
+      const table = el4("table", "data-table");
+      const tbody = el4("tbody", "");
       for (const p2 of card.ports) {
-        const tr = el3("tr", "");
-        tr.append(el3("td", "", p2.local_address));
-        tr.append(el3("td", "", String(p2.local_port)));
-        tr.append(el3("td", "", p2.process ?? ""));
+        const tr = el4("tr", "");
+        tr.append(el4("td", "", p2.local_address));
+        tr.append(el4("td", "", String(p2.local_port)));
+        tr.append(el4("td", "", p2.process ?? ""));
         tbody.append(tr);
       }
       table.append(tbody);
@@ -639,36 +966,36 @@
   }
   function renderSecurity(root, summary, card, refs) {
     root.textContent = "";
-    const top = el3("div", "sec-top");
-    const scoreBox = el3("div", "sec-score-box");
-    scoreBox.append(el3("div", "sec-score-label", "\u041E\u0431\u0449\u0430\u044F \u043E\u0446\u0435\u043D\u043A\u0430"));
-    const scoreHolder = el3("div", "sec-score");
+    const top = el4("div", "sec-top");
+    const scoreBox = el4("div", "sec-score-box");
+    scoreBox.append(el4("div", "sec-score-label", "\u041E\u0431\u0449\u0430\u044F \u043E\u0446\u0435\u043D\u043A\u0430"));
+    const scoreHolder = el4("div", "sec-score");
     renderScore(scoreHolder, summary.score);
     scoreBox.append(scoreHolder);
-    scoreBox.append(el3("div", "muted", "\u041E\u0446\u0435\u043D\u043A\u0430 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044F \u043F\u043E \u043F\u0440\u0430\u0432\u0438\u043B\u0430\u043C \u0438 \u0432\u0435\u0441\u0430\u043C \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439. \u041E\u043D\u0430 \u043D\u0435 \u0437\u0430\u0432\u0438\u0441\u0438\u0442 \u043E\u0442 \u0418\u0418."));
+    scoreBox.append(el4("div", "muted", "\u041E\u0446\u0435\u043D\u043A\u0430 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044F \u043F\u043E \u043F\u0440\u0430\u0432\u0438\u043B\u0430\u043C \u0438 \u0432\u0435\u0441\u0430\u043C \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439. \u041E\u043D\u0430 \u043D\u0435 \u0437\u0430\u0432\u0438\u0441\u0438\u0442 \u043E\u0442 \u0418\u0418."));
     top.append(scoreBox);
-    const counts = el3("div", "sec-counts");
+    const counts = el4("div", "sec-counts");
     renderCounts(counts, summary.counts, summary.unknown_checks);
     top.append(counts);
     root.append(top);
-    root.append(el3("h3", "", "\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u044B"));
-    const computersBox = el3("div", "");
+    root.append(el4("h3", "", "\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u044B"));
+    const computersBox = el4("div", "");
     renderComputers2(computersBox, summary.computers, refs.onComputer);
     root.append(computersBox);
-    const cardBox = el3("div", "");
+    const cardBox = el4("div", "");
     if (card !== null) {
       renderSecurityCard(cardBox, card, () => refs.onComputer(""));
     }
     root.append(cardBox);
-    root.append(el3("h3", "", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"));
-    const findings = el3("div", "");
+    root.append(el4("h3", "", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"));
+    const findings = el4("div", "");
     renderGroups(findings, summary.findings);
     root.append(findings);
-    root.append(el3("h3", "", "\u0421\u0435\u0442\u0435\u0432\u044B\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430"));
-    const network = el3("div", "");
+    root.append(el4("h3", "", "\u0421\u0435\u0442\u0435\u0432\u044B\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430"));
+    const network = el4("div", "");
     renderGroups(network, summary.network);
     root.append(network);
-    root.append(el3("p", "muted", "\u0421\u0435\u0442\u0435\u0432\u044B\u0435 \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0442\u043E, \u0447\u0442\u043E \u0443\u0436\u0435 \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E \u0441\u043A\u0430\u043D\u0435\u0440\u0443: \u043E\u0442\u0432\u0435\u0442\u044B \u043D\u0430 SNMP-\u043E\u043F\u0440\u043E\u0441 \u0438 \u0435\u0433\u043E \u043C\u0435\u0442\u043E\u0434. \u041D\u043E\u0432\u044B\u0445 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u043F\u0440\u043E\u0431 \u043D\u0435\u0442."));
+    root.append(el4("p", "muted", "\u0421\u0435\u0442\u0435\u0432\u044B\u0435 \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0442\u043E, \u0447\u0442\u043E \u0443\u0436\u0435 \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E \u0441\u043A\u0430\u043D\u0435\u0440\u0443: \u043E\u0442\u0432\u0435\u0442\u044B \u043D\u0430 SNMP-\u043E\u043F\u0440\u043E\u0441 \u0438 \u0435\u0433\u043E \u043C\u0435\u0442\u043E\u0434. \u041D\u043E\u0432\u044B\u0445 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u043F\u0440\u043E\u0431 \u043D\u0435\u0442."));
   }
 
   // node_modules/cytoscape/dist/cytoscape.esm.mjs
@@ -1831,8 +2158,8 @@
   };
   var push = function push2(arr, otherArr) {
     for (var i2 = 0; i2 < otherArr.length; i2++) {
-      var el5 = otherArr[i2];
-      arr.push(el5);
+      var el6 = otherArr[i2];
+      arr.push(el6);
     }
   };
   var getPrefixedProperty = function getPrefixedProperty2(obj, propName, prefix) {
@@ -3020,8 +3347,8 @@
                 }
                 cycle = cycle.slice(smallestIndex).concat(cycle.slice(0, smallestIndex));
                 cycle.push(cycle[0]);
-                var cycleId = cycle.map(function(el5) {
-                  return el5.id();
+                var cycleId = cycle.map(function(el6) {
+                  return el6.id();
                 }).join(",");
                 if (negativeWeightCycleIds.indexOf(cycleId) === -1) {
                   negativeWeightCycles.push(eles.spawn(cycle));
@@ -17895,8 +18222,8 @@
     };
     var adjustMaximally = function adjustMaximally2(ele2, shifted2) {
       var eInfo = getInfo(ele2);
-      var incomers = ele2.incomers().filter(function(el5) {
-        return el5.isNode() && eles.has(el5);
+      var incomers = ele2.incomers().filter(function(el6) {
+        return el6.isNode() && eles.has(el6);
       });
       var maxDepth = -1;
       var id3 = ele2.id();
@@ -17932,8 +18259,8 @@
         var _ele3 = dequeue();
         var didShift = adjustMaximally(_ele3, shifted);
         if (didShift) {
-          _ele3.outgoers().filter(function(el5) {
-            return el5.isNode() && eles.has(el5);
+          _ele3.outgoers().filter(function(el6) {
+            return el6.isNode() && eles.has(el6);
           }).forEach(enqueue);
         } else if (didShift === null) {
           warn("Detected double maximal shift for node `" + _ele3.id() + "`.  Bailing maximal adjustment due to cycle.  Use `options.maximal: true` only on DAGs.");
@@ -31321,7 +31648,7 @@
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"
   };
-  function el4(tag, className2) {
+  function el5(tag, className2) {
     const e = document.createElement(tag);
     if (className2) e.className = className2;
     return e;
@@ -31331,11 +31658,11 @@
   }
   function fillOverview(page, info, kind) {
     page.textContent = "";
-    const dl = el4("dl", "kv");
+    const dl = el5("dl", "kv");
     const row = (dt, dd) => {
-      const t = el4("dt");
+      const t = el5("dt");
       text(t, dt);
-      const d = el4("dd");
+      const d = el5("dd");
       text(d, dd);
       dl.append(t, d);
     };
@@ -31347,14 +31674,14 @@
     row("\u041A\u043B\u0430\u0441\u0441", className(info.class));
     if (info.ssid !== "") row("SSID", info.ssid);
     page.append(dl);
-    const marks = el4("p");
+    const marks = el5("p");
     if (info.manual) {
-      const b = el4("span", "badge manual");
+      const b = el5("span", "badge manual");
       text(b, "\u0432\u0440\u0443\u0447\u043D\u0443\u044E");
       marks.append(b, document.createTextNode(" "));
     }
     if (!info.verified) {
-      const b = el4("span", "badge unverified");
+      const b = el5("span", "badge unverified");
       text(b, "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
       marks.append(b);
     }
@@ -31370,11 +31697,11 @@
     page.textContent = "";
     const links = graph2.links.filter((l) => l.a === id2 || l.b === id2);
     if (links.length > 0) {
-      const h = el4("h3");
+      const h = el5("h3");
       text(h, "\u0421\u0432\u044F\u0437\u0438");
-      const ul = el4("ul");
+      const ul = el5("ul");
       for (const l of links) {
-        const li = el4("li");
+        const li = el5("li");
         const other = l.a === id2 ? l.b : l.a;
         const port = l.a === id2 ? l.aPort : l.bPort;
         text(li, `${other}${port !== "" ? ` (${port})` : ""} \u2014 ${linkSource(l)}`);
@@ -31382,16 +31709,16 @@
       }
       page.append(h, ul);
     }
-    const h2 = el4("h3");
+    const h2 = el5("h3");
     text(h2, "\u041D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u044F");
-    const ul2 = el4("ul");
+    const ul2 = el5("ul");
     for (const o of graphObservations(page, id2)) {
-      const li = el4("li");
+      const li = el5("li");
       text(li, `${o.source} \u2014 ${o.seen}`);
       ul2.append(li);
     }
     if (ul2.childNodes.length === 0) {
-      const li = el4("li");
+      const li = el5("li");
       text(li, "\u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0439");
       ul2.append(li);
     }
@@ -31421,21 +31748,21 @@
   function fillEdit(page, info, handlers) {
     page.textContent = "";
     const nameId = "edit-name";
-    const nameLabel = el4("label");
+    const nameLabel = el5("label");
     nameLabel.setAttribute("for", nameId);
     text(nameLabel, "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435");
-    const name = el4("input");
+    const name = el5("input");
     name.type = "text";
     name.id = nameId;
     name.maxLength = 255;
     name.value = info.hostname;
-    const save = el4("button");
+    const save = el5("button");
     text(save, "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435");
     save.addEventListener("click", () => handlers.onRename(info.id, name.value));
-    const classLabel = el4("label");
+    const classLabel = el5("label");
     classLabel.setAttribute("for", "edit-class");
     text(classLabel, "\u041A\u043B\u0430\u0441\u0441");
-    const select = el4("select");
+    const select = el5("select");
     select.id = "edit-class";
     for (const [value, label] of CLASSES) {
       const opt = document.createElement("option");
@@ -31444,25 +31771,25 @@
       if (value === info.class) opt.selected = true;
       select.append(opt);
     }
-    const apply2 = el4("button");
+    const apply2 = el5("button");
     text(apply2, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u043A\u043B\u0430\u0441\u0441");
     apply2.addEventListener("click", () => handlers.onClass(info.id, select.value));
-    const verdict = el4("div", "verdict");
-    const check = el4("button");
+    const verdict = el5("div", "verdict");
+    const check = el5("button");
     text(check, "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (ping)");
     check.addEventListener("click", () => handlers.onVerify(info.id));
-    const row1 = el4("div", "row");
+    const row1 = el5("div", "row");
     row1.append(save);
-    const row2 = el4("div", "row");
+    const row2 = el5("div", "row");
     row2.append(apply2);
-    const row3 = el4("div", "row");
+    const row3 = el5("div", "row");
     row3.append(check);
     page.append(nameLabel, name, row1, classLabel, select, row2, verdict, row3);
     if (info.manual) {
-      const del = el4("button");
+      const del = el5("button");
       text(del, "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0440\u0443\u0447\u043D\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442");
       del.addEventListener("click", () => handlers.onDelete(info.id));
-      const row4 = el4("div", "row");
+      const row4 = el5("div", "row");
       row4.append(del);
       page.append(row4);
     }
@@ -31481,8 +31808,8 @@
     known_no_agent: "\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"
   };
-  async function setupScanScreen(cfg, el5) {
-    el5.subnets.textContent = "";
+  async function setupScanScreen(cfg, el6) {
+    el6.subnets.textContent = "";
     for (const cidr of cfg.subnets) {
       const label = document.createElement("label");
       const box = document.createElement("input");
@@ -31490,30 +31817,30 @@
       box.value = cidr;
       box.checked = true;
       label.append(box, document.createTextNode(` ${cidr}`));
-      el5.subnets.append(label);
+      el6.subnets.append(label);
     }
     if (!cfg.snmp) {
-      el5.snmp.disabled = true;
-      el5.snmp.value = "";
-      el5.snmpNote.hidden = false;
+      el6.snmp.disabled = true;
+      el6.snmp.value = "";
+      el6.snmpNote.hidden = false;
     }
   }
-  function startScan(el5) {
-    const subnets = [...el5.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
+  function startScan(el6) {
+    const subnets = [...el6.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
       (b) => b.value
     );
-    const snmpTargets = el5.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    const snmpTargets = el6.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
     const out = {
       subnets,
-      ping: el5.ping.checked,
-      names: el5.names.checked,
+      ping: el6.ping.checked,
+      names: el6.names.checked,
       snmp_targets: snmpTargets,
       confirm: true
     };
-    const path = el5.leasesPath.value.trim();
+    const path = el6.leasesPath.value.trim();
     if (path !== "") {
       out.leases_path = path;
-      out.leases_format = el5.leasesFormat.value;
+      out.leases_format = el6.leasesFormat.value;
     }
     return out;
   }
@@ -31525,18 +31852,18 @@
     if (snmp) n += 2;
     return n;
   }
-  function renderProgress(el5, view, expected) {
-    el5.progressWrap.hidden = false;
+  function renderProgress(el6, view, expected) {
+    el6.progressWrap.hidden = false;
     const done = view.stages.length;
     if (view.status === "done") {
-      el5.progress.style.width = "100%";
-      el5.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
+      el6.progress.style.width = "100%";
+      el6.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
     } else if (view.status === "failed") {
-      el5.progress.style.width = "0";
-      el5.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
+      el6.progress.style.width = "0";
+      el6.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
     } else {
-      el5.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
-      el5.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
+      el6.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
+      el6.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
     }
   }
   function deviceRow(info, onClass) {
@@ -31568,10 +31895,10 @@
     tr.append(actions);
     return tr;
   }
-  function renderAlerts(el5, alerts, onAck) {
-    el5.alertsList.textContent = "";
-    el5.badge.hidden = alerts.length === 0;
-    el5.badge.textContent = String(alerts.length);
+  function renderAlerts(el6, alerts, onAck) {
+    el6.alertsList.textContent = "";
+    el6.badge.hidden = alerts.length === 0;
+    el6.badge.textContent = String(alerts.length);
     for (const a of alerts) {
       const item = document.createElement("div");
       item.className = "alert-item";
@@ -31581,11 +31908,13 @@
       ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
       ack.addEventListener("click", () => onAck(a.id));
       item.append(text2, ack);
-      el5.alertsList.append(item);
+      el6.alertsList.append(item);
     }
   }
 
   // src/main.ts
+  var scriptsSelected = null;
+  var scriptsCache = { scripts: [], versions: [], stages: {} };
   var api2 = new NetatlasApi();
   var $2 = (id2) => {
     const e = document.getElementById(id2);
@@ -31838,6 +32167,7 @@
     $2("screen-disks").hidden = name !== "disks";
     $2("screen-quality").hidden = name !== "quality";
     $2("screen-security").hidden = name !== "security";
+    $2("screen-scripts").hidden = name !== "scripts";
     document.querySelector(".workspace").hidden = name !== "map";
     document.querySelectorAll("nav .item[data-page]").forEach((item) => {
       const on3 = item.dataset.page === name;
@@ -31851,6 +32181,7 @@
     if (name === "disks") void initDisksScreen();
     if (name === "quality") void initQualityScreen();
     if (name === "security") void initSecurityScreen();
+    if (name === "scripts") void initScriptsScreen();
     if (name === "map") void reload();
   }
   async function initComputersScreen() {
@@ -31934,6 +32265,132 @@
       }, null, { root, onComputer: () => void 0 });
       showNotice(err instanceof Error ? err.message : "\u043E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u0438", true);
     }
+  }
+  async function initScriptsScreen() {
+    const listRoot = $2("scripts-list");
+    const cardRoot = $2("scripts-card");
+    const stagesRoot = $2("scripts-stages");
+    const auditRoot = $2("scripts-audit");
+    const draftRoot = $2("scripts-draft");
+    try {
+      const [list, catalog, jobs, audit] = await Promise.all([
+        api2.scripts(),
+        api2.catalog(),
+        api2.jobs(),
+        api2.auditList(200)
+      ]);
+      scriptsCache = { scripts: list.scripts, versions: list.versions, stages: list.stages };
+      renderStages(stagesRoot, list.stages);
+      renderScriptAudit(auditRoot, audit.entries);
+      const versionsByScript = {};
+      for (const v of list.versions) versionsByScript[v.script_id] = v;
+      if (scriptsSelected === null && list.scripts.length > 0) scriptsSelected = list.scripts[0].id;
+      renderScriptList(listRoot, list.scripts, versionsByScript, scriptsSelected, (id2) => {
+        scriptsSelected = id2;
+        void initScriptsScreen();
+      });
+      renderDraftForm(draftRoot, catalog.templates, handlersFor(list, jobs, audit));
+      const script = list.scripts.find((s) => s.id === scriptsSelected);
+      const version2 = script === void 0 ? void 0 : versionsByScript[script.id];
+      if (script === void 0 || version2 === void 0) {
+        cardRoot.textContent = "";
+        cardRoot.append(Object.assign(document.createElement("p"), { className: "muted", textContent: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043A\u0440\u0438\u043F\u0442 \u0441\u043B\u0435\u0432\u0430." }));
+        return;
+      }
+      const card = await api2.scriptCard(script.id);
+      renderVersionCard(cardRoot, script, version2, card.checks[version2.id] ?? [], card.signatures[version2.id], jobs.jobs, handlersFor(list, jobs, audit));
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 401)) {
+        showNotice(errMessage(err), true);
+      }
+    }
+  }
+  function handlersFor(list, jobs, audit) {
+    return {
+      onSelect: (id2) => {
+        scriptsSelected = id2;
+        void initScriptsScreen();
+      },
+      onCreateDraft: async (body) => {
+        try {
+          await api2.createScript(body);
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onStatus: async (sid, vid, to, comment) => {
+        try {
+          await api2.setScriptStatus(sid, vid, to, comment);
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onSign: (sid, vid, name, sha) => {
+        const dlgName = window.prompt(`\u041F\u043E\u0434\u043F\u0438\u0441\u044C. \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u043C\u044F \u0441\u043A\u0440\u0438\u043F\u0442\u0430 \u0446\u0435\u043B\u0438\u043A\u043E\u043C (\xAB${name}\xBB):`);
+        if (dlgName === null) return;
+        const dlgSha = window.prompt("\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0445\u044D\u0448 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0433\u043E (\u0441\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0438\u0437 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438):");
+        if (dlgSha === null) return;
+        const problem = validateSignInput(dlgName, name, dlgSha, sha);
+        if (problem !== "") {
+          showNotice(problem, true);
+          return;
+        }
+        void (async () => {
+          try {
+            await api2.sign(sid, vid, dlgName, dlgSha.trim().toLowerCase());
+            await initScriptsScreen();
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        })();
+      },
+      onCheckRun: async (sid, vid) => {
+        try {
+          const res = await api2.checkRun(sid, vid);
+          showNotice(
+            res.report.ok ? "\u0421\u0442\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043F\u0440\u043E\u0439\u0434\u0435\u043D\u044B: \u0441\u0442\u0430\u0442\u0443\u0441 \xAB\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043A\u043E\u0434\u0430\xBB." : "\u0421\u0442\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043D\u0430\u0448\u043B\u0438 \u043E\u0448\u0438\u0431\u043A\u0438 \u0443\u0440\u043E\u0432\u043D\u044F Error.",
+            !res.report.ok
+          );
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onCheckResult: async (sid, vid, body) => {
+        try {
+          await api2.checkResult(sid, vid, body);
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onViewCode: async (sid, vid) => {
+        try {
+          const v = await api2.scriptVersion(sid, vid);
+          window.alert(v.content);
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onCreateJob: async (body) => {
+        try {
+          await api2.createJob(body);
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onStopJob: async (jobId) => {
+        try {
+          await api2.stopJob(jobId);
+          await initScriptsScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      }
+    };
   }
   var scanEls = {
     subnets: $2("scan-subnets"),

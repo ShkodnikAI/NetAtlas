@@ -34,6 +34,10 @@ type config struct {
 	// Качество сети (NR-008): цели SNMP пустые — задача выключена.
 	snmpTargets string
 	snmpList    []netip.Addr
+
+	// Конвейер скриптов (NR-011): оба выключены по умолчанию.
+	enableDispatch     bool
+	allowCustomScripts bool
 }
 
 // errUsage — ошибки конфигурации: завершение с кодом 2.
@@ -60,6 +64,10 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		"каталог правил (по умолчанию — встроенные rules/data)")
 	fs.StringVar(&cfg.snmpTargets, "snmp-targets", "",
 		"цели SNMP-опроса портов, через запятую (по умолчанию выключено)")
+	fs.BoolVar(&cfg.enableDispatch, "enable-dispatch", false,
+		"выдавать задания агентам в checkin (по умолчанию выключено)")
+	fs.BoolVar(&cfg.allowCustomScripts, "allow-custom-scripts", false,
+		"разрешить задания из произвольных скриптов (по умолчанию выключено)")
 	if err := fs.Parse(args); err != nil {
 		return config{}, fmt.Errorf("%w: %v", errUsage, err)
 	}
@@ -99,6 +107,17 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 
 	// Каталог ключей PKI: только окружение, как и токен.
 	cfg.keyDir = getenv("NETATLAS_KEYDIR")
+
+	// Диспетчеризация (NR-011): для выдачи заданий нужен ключ
+	// подписи и слушатель агентов.
+	if cfg.enableDispatch {
+		if cfg.keyDir == "" {
+			return config{}, fmt.Errorf("%w: --enable-dispatch без NETATLAS_KEYDIR: нечем подписывать задания", errUsage)
+		}
+		if cfg.agentListen == "" {
+			return config{}, fmt.Errorf("%w: --enable-dispatch без --agent-listen: агентам некуда приходить", errUsage)
+		}
+	}
 
 	// Агентские слушатели: адреса проверяются как порт владельца
 	// (локальные по умолчанию), совпадения портов запрещены, для

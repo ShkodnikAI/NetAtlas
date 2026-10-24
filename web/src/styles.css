@@ -433,3 +433,42 @@ dialog .error { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-si
 .finding-sev { font-size: 12px; align-self: start; padding: 1px 8px; border-radius: 9px; border: 1px solid transparent; }
 .finding-body { flex: 1 1 320px; display: grid; gap: 2px; min-width: 0; }
 .finding-where { font-size: 12px; color: var(--muted); font-family: var(--mono, monospace); align-self: center; max-width: 220px; overflow-wrap: anywhere; }
+
+/* --- Скрипты и тесты (NR-011) --- */
+.scr-stages{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.scr-stage{flex:1 1 140px;background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;box-sizing:border-box}
+.scr-stage-name{font-size:12px;color:var(--muted)}
+.scr-stage-count{font-size:18px;font-weight:600;font-family:var(--mono)}
+.scr-columns{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-bottom:16px}
+.scr-columns>div:first-child{flex:1 1 260px;max-width:380px;min-width:0}
+.scr-columns>div:last-child{flex:999 1 420px;min-width:0}
+.scr-item{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.scr-item:hover{border-color:var(--line2)}
+.scr-item.selected{border-color:var(--accent);background:#1B2430}
+.scr-item-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.scr-item-name{font-size:13px;font-weight:600}
+.scr-item-ver{font-size:11px;font-family:var(--mono);color:var(--muted)}
+.scr-item-status{font-size:12px;margin-top:2px}
+.scr-card-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline}
+.scr-card-title{font-size:18px;font-weight:600}
+.scr-status-row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.scr-badge{font-size:11px;border:1px solid var(--line2);border-radius:10px;padding:2px 8px}
+.scr-buttons{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.scr-sha{font-size:12px;margin:6px 0;word-break:break-all}
+.scr-sha-value{font-family:var(--mono)}
+.scr-section{border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}
+.scr-section-title{font-size:13px;font-weight:600;margin-bottom:8px}
+.scr-check{font-size:12.5px;padding:4px 0;display:flex;flex-wrap:wrap;gap:6px}
+.scr-check-result.ok{color:#5FD38D}
+.scr-check-result.bad{color:#E06060}
+.scr-job{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12.5px;padding:6px 0;border-top:1px solid var(--line)}
+.scr-job-info{min-width:0}
+.scr-draft-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.scr-draft-row input,.scr-draft-row select{flex:1 1 160px}
+.scr-draft-params{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.scr-draft-params input{flex:1 1 180px}
+textarea{width:100%;box-sizing:border-box;min-height:90px}
+.scr-audit-row{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;padding:5px 0;border-top:1px solid var(--line);align-items:baseline}
+.scr-audit-time{font-family:var(--mono);color:var(--muted);flex:0 0 150px}
+.scr-audit-actor{color:var(--muted);flex:0 0 90px}
+.scr-audit-action{flex:1 1 200px;min-width:0;word-break:break-word}

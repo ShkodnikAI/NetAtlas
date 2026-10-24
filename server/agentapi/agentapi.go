@@ -3,8 +3,11 @@ package agentapi
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -19,8 +22,10 @@ import (
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
+	"github.com/ShkodnikAI/NetAtlas/pipeline/gate"
 	"github.com/ShkodnikAI/NetAtlas/pki"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
+	"github.com/ShkodnikAI/NetAtlas/server/signing"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 )
 
@@ -67,11 +72,31 @@ type API struct {
 	ca   *pki.CA
 	poll time.Duration
 
+	// dispatch — конфигурация конвейера заданий (NR-011): nil
+	// означает «диспетчеризация выключена» (--enable-dispatch нет),
+	// checkin задания не отдаёт никогда.
+	dispatch *DispatchDeps
+
 	enroll *rateWindow
 	rev    *revocationCache
 
 	agentMux  *http.ServeMux
 	enrollMux *http.ServeMux
+}
+
+// DispatchDeps — ключ подписи заданий и политика произвольных
+// скриптов. Ключ читается сервером из NETATLAS_KEYDIR до старта
+// слушателей; здесь он только используется.
+type DispatchDeps struct {
+	AllowCustomScripts bool
+	Key                ed25519.PrivateKey
+}
+
+// ConfigureDispatch подключает конвейер заданий. Вызывается только
+// при явном --enable-dispatch: до вызова (и после — nil) checkin
+// возвращает пустой список заданий.
+func (a *API) ConfigureDispatch(deps *DispatchDeps) {
+	a.dispatch = deps
 }
 
 // New собирает агентский API. poll — интервал опроса в ответах
@@ -100,6 +125,7 @@ func New(st *store.Store, ca *pki.CA, poll time.Duration) (*API, error) {
 	agentMux.HandleFunc("POST /agent/v1/security", a.handleSecurity)
 	agentMux.HandleFunc("GET /agent/v1/blob", a.handleBlobGet)
 	agentMux.HandleFunc("POST /agent/v1/blob", a.handleBlobPost)
+	agentMux.HandleFunc("POST /agent/v1/job-result", a.handleJobResult)
 	enrollMux := http.NewServeMux()
 	enrollMux.HandleFunc("POST /agent/v1/enroll", a.handleEnroll)
 	a.agentMux, a.enrollMux = agentMux, enrollMux
@@ -513,16 +539,30 @@ func (a *API) guardAgent(w http.ResponseWriter, r *http.Request, action string) 
 	return cn, true
 }
 
-// checkinResponse — ответ heartbeat: заданий пока нет (их добавит
-// NR-011), интервал опроса.
+// checkinResponse — ответ heartbeat: список заданий (NR-011: только
+// при --enable-dispatch, через шлюз gate) и интервал опроса.
 type checkinResponse struct {
-	Jobs    []any `json:"jobs"`
-	PollSec int   `json:"poll_interval_s"`
+	Jobs    []jobPayload `json:"jobs"`
+	PollSec int          `json:"poll_interval_s"`
+}
+
+// jobPayload — задание для агента: подписанный конверт, содержимое,
+// срок. Подпись проверяется агентом (agent/verify), содержимое — по
+// хэшу конверта.
+type jobPayload struct {
+	JobID     int64            `json:"job_id"`
+	Name      string           `json:"name"`
+	Kind      string           `json:"kind"`
+	Content   string           `json:"content"`
+	Envelope  signing.Envelope `json:"envelope"`
+	Signature string           `json:"signature"`
+	ExpiresAt string           `json:"expires_at"`
 }
 
 // handleCheckin — POST /agent/v1/checkin: выход агента на связь.
 // Успешный heartbeat в журнал не пишется (частота опроса разорвала
-// бы цепочку), отказы — пишутся.
+// бы цепочку), отказы — пишутся. Диспетчеризация выключена по
+// умолчанию: задания отдаются только после ConfigureDispatch.
 func (a *API) handleCheckin(w http.ResponseWriter, r *http.Request) {
 	cn, ok := a.guardAgent(w, r, "agent_checkin")
 	if !ok {
@@ -537,7 +577,192 @@ func (a *API) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, errorBody{"checkin"})
 		return
 	}
-	writeJSON(w, http.StatusOK, checkinResponse{Jobs: []any{}, PollSec: int(a.poll / time.Second)})
+	jobs := []jobPayload{}
+	if a.dispatch != nil {
+		payload, err := a.dispatchJobs(r.Context(), cn)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorBody{"выдача заданий"})
+			return
+		}
+		jobs = payload
+	}
+	writeJSON(w, http.StatusOK, checkinResponse{Jobs: jobs, PollSec: int(a.poll / time.Second)})
+}
+
+// dispatchJobs — кандидаты заданий агента через шлюз gate. Задание
+// без подписи, с истёкшей подписью (цель помечается expired), вне
+// разрешённого набора или с нарушением конвейера агенту не отдаётся.
+// Раскатка группами: не больше gate.Quota целей задания получили
+// задание.
+func (a *API) dispatchJobs(ctx context.Context, cn string) ([]jobPayload, error) {
+	cands, err := a.st.PendingDispatch(ctx, cn)
+	if err != nil {
+		return nil, fmt.Errorf("agentapi: кандидаты заданий: %w", err)
+	}
+	now := time.Now()
+	out := []jobPayload{}
+	for _, c := range cands {
+		script := gate.Script{
+			Kind:        c.Kind,
+			Category:    c.Category,
+			Status:      c.Status,
+			SHA256:      c.SHA256,
+			SignedBy:    c.SignedBy,
+			SignedSHA:   c.SignedSHA,
+			SignExpires: c.Expires,
+			PilotPassed: c.PilotOK,
+		}
+		job := gate.Job{
+			DispatchEnabled:    true, // сюда попадаем только при ConfigureDispatch
+			AllowCustomScripts: a.dispatch.AllowCustomScripts,
+			Target:             cn,
+			Targets:            c.Targets,
+			IsPilot:            c.IsPilot,
+		}
+		if err := gate.CanDispatch(script, job, now); err != nil {
+			// Просроченная подпись — финальное состояние цели: она
+			// больше не получит задание. Остальные отказы молча
+			// пропускают кандидата (конвейер ещё не готов).
+			if errors.Is(err, gate.ErrSignatureExpired) {
+				if errMark := a.st.MarkTargetExpired(ctx, c.JobID, cn, err.Error()); errMark != nil {
+					return nil, fmt.Errorf("agentapi: пометка expired: %w", errMark)
+				}
+			}
+			continue
+		}
+		// Раскатка группами: 1 → 10 % → остальные.
+		if c.Delivered >= gate.Quota(c.Total, c.Done) {
+			continue
+		}
+		payload, err := a.signJobEnvelope(c, cn, now)
+		if err != nil {
+			return nil, err
+		}
+		envJSON, err := json.Marshal(map[string]any{
+			"envelope": payload.Envelope, "signature": payload.Signature,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("agentapi: конверт: %w", err)
+		}
+		if err := a.st.MarkTargetSent(ctx, c.JobID, cn, string(envJSON)); err != nil {
+			return nil, fmt.Errorf("agentapi: выдача задания: %w", err)
+		}
+		out = append(out, payload)
+	}
+	return out, nil
+}
+
+// signJobEnvelope — конверт задания с подписью сервера: покрывает
+// job_id, цель, тип, хэш содержимого и срок подписи владельца.
+func (a *API) signJobEnvelope(c store.DispatchCandidate, cn string, now time.Time) (jobPayload, error) {
+	sha, err := hexDecode32(c.SHA256)
+	if err != nil {
+		return jobPayload{}, fmt.Errorf("agentapi: хэш версии: %w", err)
+	}
+	nonce := make([]byte, signing.NonceSize)
+	if _, err := rand.Read(nonce); err != nil {
+		return jobPayload{}, fmt.Errorf("agentapi: nonce: %w", err)
+	}
+	env := signing.Envelope{
+		JobID:         fmt.Sprintf("job:%d:%s", c.JobID, cn),
+		AgentID:       cn,
+		Kind:          c.Kind,
+		ContentSHA256: sha,
+		IssuedAt:      now,
+		ExpiresAt:     c.Expires,
+		Nonce:         nonce,
+	}
+	signed, err := signing.Sign(env, a.dispatch.Key)
+	if err != nil {
+		return jobPayload{}, fmt.Errorf("agentapi: подпись конверта: %w", err)
+	}
+	return jobPayload{
+		JobID:     c.JobID,
+		Name:      c.JobName,
+		Kind:      c.Kind,
+		Content:   c.Content,
+		Envelope:  signed.Envelope,
+		Signature: base64.StdEncoding.EncodeToString(signed.Signature),
+		ExpiresAt: c.Expires.UTC().Format(time.RFC3339),
+	}, nil
+}
+
+// hexDecode32 — 64 hex-символа в 32 байта.
+func hexDecode32(s string) ([]byte, error) {
+	if len(s) != 64 {
+		return nil, fmt.Errorf("хэш не 64 hex-символа")
+	}
+	out := make([]byte, 32)
+	for i := 0; i < 32; i++ {
+		hi, ok1 := hexNibble(s[2*i])
+		lo, ok2 := hexNibble(s[2*i+1])
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("хэш не hex")
+		}
+		out[i] = hi<<4 | lo
+	}
+	return out, nil
+}
+
+func hexNibble(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0', true
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10, true
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10, true
+	}
+	return 0, false
+}
+
+// jobResultRequest — тело POST /agent/v1/job-result.
+type jobResultRequest struct {
+	JobID        int64    `json:"job_id"`
+	OK           bool     `json:"ok"`
+	Detail       string   `json:"detail,omitempty"`
+	MetricBefore *float64 `json:"metric_before,omitempty"`
+	MetricAfter  *float64 `json:"metric_after,omitempty"`
+}
+
+// handleJobResult — приём результата задания от агента (серверная
+// сторона конвейера; агентская сторона исполнения — NR-025). Провал
+// останавливает раскатку, ухудшение метрики сверх порога — тоже.
+func (a *API) handleJobResult(w http.ResponseWriter, r *http.Request) {
+	cn, ok := a.guardAgent(w, r, "agent_job_result")
+	if !ok {
+		return
+	}
+	body, ok := readBody(w, r, 64<<10)
+	if !ok {
+		return
+	}
+	var req jobResultRequest
+	if err := decodeStrict(body, &req); err != nil {
+		a.auditDeny(r.Context(), "agent_job_result", cn, "тело: "+err.Error())
+		writeJSON(w, http.StatusBadRequest, errorBody{"тело запроса: " + err.Error()})
+		return
+	}
+	if req.JobID <= 0 {
+		a.auditDeny(r.Context(), "agent_job_result", cn, "job_id не положительный")
+		writeJSON(w, http.StatusBadRequest, errorBody{"job_id: положительное число"})
+		return
+	}
+	if _, err := a.st.RecordJobResult(r.Context(), req.JobID, cn, req.OK, req.Detail,
+		req.MetricBefore, req.MetricAfter, ActorAgentAPI); err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, errorBody{"задание или цель не найдены"})
+		case errors.Is(err, store.ErrScriptState):
+			writeJSON(w, http.StatusConflict, errorBody{err.Error()})
+		case errors.Is(err, store.ErrScriptValue):
+			writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, errorBody{"результат задания"})
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // inventoryRequest — конверт POST /agent/v1/inventory: строгое
