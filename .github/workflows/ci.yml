@@ -37,15 +37,19 @@ jobs:
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
 
-      - name: windows test diagnostics (temp, NR-009)
+      - name: windows diagnostics (temp, NR-009)
         if: failure() && runner.os == 'Windows'
         shell: bash
         run: |
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
-          go test ./... -count=1 2>&1 | grep -E "^--- FAIL|^FAIL|^    [a-z_]+\.go:" | head -40 > /tmp/fails.txt || true
-          cat /tmp/fails.txt | while IFS= read -r line; do echo "::error::$line"; done
-          echo "### windows fails" >> "$GITHUB_STEP_SUMMARY"
-          cat /tmp/fails.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo "=== gofmt -l ===" >> "$GITHUB_STEP_SUMMARY"
+          gofmt -l . >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo "=== go vet ===" >> "$GITHUB_STEP_SUMMARY"
+          go vet ./... >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo "=== go test ===" >> "$GITHUB_STEP_SUMMARY"
+          go test ./... -count=1 >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo "=== summary dump (annotations) ==="
+          tail -60 "$GITHUB_STEP_SUMMARY" | while IFS= read -r line; do echo "::error::$line"; done
 
   web:
     runs-on: ubuntu-latest
