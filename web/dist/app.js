@@ -110,13 +110,254 @@
     verify(id2) {
       return this.req("POST", `/api/devices/${encodeURIComponent(id2)}/verify`);
     }
+    computers() {
+      return this.req("GET", "/api/computers");
+    }
+    computer(id2) {
+      return this.req("GET", `/api/computers/${encodeURIComponent(id2)}`);
+    }
+    disks() {
+      return this.req("GET", "/api/disks");
+    }
   };
 
   // src/audit.ts
-  function setAuditBadge(el2, ok) {
-    el2.classList.add("audit-badge");
-    el2.hidden = ok;
-    if (!ok) el2.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
+  function setAuditBadge(el3, ok) {
+    el3.classList.add("audit-badge");
+    el3.hidden = ok;
+    if (!ok) el3.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
+  }
+
+  // src/computers.ts
+  function el(tag, cls, text2) {
+    const e = document.createElement(tag);
+    if (cls !== "") e.className = cls;
+    if (text2 !== void 0) e.textContent = text2;
+    return e;
+  }
+  var severityNames = {
+    critical: "\u043A\u0440\u0438\u0442\u0438\u0447\u043D\u043E",
+    warning: "\u043F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435",
+    info: "\u0438\u043D\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044F"
+  };
+  function chipSeverity(severity) {
+    const chip = el("span", `chip severity-${severity}`, severityNames[severity] ?? severity);
+    return chip;
+  }
+  function findingsLine(summary) {
+    if (!summary.inventory_at) return "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445";
+    const f = summary.findings ?? {};
+    const parts = [];
+    if ((f["critical"] ?? 0) > 0) parts.push(`\u043A\u0440\u0438\u0442\u0438\u0447\u043D\u043E: ${f["critical"]}`);
+    if ((f["warning"] ?? 0) > 0) parts.push(`\u043F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0439: ${f["warning"]}`);
+    if ((f["info"] ?? 0) > 0) parts.push(`\u0438\u043D\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044F: ${f["info"]}`);
+    if (parts.length === 0) return "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442";
+    return parts.join(", ");
+  }
+  function forecastText(f) {
+    if (f.days_to_full !== void 0) {
+      return `\u0437\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 ${f.days_to_full} \u0434\u043D.`;
+    }
+    if (f.insufficient !== void 0 && f.insufficient !== "") {
+      return `\u043F\u0440\u043E\u0433\u043D\u043E\u0437: \u043D\u0435\u0442 (${f.insufficient})`;
+    }
+    return "\u043F\u0440\u043E\u0433\u043D\u043E\u0437: \u043D\u0435 \u043F\u0435\u0440\u0435\u043F\u043E\u043B\u043D\u0438\u0442\u0441\u044F";
+  }
+  function fmtBytes(b) {
+    const n = typeof b === "string" ? Number(b) : b;
+    if (n === void 0 || Number.isNaN(n) || n <= 0) return "\u2014";
+    return `${(n / 2 ** 30).toFixed(1)} \u0413\u0411`;
+  }
+  function renderComputers(root, list, onOpen) {
+    root.textContent = "";
+    if (list.length === 0) {
+      root.append(el("p", "muted", "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445: \u0430\u0433\u0435\u043D\u0442\u043E\u0432 \u043D\u0435\u0442"));
+      return;
+    }
+    const table = el("table", "data-table");
+    const thead = el("thead", "");
+    const hr = el("tr", "");
+    for (const h of ["\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440", "\u0421\u0442\u0430\u0442\u0443\u0441", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F", "\u0414\u0438\u0441\u043A\u0438", "\u041E\u0442\u0447\u0451\u0442 \u043E\u0442"]) {
+      hr.append(el("th", "", h));
+    }
+    thead.append(hr);
+    table.append(thead);
+    const tbody = el("tbody", "");
+    for (const c of list) {
+      const tr = el("tr", "row-click");
+      tr.append(el("td", "", c.hostname !== "" ? c.hostname : c.id));
+      tr.append(el("td", "", c.status));
+      tr.append(el("td", "", findingsLine(c)));
+      const diskCell = el("td", "");
+      if (c.worst_days_to_full !== void 0) {
+        diskCell.textContent = `\u0437\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 ${c.worst_days_to_full} \u0434\u043D.`;
+      } else {
+        diskCell.textContent = "\u2014";
+      }
+      tr.append(diskCell);
+      tr.append(el("td", "", c.inventory_at ? new Date(c.inventory_at).toLocaleString() : "\u2014"));
+      tr.addEventListener("click", () => onOpen(c.id));
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    root.append(table);
+  }
+  function tabButton(id2, title) {
+    const b = document.createElement("button");
+    b.className = "tab";
+    b.type = "button";
+    b.textContent = title;
+    b.dataset.tab = id2;
+    return b;
+  }
+  function findingRow(f) {
+    const div = el("div", `finding severity-${f.severity}`);
+    div.append(chipSeverity(f.severity));
+    div.append(el("span", "finding-fact", f.fact));
+    div.append(el("div", "muted", `\u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F: ${f.advice}`));
+    div.append(el("div", "muted", `\u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A: ${f.source} \xB7 \u043F\u0440\u0430\u0432\u0438\u043B\u043E: ${f.rule_id}`));
+    return div;
+  }
+  function kvRow(label, value) {
+    const row = el("div", "kv");
+    row.append(el("span", "kv-label", label));
+    row.append(el("span", "kv-value", value === "" ? "\u2014" : value));
+    return row;
+  }
+  function renderComputerCard(root, card, onBack) {
+    root.textContent = "";
+    const head = el("div", "card-head");
+    const back = el("button", "back", "\u2190 \u041A \u0441\u043F\u0438\u0441\u043A\u0443");
+    back.type = "button";
+    back.addEventListener("click", onBack);
+    head.append(back, el("h2", "", card.hostname !== "" ? card.hostname : card.id));
+    root.append(head);
+    if (!card.inventory_at || card.inventory === void 0) {
+      root.append(el("p", "muted", "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445: \u0430\u0433\u0435\u043D\u0442 \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u0438\u0441\u044B\u043B\u0430\u043B \u0438\u043D\u0432\u0435\u043D\u0442\u0430\u0440\u044C"));
+      return;
+    }
+    root.append(el("p", "subtitle", `\u043E\u0442\u0447\u0451\u0442 \u043E\u0442 ${new Date(card.inventory_at).toLocaleString()}`));
+    const inv = card.inventory;
+    const tabs2 = el("div", "tabs2");
+    const pages = {
+      overview: el("div", "tabpage2 active"),
+      hardware: el("div", "tabpage2"),
+      disks: el("div", "tabpage2"),
+      drivers: el("div", "tabpage2"),
+      programs: el("div", "tabpage2"),
+      findings: el("div", "tabpage2")
+    };
+    const titles = [
+      ["overview", "\u041E\u0431\u0437\u043E\u0440"],
+      ["hardware", "\u0416\u0435\u043B\u0435\u0437\u043E"],
+      ["disks", "\u0414\u0438\u0441\u043A\u0438"],
+      ["drivers", "\u0414\u0440\u0430\u0439\u0432\u0435\u0440\u044B"],
+      ["programs", "\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B"],
+      ["findings", "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F"]
+    ];
+    for (const [id2, title] of titles) {
+      const b = tabButton(id2, title);
+      b.addEventListener("click", () => {
+        tabs2.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        b.classList.add("active");
+        for (const [pid, p2] of Object.entries(pages)) {
+          p2.classList.toggle("active", pid === id2);
+        }
+      });
+      tabs2.append(b);
+    }
+    root.append(tabs2);
+    const ov = pages["overview"];
+    ov.append(kvRow("\u041E\u043F\u0435\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0441\u0438\u0441\u0442\u0435\u043C\u0430", inv.os?.caption ?? ""));
+    ov.append(kvRow("\u0421\u0431\u043E\u0440\u043A\u0430", inv.os?.build_number ?? ""));
+    ov.append(kvRow("\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0430", inv.os?.architecture ?? ""));
+    ov.append(kvRow("\u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435", inv.os?.latest_hotfix ?? ""));
+    for (const [drive, f] of Object.entries(card.forecasts ?? {})) {
+      ov.append(kvRow(`\u0422\u043E\u043C ${drive}`, forecastText(f)));
+    }
+    const errs = inv.collector_errors ?? [];
+    if (errs.length > 0) {
+      ov.append(kvRow("\u041E\u0448\u0438\u0431\u043A\u0438 \u0441\u0431\u043E\u0440\u0449\u0438\u043A\u043E\u0432", String(errs.length)));
+    }
+    const hw = pages["hardware"];
+    hw.append(kvRow("\u041E\u0417\u0423", fmtBytes(inv.hardware?.total_physical_memory)));
+    for (const cpu of inv.hardware?.cpus ?? []) {
+      hw.append(kvRow("\u041F\u0440\u043E\u0446\u0435\u0441\u0441\u043E\u0440", `${cpu.name ?? "\u2014"} (${cpu.cores ?? "?"} \u044F\u0434\u0435\u0440)`));
+    }
+    for (const m of inv.hardware?.memory_modules ?? []) {
+      hw.append(kvRow("\u041C\u043E\u0434\u0443\u043B\u044C \u041E\u0417\u0423", `${m.slot ?? "\u2014"}: ${fmtBytes(m.capacity)}, ${m.speed_mhz ?? "?"} \u041C\u0413\u0446`));
+    }
+    hw.append(kvRow("\u041F\u043B\u0430\u0442\u0430", `${inv.hardware?.base_board?.manufacturer ?? ""} ${inv.hardware?.base_board?.product ?? ""}`.trim()));
+    hw.append(kvRow("BIOS", `${inv.hardware?.bios?.manufacturer ?? ""} ${inv.hardware?.bios?.version ?? ""}`.trim()));
+    const disks = pages["disks"];
+    for (const d of inv.disks?.disks ?? []) {
+      disks.append(kvRow("\u0414\u0438\u0441\u043A", `${d.friendly_name ?? "\u2014"}, ${fmtBytes(d.size)}, ${d.health ?? "\u2014"}`));
+    }
+    for (const v of inv.disks?.volumes ?? []) {
+      disks.append(kvRow(`\u0422\u043E\u043C ${v.drive_letter ?? "?"}`, `${fmtBytes(v.size)}, \u0441\u0432\u043E\u0431\u043E\u0434\u043D\u043E ${fmtBytes(v.size_remaining)}`));
+    }
+    for (const d of inv.drivers ?? []) {
+      pages["drivers"].append(kvRow(d.device_name ?? "\u2014", `${d.version ?? "\u2014"} (${d.date ?? "\u2014"})`));
+    }
+    for (const p2 of inv.programs ?? []) {
+      pages["programs"].append(kvRow(p2.name ?? "\u2014", `${p2.version ?? "\u2014"} \xB7 ${p2.publisher ?? "\u2014"}`));
+    }
+    const fnd = pages["findings"];
+    const list = card.findings ?? [];
+    if (list.length === 0) {
+      fnd.append(el("p", "muted", "\u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043D\u0435\u0442"));
+    }
+    for (const f of list) {
+      fnd.append(findingRow(f));
+    }
+    for (const p2 of Object.values(pages)) {
+      root.append(p2);
+    }
+  }
+
+  // src/disks.ts
+  function barFill(freePct) {
+    const bar = document.createElement("div");
+    bar.className = "fill-bar";
+    const fill = document.createElement("div");
+    fill.className = "fill-bar-inner";
+    const used = Math.max(0, Math.min(100, 100 - freePct));
+    fill.style.width = `${used.toFixed(1)}%`;
+    if (freePct < 10) fill.classList.add("danger");
+    else if (freePct < 20) fill.classList.add("warn");
+    bar.append(fill);
+    return bar;
+  }
+  function diskRow(d) {
+    const row = document.createElement("div");
+    row.className = "disk-row";
+    const title = document.createElement("span");
+    title.className = "disk-title";
+    title.textContent = `${d.hostname} \xB7 \u0442\u043E\u043C ${d.drive}`;
+    row.append(title);
+    const meta3 = document.createElement("span");
+    meta3.className = "muted";
+    meta3.textContent = `${fmtBytes(d.used_bytes)} \u0438\u0437 ${fmtBytes(d.capacity_bytes)} \xB7 \u0441\u0432\u043E\u0431\u043E\u0434\u043D\u043E ${d.free_pct.toFixed(1)}%`;
+    row.append(meta3);
+    row.append(barFill(d.free_pct));
+    const forecast = document.createElement("span");
+    forecast.className = "disk-forecast";
+    forecast.textContent = forecastText(d.forecast);
+    row.append(forecast);
+    return row;
+  }
+  function renderDisks(root, list) {
+    root.textContent = "";
+    if (list.length === 0) {
+      const p2 = document.createElement("p");
+      p2.className = "muted";
+      p2.textContent = "\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445: \u043E\u0442\u0447\u0451\u0442\u043E\u0432 \u0441 \u0442\u043E\u043C\u0430\u043C\u0438 \u043D\u0435\u0442";
+      root.append(p2);
+      return;
+    }
+    for (const d of list) {
+      root.append(diskRow(d));
+    }
   }
 
   // node_modules/cytoscape/dist/cytoscape.esm.mjs
@@ -1279,8 +1520,8 @@
   };
   var push = function push2(arr, otherArr) {
     for (var i2 = 0; i2 < otherArr.length; i2++) {
-      var el2 = otherArr[i2];
-      arr.push(el2);
+      var el3 = otherArr[i2];
+      arr.push(el3);
     }
   };
   var getPrefixedProperty = function getPrefixedProperty2(obj, propName, prefix) {
@@ -2468,8 +2709,8 @@
                 }
                 cycle = cycle.slice(smallestIndex).concat(cycle.slice(0, smallestIndex));
                 cycle.push(cycle[0]);
-                var cycleId = cycle.map(function(el2) {
-                  return el2.id();
+                var cycleId = cycle.map(function(el3) {
+                  return el3.id();
                 }).join(",");
                 if (negativeWeightCycleIds.indexOf(cycleId) === -1) {
                   negativeWeightCycles.push(eles.spawn(cycle));
@@ -17343,8 +17584,8 @@
     };
     var adjustMaximally = function adjustMaximally2(ele2, shifted2) {
       var eInfo = getInfo(ele2);
-      var incomers = ele2.incomers().filter(function(el2) {
-        return el2.isNode() && eles.has(el2);
+      var incomers = ele2.incomers().filter(function(el3) {
+        return el3.isNode() && eles.has(el3);
       });
       var maxDepth = -1;
       var id3 = ele2.id();
@@ -17380,8 +17621,8 @@
         var _ele3 = dequeue();
         var didShift = adjustMaximally(_ele3, shifted);
         if (didShift) {
-          _ele3.outgoers().filter(function(el2) {
-            return el2.isNode() && eles.has(el2);
+          _ele3.outgoers().filter(function(el3) {
+            return el3.isNode() && eles.has(el3);
           }).forEach(enqueue);
         } else if (didShift === null) {
           warn("Detected double maximal shift for node `" + _ele3.id() + "`.  Bailing maximal adjustment due to cycle.  Use `options.maximal: true` only on DAGs.");
@@ -30769,7 +31010,7 @@
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"
   };
-  function el(tag, className2) {
+  function el2(tag, className2) {
     const e = document.createElement(tag);
     if (className2) e.className = className2;
     return e;
@@ -30779,11 +31020,11 @@
   }
   function fillOverview(page, info, kind) {
     page.textContent = "";
-    const dl = el("dl", "kv");
+    const dl = el2("dl", "kv");
     const row = (dt, dd) => {
-      const t = el("dt");
+      const t = el2("dt");
       text(t, dt);
-      const d = el("dd");
+      const d = el2("dd");
       text(d, dd);
       dl.append(t, d);
     };
@@ -30795,14 +31036,14 @@
     row("\u041A\u043B\u0430\u0441\u0441", className(info.class));
     if (info.ssid !== "") row("SSID", info.ssid);
     page.append(dl);
-    const marks = el("p");
+    const marks = el2("p");
     if (info.manual) {
-      const b = el("span", "badge manual");
+      const b = el2("span", "badge manual");
       text(b, "\u0432\u0440\u0443\u0447\u043D\u0443\u044E");
       marks.append(b, document.createTextNode(" "));
     }
     if (!info.verified) {
-      const b = el("span", "badge unverified");
+      const b = el2("span", "badge unverified");
       text(b, "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
       marks.append(b);
     }
@@ -30818,11 +31059,11 @@
     page.textContent = "";
     const links = graph2.links.filter((l) => l.a === id2 || l.b === id2);
     if (links.length > 0) {
-      const h = el("h3");
+      const h = el2("h3");
       text(h, "\u0421\u0432\u044F\u0437\u0438");
-      const ul = el("ul");
+      const ul = el2("ul");
       for (const l of links) {
-        const li = el("li");
+        const li = el2("li");
         const other = l.a === id2 ? l.b : l.a;
         const port = l.a === id2 ? l.aPort : l.bPort;
         text(li, `${other}${port !== "" ? ` (${port})` : ""} \u2014 ${linkSource(l)}`);
@@ -30830,16 +31071,16 @@
       }
       page.append(h, ul);
     }
-    const h2 = el("h3");
+    const h2 = el2("h3");
     text(h2, "\u041D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u044F");
-    const ul2 = el("ul");
+    const ul2 = el2("ul");
     for (const o of graphObservations(page, id2)) {
-      const li = el("li");
+      const li = el2("li");
       text(li, `${o.source} \u2014 ${o.seen}`);
       ul2.append(li);
     }
     if (ul2.childNodes.length === 0) {
-      const li = el("li");
+      const li = el2("li");
       text(li, "\u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0439");
       ul2.append(li);
     }
@@ -30869,21 +31110,21 @@
   function fillEdit(page, info, handlers) {
     page.textContent = "";
     const nameId = "edit-name";
-    const nameLabel = el("label");
+    const nameLabel = el2("label");
     nameLabel.setAttribute("for", nameId);
     text(nameLabel, "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435");
-    const name = el("input");
+    const name = el2("input");
     name.type = "text";
     name.id = nameId;
     name.maxLength = 255;
     name.value = info.hostname;
-    const save = el("button");
+    const save = el2("button");
     text(save, "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435");
     save.addEventListener("click", () => handlers.onRename(info.id, name.value));
-    const classLabel = el("label");
+    const classLabel = el2("label");
     classLabel.setAttribute("for", "edit-class");
     text(classLabel, "\u041A\u043B\u0430\u0441\u0441");
-    const select = el("select");
+    const select = el2("select");
     select.id = "edit-class";
     for (const [value, label] of CLASSES) {
       const opt = document.createElement("option");
@@ -30892,25 +31133,25 @@
       if (value === info.class) opt.selected = true;
       select.append(opt);
     }
-    const apply2 = el("button");
+    const apply2 = el2("button");
     text(apply2, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u043A\u043B\u0430\u0441\u0441");
     apply2.addEventListener("click", () => handlers.onClass(info.id, select.value));
-    const verdict = el("div", "verdict");
-    const check = el("button");
+    const verdict = el2("div", "verdict");
+    const check = el2("button");
     text(check, "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (ping)");
     check.addEventListener("click", () => handlers.onVerify(info.id));
-    const row1 = el("div", "row");
+    const row1 = el2("div", "row");
     row1.append(save);
-    const row2 = el("div", "row");
+    const row2 = el2("div", "row");
     row2.append(apply2);
-    const row3 = el("div", "row");
+    const row3 = el2("div", "row");
     row3.append(check);
     page.append(nameLabel, name, row1, classLabel, select, row2, verdict, row3);
     if (info.manual) {
-      const del = el("button");
+      const del = el2("button");
       text(del, "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0440\u0443\u0447\u043D\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442");
       del.addEventListener("click", () => handlers.onDelete(info.id));
-      const row4 = el("div", "row");
+      const row4 = el2("div", "row");
       row4.append(del);
       page.append(row4);
     }
@@ -30929,8 +31170,8 @@
     known_no_agent: "\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"
   };
-  async function setupScanScreen(cfg, el2) {
-    el2.subnets.textContent = "";
+  async function setupScanScreen(cfg, el3) {
+    el3.subnets.textContent = "";
     for (const cidr of cfg.subnets) {
       const label = document.createElement("label");
       const box = document.createElement("input");
@@ -30938,30 +31179,30 @@
       box.value = cidr;
       box.checked = true;
       label.append(box, document.createTextNode(` ${cidr}`));
-      el2.subnets.append(label);
+      el3.subnets.append(label);
     }
     if (!cfg.snmp) {
-      el2.snmp.disabled = true;
-      el2.snmp.value = "";
-      el2.snmpNote.hidden = false;
+      el3.snmp.disabled = true;
+      el3.snmp.value = "";
+      el3.snmpNote.hidden = false;
     }
   }
-  function startScan(el2) {
-    const subnets = [...el2.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
+  function startScan(el3) {
+    const subnets = [...el3.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
       (b) => b.value
     );
-    const snmpTargets = el2.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    const snmpTargets = el3.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
     const out = {
       subnets,
-      ping: el2.ping.checked,
-      names: el2.names.checked,
+      ping: el3.ping.checked,
+      names: el3.names.checked,
       snmp_targets: snmpTargets,
       confirm: true
     };
-    const path = el2.leasesPath.value.trim();
+    const path = el3.leasesPath.value.trim();
     if (path !== "") {
       out.leases_path = path;
-      out.leases_format = el2.leasesFormat.value;
+      out.leases_format = el3.leasesFormat.value;
     }
     return out;
   }
@@ -30973,18 +31214,18 @@
     if (snmp) n += 2;
     return n;
   }
-  function renderProgress(el2, view, expected) {
-    el2.progressWrap.hidden = false;
+  function renderProgress(el3, view, expected) {
+    el3.progressWrap.hidden = false;
     const done = view.stages.length;
     if (view.status === "done") {
-      el2.progress.style.width = "100%";
-      el2.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
+      el3.progress.style.width = "100%";
+      el3.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
     } else if (view.status === "failed") {
-      el2.progress.style.width = "0";
-      el2.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
+      el3.progress.style.width = "0";
+      el3.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
     } else {
-      el2.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
-      el2.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
+      el3.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
+      el3.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
     }
   }
   function deviceRow(info, onClass) {
@@ -31016,10 +31257,10 @@
     tr.append(actions);
     return tr;
   }
-  function renderAlerts(el2, alerts, onAck) {
-    el2.alertsList.textContent = "";
-    el2.badge.hidden = alerts.length === 0;
-    el2.badge.textContent = String(alerts.length);
+  function renderAlerts(el3, alerts, onAck) {
+    el3.alertsList.textContent = "";
+    el3.badge.hidden = alerts.length === 0;
+    el3.badge.textContent = String(alerts.length);
     for (const a of alerts) {
       const item = document.createElement("div");
       item.className = "alert-item";
@@ -31029,7 +31270,7 @@
       ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
       ack.addEventListener("click", () => onAck(a.id));
       item.append(text2, ack);
-      el2.alertsList.append(item);
+      el3.alertsList.append(item);
     }
   }
 
@@ -31278,9 +31519,12 @@
     });
   }
   api2.onUnauthorized = () => askToken();
+  var openComputerId = null;
   function showScreen(name) {
     $2("screen-scan").hidden = name !== "scan";
     $2("screen-devices").hidden = name !== "devices";
+    $2("screen-computers").hidden = name !== "computers";
+    $2("screen-disks").hidden = name !== "disks";
     document.querySelector(".workspace").hidden = name !== "map";
     document.querySelectorAll("nav .item[data-page]").forEach((item) => {
       const on3 = item.dataset.page === name;
@@ -31290,7 +31534,41 @@
     });
     if (name === "scan") void initScanScreen();
     if (name === "devices") void initDevicesScreen();
+    if (name === "computers") void initComputersScreen();
+    if (name === "disks") void initDisksScreen();
     if (name === "map") void reload();
+  }
+  async function initComputersScreen() {
+    const root = $2("computers-root");
+    try {
+      const { computers } = await api2.computers();
+      if (openComputerId !== null) {
+        const id2 = openComputerId;
+        const card = await api2.computer(id2);
+        renderComputerCard(root, card, () => {
+          openComputerId = null;
+          void initComputersScreen();
+        });
+      } else {
+        renderComputers(root, computers, (id2) => {
+          openComputerId = id2;
+          void initComputersScreen();
+        });
+      }
+    } catch (err) {
+      renderComputers(root, [], () => void 0);
+      showNotice(err instanceof Error ? err.message : "\u043E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u043E\u0432", true);
+    }
+  }
+  async function initDisksScreen() {
+    const root = $2("disks-root");
+    try {
+      const { disks } = await api2.disks();
+      renderDisks(root, disks);
+    } catch (err) {
+      renderDisks(root, []);
+      showNotice(err instanceof Error ? err.message : "\u043E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0434\u0438\u0441\u043A\u043E\u0432", true);
+    }
   }
   document.querySelectorAll("nav .item[data-page]").forEach((item) => {
     item.addEventListener("click", () => showScreen(item.dataset.page));

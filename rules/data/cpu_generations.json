@@ -1,0 +1,46 @@
+{
+  "rows": [
+    {
+      "vendor": "Intel",
+      "name": "Intel Core Ultra (Meteor Lake и новее)",
+      "match_contains": [
+        "Core(TM) Ultra",
+        "Core(TM) 7 ",
+        "Core(TM) 5 "
+      ],
+      "generation": 12,
+      "note": "новая линейка — современнее 11-го поколения",
+      "source_url": "https://www.microsoft.com/en-us/windows/windows-11-specifications",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "vendor": "Intel",
+      "name": "Intel Core (поколение из модели: i5-10400 → 10)",
+      "match_contains": [
+        "Core(TM) i3",
+        "Core(TM) i5",
+        "Core(TM) i7",
+        "Core(TM) i9"
+      ],
+      "generation": 8,
+      "note": "минимальное поколение в требованиях Windows 11 — 8-е",
+      "source_url": "https://www.microsoft.com/en-us/windows/windows-11-specifications",
+      "checked": "2026-10-24",
+      "verified": true
+    },
+    {
+      "vendor": "AMD",
+      "name": "AMD Ryzen 2000 и новее (Zen+)",
+      "match_contains": [
+        "Ryzen"
+      ],
+      "generation": 2000,
+      "series_threshold": true,
+      "note": "минимальная серия в требованиях Windows 11",
+      "source_url": "https://www.microsoft.com/en-us/windows/windows-11-specifications",
+      "checked": "2026-10-24",
+      "verified": true
+    }
+  ]
+}

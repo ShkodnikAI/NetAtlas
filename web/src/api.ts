@@ -53,6 +53,64 @@ export interface ScanView {
   subnets?: string[];
 }
 
+export interface Forecast {
+  days_to_full?: number;
+  confidence?: number;
+  slope_per_day?: number;
+  insufficient?: string;
+}
+
+export interface ComputerSummary {
+  id: string;
+  hostname: string;
+  status: string;
+  last_seen?: string;
+  inventory_at?: string;
+  findings?: Record<string, number>;
+  max_priority?: number;
+  worst_days_to_full?: number;
+}
+
+export interface Finding {
+  rule_id: string;
+  severity: string;
+  fact: string;
+  threshold?: string;
+  source: string;
+  advice: string;
+  priority: number;
+}
+
+export interface ComputerCard {
+  id: string;
+  hostname: string;
+  status: string;
+  inventory_at?: string;
+  inventory?: {
+    os?: { caption?: string; version?: string; build_number?: string; architecture?: string; last_boot_up_time?: string; latest_hotfix?: string };
+    hardware?: { total_physical_memory?: string; cpus?: { name?: string; cores?: number; logical?: number; max_clock_mhz?: number }[]; memory_modules?: { slot?: string; capacity?: string; speed_mhz?: number; manufacturer?: string }[]; base_board?: { manufacturer?: string; product?: string }; bios?: { manufacturer?: string; version?: string; release_date?: string } };
+    disks?: { disks?: { friendly_name?: string; serial?: string; media_type?: string; size?: string; health?: string; wear?: number; temperature?: number }[]; volumes?: { drive_letter?: string; label?: string; file_system?: string; size?: string; size_remaining?: string }[] };
+    network?: { name?: string; description?: string; mac?: string; link_speed?: string; status?: string; ipv4?: string[] }[];
+    drivers?: { device_name?: string; manufacturer?: string; version?: string; date?: string }[];
+    programs?: { name?: string; version?: string; publisher?: string; install_date?: string }[];
+    collector_errors?: string[];
+  };
+  findings?: Finding[];
+  forecasts?: Record<string, Forecast>;
+}
+
+export interface DiskView {
+  agent_id: string;
+  hostname: string;
+  drive: string;
+  label?: string;
+  file_system?: string;
+  capacity_bytes: number;
+  used_bytes: number;
+  free_pct: number;
+  forecast: Forecast;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -182,5 +240,17 @@ export class NetatlasApi {
 
   verify(id: string): Promise<VerifyReport> {
     return this.req('POST', `/api/devices/${encodeURIComponent(id)}/verify`);
+  }
+
+  computers(): Promise<{ computers: ComputerSummary[] }> {
+    return this.req('GET', '/api/computers');
+  }
+
+  computer(id: string): Promise<ComputerCard> {
+    return this.req<ComputerCard>('GET', `/api/computers/${encodeURIComponent(id)}`);
+  }
+
+  disks(): Promise<{ disks: DiskView[] }> {
+    return this.req('GET', '/api/disks');
   }
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
+	"github.com/ShkodnikAI/NetAtlas/rules"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
@@ -54,6 +55,8 @@ type Store interface {
 	ListAgents(ctx context.Context) ([]store.Agent, error)
 	RevokeAgent(ctx context.Context, id, actor string) error
 	LatestInventory(ctx context.Context, agentID string) (store.InventoryRow, error)
+	AgentByID(ctx context.Context, id string) (store.Agent, error)
+	DiskHistory(ctx context.Context, agentID, drive string, days int) ([]store.DiskPoint, error)
 	DB() *sql.DB
 }
 
@@ -75,6 +78,10 @@ type API struct {
 	// (NR-023): проверка в cmd/netatlas-server до старта HTTP;
 	// /api/config отдаёт её как audit_ok.
 	auditOK atomic.Bool
+
+	// Движок правил (NR-009): подключается ConfigureRules на старте;
+	// nil → маршруты компьютеров отвечают 503.
+	rules *rules.Engine
 
 	// Скан (NR-005): конфигурация и подменяемые зависимости;
 	// ConfigureScan подключает, до вызова — 503.
@@ -118,6 +125,9 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("GET /api/agents", a.handleAgentsList)
 	mux.HandleFunc("POST /api/agents/{id}/revoke", a.handleAgentRevoke)
 	mux.HandleFunc("GET /api/agents/{id}/inventory", a.handleAgentInventory)
+	mux.HandleFunc("GET /api/computers", a.handleComputers)
+	mux.HandleFunc("GET /api/computers/{id}", a.handleComputer)
+	mux.HandleFunc("GET /api/disks", a.handleDisks)
 	a.mux = mux
 	return a, nil
 }

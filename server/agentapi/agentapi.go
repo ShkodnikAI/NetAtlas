@@ -10,12 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/agent/collect"
 	"github.com/ShkodnikAI/NetAtlas/pki"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
@@ -565,5 +567,48 @@ func (a *API) handleInventory(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, errorBody{"сохранение инвентаря"})
 		return
 	}
+	// Точки истории дисков для прогноза заполнения (NR-009): ошибка
+	// записи не отменяет приём инвентаря, но видна в журнале сервера.
+	if err := saveDiskPoints(a.st, cn, body); err != nil {
+		log.Printf("agentapi: история дисков %s: %v", cn, err)
+	}
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// saveDiskPoints — дневные точки занятого места из отчёта инвентаря:
+// конверт → payload → тома отчёта версии 1.
+func saveDiskPoints(st *store.Store, agentID string, body []byte) error {
+	var env inventoryRequest
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil // не конверт — истории нет
+	}
+	var rep collect.Report
+	if err := json.Unmarshal(env.Payload, &rep); err != nil {
+		return nil // не отчёт v1 — истории нет
+	}
+	if rep.Disks == nil {
+		return nil
+	}
+	now := time.Now()
+	points := make([]store.DiskPoint, 0, len(rep.Disks.Volumes))
+	for _, v := range rep.Disks.Volumes {
+		if v.DriveLetter == "" || v.Size == "" || v.SizeRemaining == "" {
+			continue
+		}
+		var size, free int64
+		if _, err := fmt.Sscanf(strings.TrimSpace(v.Size), "%d", &size); err != nil {
+			continue
+		}
+		if _, err := fmt.Sscanf(strings.TrimSpace(v.SizeRemaining), "%d", &free); err != nil {
+			continue
+		}
+		if size <= 0 {
+			continue
+		}
+		points = append(points, store.DiskPoint{Drive: v.DriveLetter, Used: size - free, Capacity: size})
+	}
+	if len(points) == 0 {
+		return nil
+	}
+	return st.SaveDiskHistory(context.Background(), agentID, points, now)
 }

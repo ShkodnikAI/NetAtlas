@@ -522,6 +522,23 @@ func (f *fakeStore) LatestInventory(ctx context.Context, agentID string) (store.
 	return row, nil
 }
 
+// AgentByID — фейковая карточка агента.
+func (f *fakeStore) AgentByID(ctx context.Context, id string) (store.Agent, error) {
+	if f.agentExists[id] {
+		for _, a := range f.agents {
+			if a.ID == id {
+				return a, nil
+			}
+		}
+	}
+	return store.Agent{}, store.ErrNotFound
+}
+
+// DiskHistory — фейковая история дисков (пустая).
+func (f *fakeStore) DiskHistory(ctx context.Context, agentID, drive string, days int) ([]store.DiskPoint, error) {
+	return nil, nil
+}
+
 // RevokeAgent — фейковый отзыв: состояния как в настоящем store.
 func (f *fakeStore) RevokeAgent(ctx context.Context, id, actor string) error {
 	if !f.agentExists[id] {

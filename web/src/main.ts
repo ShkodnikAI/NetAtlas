@@ -3,6 +3,8 @@
 
 import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type NodeInfo } from './api';
 import { setAuditBadge } from './audit';
+import { renderComputerCard, renderComputers } from './computers';
+import { renderDisks } from './disks';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import {
@@ -307,11 +309,15 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks';
+
+let openComputerId: string | null = null;
 
 function showScreen(name: ScreenName): void {
   $('screen-scan').hidden = name !== 'scan';
   $('screen-devices').hidden = name !== 'devices';
+  $('screen-computers').hidden = name !== 'computers';
+  $('screen-disks').hidden = name !== 'disks';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -321,7 +327,45 @@ function showScreen(name: ScreenName): void {
   });
   if (name === 'scan') void initScanScreen();
   if (name === 'devices') void initDevicesScreen();
+  if (name === 'computers') void initComputersScreen();
+  if (name === 'disks') void initDisksScreen();
   if (name === 'map') void reload();
+}
+
+// --- компьютеры и диски (NR-009) -------------------------------------------
+
+async function initComputersScreen(): Promise<void> {
+  const root = $('computers-root');
+  try {
+    const { computers } = await api.computers();
+    if (openComputerId !== null) {
+      const id = openComputerId;
+      const card = await api.computer(id);
+      renderComputerCard(root, card, () => {
+        openComputerId = null;
+        void initComputersScreen();
+      });
+    } else {
+      renderComputers(root, computers, (id) => {
+        openComputerId = id;
+        void initComputersScreen();
+      });
+    }
+  } catch (err) {
+    renderComputers(root, [], () => undefined);
+    showNotice(err instanceof Error ? err.message : 'ошибка загрузки компьютеров', true);
+  }
+}
+
+async function initDisksScreen(): Promise<void> {
+  const root = $('disks-root');
+  try {
+    const { disks } = await api.disks();
+    renderDisks(root, disks);
+  } catch (err) {
+    renderDisks(root, []);
+    showNotice(err instanceof Error ? err.message : 'ошибка загрузки дисков', true);
+  }
 }
 
 document.querySelectorAll('nav .item[data-page]').forEach((item) => {

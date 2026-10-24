@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
 
+
 jobs:
   build-test:
     strategy:
@@ -36,6 +37,7 @@ jobs:
         run: |
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
+
 
   web:
     runs-on: ubuntu-latest

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/pki"
+	"github.com/ShkodnikAI/NetAtlas/rules"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
@@ -77,6 +78,13 @@ func run(cfg config) error {
 		handler.SetAuditOK(false)
 		fmt.Fprintf(os.Stderr, "audit: цепочка нарушена: %v\n", err)
 	}
+
+	// Движок правил (NR-009): встроенные данные или --rules-dir.
+	rulesEngine, err := rules.NewEngine(cfg.rulesDir)
+	if err != nil {
+		return fmt.Errorf("правила: %w", err)
+	}
+	handler.ConfigureRules(rulesEngine)
 
 	// Мастер сканирования: границы из --subnets, SNMP-учётные данные
 	// только из окружения (в API, базу, аудит и ответы не попадают).
