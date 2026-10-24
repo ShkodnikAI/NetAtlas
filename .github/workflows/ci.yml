@@ -8,14 +8,9 @@ on:
 permissions:
   contents: read
 
-# ВРЕМЕННО (диагностика NR-009): contents:write для лога windows-CI.
-
 
 jobs:
   build-test:
-    permissions:
-      contents: read
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -43,18 +38,6 @@ jobs:
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
 
-      - name: windows diagnostics (temp, NR-009)
-        if: failure() && runner.os == 'Windows'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          export PATH="/c/Program Files/Git/usr/bin:$PATH"
-          gh pr comment "${{ github.event.number }}" --body "windows CI diag стартует..." >/dev/null 2>&1 || true
-          { echo "=== gofmt -l ==="; gofmt -l . 2>&1 || true;
-            echo "=== go vet ==="; go vet ./... 2>&1 || true;
-            echo "=== go test ==="; go test ./... -count=1 2>&1 || true; } > diag.txt
-          gh pr comment "${{ github.event.number }}" --body-file diag.txt || true
 
   web:
     runs-on: ubuntu-latest

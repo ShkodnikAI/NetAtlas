@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -136,9 +135,18 @@ func NewEngineDir(dir string) (*Engine, error) {
 	return &Engine{table: t}, nil
 }
 
+// fsPath — путь в io/fs всегда со слешами (на Windows filepath.Join
+// дал бы «data\rules.json», которого во встроенной ФС нет).
+func fsPath(base, name string) string {
+	if base == "." || base == "" {
+		return name
+	}
+	return base + "/" + name
+}
+
 func loadFS(fsys fs.FS, base string) (Table, error) {
 	var t Table
-	raw, err := fs.ReadFile(fsys, filepath.Join(base, "rules.json"))
+	raw, err := fs.ReadFile(fsys, fsPath(base, "rules.json"))
 	if err != nil {
 		return t, fmt.Errorf("rules.json: %w", err)
 	}
@@ -155,7 +163,7 @@ func loadFS(fsys fs.FS, base string) (Table, error) {
 			return t, err
 		}
 	}
-	raw, err = fs.ReadFile(fsys, filepath.Join(base, "os_lifecycle.json"))
+	raw, err = fs.ReadFile(fsys, fsPath(base, "os_lifecycle.json"))
 	if err != nil {
 		return t, fmt.Errorf("os_lifecycle.json: %w", err)
 	}
@@ -164,7 +172,7 @@ func loadFS(fsys fs.FS, base string) (Table, error) {
 	}{&t.OS}); err != nil {
 		return t, fmt.Errorf("os_lifecycle.json: %w", err)
 	}
-	raw, err = fs.ReadFile(fsys, filepath.Join(base, "cpu_generations.json"))
+	raw, err = fs.ReadFile(fsys, fsPath(base, "cpu_generations.json"))
 	if err != nil {
 		return t, fmt.Errorf("cpu_generations.json: %w", err)
 	}
