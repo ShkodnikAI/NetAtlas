@@ -168,6 +168,7 @@ func TestEnrollBadToken(t *testing.T) {
 type fakeTransport struct {
 	checkins int
 	sent     [][]byte
+	metrics  [][]byte
 	checkErr error
 	sendErr  error
 	pollSec  int
@@ -186,6 +187,14 @@ func (f *fakeTransport) SendInventory(ctx context.Context, body []byte) error {
 		return f.sendErr
 	}
 	f.sent = append(f.sent, append([]byte(nil), body...))
+	return nil
+}
+
+func (f *fakeTransport) SendMetrics(ctx context.Context, body []byte) error {
+	if f.sendErr != nil {
+		return f.sendErr
+	}
+	f.metrics = append(f.metrics, append([]byte(nil), body...))
 	return nil
 }
 

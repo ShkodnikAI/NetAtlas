@@ -312,7 +312,7 @@ func TestRuleCPUGeneration(t *testing.T) {
 // Загрузчик отвергает правило без source.
 func TestLoaderRejectsRuleWithoutSource(t *testing.T) {
 	dir := t.TempDir()
-	for _, f := range []string{"rules.json", "os_lifecycle.json", "cpu_generations.json"} {
+	for _, f := range []string{"rules.json", "network.json", "os_lifecycle.json", "cpu_generations.json"} {
 		raw, err := os.ReadFile(filepath.Join("data", f))
 		if err != nil {
 			t.Fatalf("чтение %s: %v", f, err)
@@ -335,7 +335,7 @@ func TestLoaderRejectsRuleWithoutSource(t *testing.T) {
 // Переопределение каталогом: правило из каталога действует.
 func TestRulesDirOverride(t *testing.T) {
 	dir := t.TempDir()
-	for _, f := range []string{"os_lifecycle.json", "cpu_generations.json"} {
+	for _, f := range []string{"network.json", "os_lifecycle.json", "cpu_generations.json"} {
 		raw, err := os.ReadFile(filepath.Join("data", f))
 		if err != nil {
 			t.Fatalf("чтение %s: %v", f, err)

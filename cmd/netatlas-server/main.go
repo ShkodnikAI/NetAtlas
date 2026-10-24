@@ -26,6 +26,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/server/agentapi"
 	"github.com/ShkodnikAI/NetAtlas/server/api"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
+	"github.com/ShkodnikAI/NetAtlas/server/metrics"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 	"github.com/ShkodnikAI/NetAtlas/web"
 )
@@ -86,6 +87,27 @@ func run(cfg config) error {
 	}
 	handler.ConfigureRules(rulesEngine)
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Качество сети (NR-008): фоновое уплотнение метрик раз в час.
+	go metricsLoop(ctx, st)
+
+	// SNMP-счётчики портов: только при явных --snmp-targets.
+	if len(cfg.snmpList) > 0 {
+		auth, snmpReady := snmpServerAuth(os.Getenv)
+		if !snmpReady {
+			return fmt.Errorf("snmp: цели заданы, но учётные данные NETATLAS_SNMP_* не настроены")
+		}
+		task, err := metrics.NewTask(cfg.snmpList, auth, cfg.scope, st)
+		if err != nil {
+			return fmt.Errorf("snmp: %w", err)
+		}
+		if task != nil {
+			go task.Loop(ctx)
+		}
+	}
+
 	// Мастер сканирования: границы из --subnets, SNMP-учётные данные
 	// только из окружения (в API, базу, аудит и ответы не попадают).
 	auth, snmpReady := snmpServerAuth(os.Getenv)
@@ -120,9 +142,6 @@ func run(cfg config) error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	errCh := make(chan error, 3)
 
@@ -204,4 +223,26 @@ func startAgentListeners(ctx context.Context, cfg config, st *store.Store, errCh
 		}()
 	}
 	return nil
+}
+
+// metricsLoop — уплотнение метрик раз в час (NR-008): сырые →
+// 5-минутные → часовые, чистка старше года. Идемпотентно.
+func metricsLoop(ctx context.Context, st *store.Store) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	if _, err := st.CompactMetrics(ctx, time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "netatlas-server: уплотнение метрик: %v\n", err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if res, err := st.CompactMetrics(ctx, time.Now()); err != nil {
+				fmt.Fprintf(os.Stderr, "netatlas-server: уплотнение метрик: %v\n", err)
+			} else if res.RawRolled+res.Agg5Rolled > 0 {
+				fmt.Fprintf(os.Stderr, "netatlas-server: метрики уплотнены: сырых %d, 5м %d\n", res.RawRolled, res.Agg5Rolled)
+			}
+		}
+	}
 }

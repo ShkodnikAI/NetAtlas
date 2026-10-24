@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,10 @@ const (
 	MaxEnrollBody = 64 << 10
 	// MaxInventoryBody — предел тела инвентаря (аудитор: 2 МБ).
 	MaxInventoryBody = 2 << 20
+	// MaxMetricsBody — предел тела отчёта метрик (наряд NR-008: 256 КБ).
+	MaxMetricsBody = 256 << 10
+	// MaxBlobBytes — предел замера скорости (наряд: не больше 8 МБ).
+	MaxBlobBytes = 8 << 20
 	// EnrollRatePerMinute — не больше запросов регистрации в минуту с адреса.
 	EnrollRatePerMinute = 10
 	// DefaultRevocationTTL — кэш списка отзыва не дольше 10 секунд.
@@ -81,6 +86,9 @@ func New(st *store.Store, ca *pki.CA, poll time.Duration) (*API, error) {
 	agentMux := http.NewServeMux()
 	agentMux.HandleFunc("POST /agent/v1/checkin", a.handleCheckin)
 	agentMux.HandleFunc("POST /agent/v1/inventory", a.handleInventory)
+	agentMux.HandleFunc("POST /agent/v1/metrics", a.handleMetrics)
+	agentMux.HandleFunc("GET /agent/v1/blob", a.handleBlobGet)
+	agentMux.HandleFunc("POST /agent/v1/blob", a.handleBlobPost)
 	enrollMux := http.NewServeMux()
 	enrollMux.HandleFunc("POST /agent/v1/enroll", a.handleEnroll)
 	a.agentMux, a.enrollMux = agentMux, enrollMux
@@ -611,4 +619,100 @@ func saveDiskPoints(st *store.Store, agentID string, body []byte) error {
 		return nil
 	}
 	return st.SaveDiskHistory(context.Background(), agentID, points, now)
+}
+
+// metricsRequest — конверт метрик (схема версии 1).
+type metricsRequest struct {
+	Kind        string    `json:"kind"` // "metrics"
+	SchemaVer   int       `json:"schema_ver"`
+	CollectedAt time.Time `json:"collected_at"`
+	Samples     []struct {
+		Target string  `json:"target"`
+		Metric string  `json:"metric"`
+		Value  float64 `json:"value"`
+	} `json:"samples"`
+}
+
+// handleMetrics — POST /agent/v1/metrics: приём порции замеров
+// (тело ≤256 КБ, строгий JSON), точки — в хранилище метрик.
+func (a *API) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	cn, ok := a.guardAgent(w, r, "agent_metrics")
+	if !ok {
+		return
+	}
+	body, ok := readBody(w, r, MaxMetricsBody)
+	if !ok {
+		return
+	}
+	var req metricsRequest
+	if err := decodeStrict(body, &req); err != nil {
+		a.auditDeny(r.Context(), "agent_metrics", cn, "тело: "+err.Error())
+		writeJSON(w, http.StatusBadRequest, errorBody{"тело запроса: " + err.Error()})
+		return
+	}
+	if req.Kind != "metrics" || req.SchemaVer < 1 {
+		a.auditDeny(r.Context(), "agent_metrics", cn, "kind/schema_ver")
+		writeJSON(w, http.StatusBadRequest, errorBody{"kind=metrics и schema_ver ≥ 1"})
+		return
+	}
+	if len(req.Samples) > 512 {
+		a.auditDeny(r.Context(), "agent_metrics", cn, "слишком много точек")
+		writeJSON(w, http.StatusBadRequest, errorBody{"samples: не больше 512"})
+		return
+	}
+	at := req.CollectedAt
+	if at.IsZero() {
+		at = time.Now()
+	}
+	samples := make([]store.MetricSample, 0, len(req.Samples))
+	for _, sm := range req.Samples {
+		samples = append(samples, store.MetricSample{
+			AgentID: cn, Target: sm.Target, Kind: sm.Metric, Value: sm.Value, At: at,
+		})
+	}
+	if err := a.st.SaveMetricsRaw(r.Context(), samples); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{"сохранение метрик"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// handleBlobGet — GET /agent/v1/blob?bytes=N: отдаёт N нулевых байт
+// (не больше 8 МБ) для замера скорости загрузки агентом.
+func (a *API) handleBlobGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.guardAgent(w, r, "agent_blob"); !ok {
+		return
+	}
+	n, err := strconv.Atoi(r.URL.Query().Get("bytes"))
+	if err != nil || n < 1 || n > MaxBlobBytes {
+		writeJSON(w, http.StatusBadRequest, errorBody{"bytes: 1..8388608"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(n))
+	w.WriteHeader(http.StatusOK)
+	// Нулевой буфер пишется порциями: память не зависит от N.
+	chunk := make([]byte, 64<<10)
+	for n > 0 {
+		k := n
+		if k > len(chunk) {
+			k = len(chunk)
+		}
+		if _, err := w.Write(chunk[:k]); err != nil {
+			return
+		}
+		n -= k
+	}
+}
+
+// handleBlobPost — POST /agent/v1/blob: приём до 8 МБ (замер
+// скорости выгрузки), тело не сохраняется.
+func (a *API) handleBlobPost(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.guardAgent(w, r, "agent_blob"); !ok {
+		return
+	}
+	if _, ok := readBody(w, r, MaxBlobBytes); !ok {
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
 }

@@ -10,10 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"path/filepath"
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/agent/collect"
+	"github.com/ShkodnikAI/NetAtlas/agent/measure"
 	"github.com/ShkodnikAI/NetAtlas/agent/spool"
 )
 
@@ -32,6 +34,13 @@ type Runner struct {
 	Interval time.Duration
 	// Collectors — сборщики; nil → DefaultCollectors.
 	Collectors []collect.Collector
+
+	// Замеры качества (NR-008): включаются владельцем в конфигурации
+	// запуска; выключены по умолчанию.
+	SpeedURL    string
+	Measurer    Measurer
+	lastMeasure time.Time
+	volume      *measure.Volume
 
 	transport Transport
 	spool     *spool.Spool
@@ -79,6 +88,11 @@ func CollectOnce(collectors []collect.Collector) ([]byte, error) {
 	return json.Marshal(rep)
 }
 
+// Measurer — один цикл замеров (подменяется в тестах).
+type Measurer interface {
+	RunOnce(ctx context.Context, o measure.Options) ([]measure.Sample, error)
+}
+
 // RunOnce — один цикл: очередь → checkin → сбор и отправка.
 func (r *Runner) RunOnce(ctx context.Context) error {
 	if r.Collectors == nil {
@@ -107,8 +121,62 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 		}
 		return err
 	}
+	// Метрики качества: не чаще раза в 5 минут; ошибки не роняют
+	// цикл (замеры не влияют на работу — NR-008).
+	if r.Measurer != nil {
+		if r.lastMeasure.IsZero() || time.Since(r.lastMeasure) >= 5*time.Minute {
+			if merr := r.runMeasure(ctx); merr != nil {
+				log.Printf("agent: замеры: %v", merr)
+			}
+			r.lastMeasure = time.Now()
+		}
+	}
 	return nil
 }
+
+// runMeasure — цикл замеров и отправка /agent/v1/metrics.
+func (r *Runner) runMeasure(ctx context.Context) error {
+	now := time.Now()
+	if r.volume == nil {
+		r.volume = measure.NewVolume(now)
+	}
+	r.volume.Roll(now)
+	o := measure.Options{
+		ServerHost: measureHost(r.Server),
+		ServerURL:  r.Server,
+		SpeedURL:   r.SpeedURL,
+		Now:        now,
+		Volume:     r.volume,
+	}
+	if p := measurerOpts; p != nil {
+		p(&o)
+	}
+	samples, err := r.Measurer.RunOnce(ctx, o)
+	if err != nil {
+		return err
+	}
+	if len(samples) == 0 {
+		return nil
+	}
+	env := measure.Envelope{Kind: "metrics", SchemaVer: 1, CollectedAt: now.UTC(), Samples: samples}
+	body, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return r.transport.SendMetrics(ctx, body)
+}
+
+// measureHost — хост:порт из адреса сервера (для TCP/ICMP).
+func measureHost(serverURL string) string {
+	u, err := url.Parse(serverURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Host
+}
+
+// measurerOpts — точка подмены TLS/пробера в тестах.
+var measurerOpts func(*measure.Options)
 
 // Run — цикл до остановки контекста. Ошибки цикла удваивают паузу
 // (от BackoffBase до BackoffMax), успех возвращает базовый интервал.

@@ -30,6 +30,10 @@ type config struct {
 
 	// Правила (NR-009): пусто — встроенные.
 	rulesDir string
+
+	// Качество сети (NR-008): цели SNMP пустые — задача выключена.
+	snmpTargets string
+	snmpList    []netip.Addr
 }
 
 // errUsage — ошибки конфигурации: завершение с кодом 2.
@@ -54,6 +58,8 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		"адрес слушателя регистрации агентов (по умолчанию выключен)")
 	fs.StringVar(&cfg.rulesDir, "rules-dir", "",
 		"каталог правил (по умолчанию — встроенные rules/data)")
+	fs.StringVar(&cfg.snmpTargets, "snmp-targets", "",
+		"цели SNMP-опроса портов, через запятую (по умолчанию выключено)")
 	if err := fs.Parse(args); err != nil {
 		return config{}, fmt.Errorf("%w: %v", errUsage, err)
 	}
@@ -78,6 +84,18 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		return config{}, fmt.Errorf("%w: --subnets: %v", errUsage, err)
 	}
 	cfg.scope = scope
+
+	// Цели SNMP: только внутри подсетей (проверка в metrics.NewTask).
+	for _, c := range strings.Split(cfg.snmpTargets, ",") {
+		if c = strings.TrimSpace(c); c == "" {
+			continue
+		}
+		addr, err := netip.ParseAddr(c)
+		if err != nil {
+			return config{}, fmt.Errorf("%w: --snmp-targets: %q не адрес", errUsage, c)
+		}
+		cfg.snmpList = append(cfg.snmpList, addr)
+	}
 
 	// Каталог ключей PKI: только окружение, как и токен.
 	cfg.keyDir = getenv("NETATLAS_KEYDIR")

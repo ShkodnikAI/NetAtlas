@@ -224,6 +224,7 @@ type Checkin struct {
 type Transport interface {
 	Checkin(ctx context.Context) (Checkin, error)
 	SendInventory(ctx context.Context, body []byte) error
+	SendMetrics(ctx context.Context, body []byte) error
 }
 
 // Client — HTTP-клиент агентских маршрутов по mTLS.
@@ -273,6 +274,19 @@ func (c *Client) SendInventory(ctx context.Context, body []byte) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("agent: inventory: код %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// SendMetrics — POST /agent/v1/metrics с готовым конвертом (≤256 КБ).
+func (c *Client) SendMetrics(ctx context.Context, body []byte) error {
+	resp, err := c.hc.Post(c.base+"/agent/v1/metrics", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("agent: metrics: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("agent: metrics: код %d", resp.StatusCode)
 	}
 	return nil
 }
