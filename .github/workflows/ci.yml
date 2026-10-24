@@ -38,6 +38,11 @@ jobs:
           export PATH="/c/Program Files/Git/usr/bin:$PATH"
           make check
 
+      - name: diagnostics (windows)
+        if: runner.os == 'Windows' && failure()
+        shell: bash
+        run: go test ./... 2>&1 | tail -c 3000 | while IFS= read -r line; do echo "::error::$line"; done
+
 
   web:
     runs-on: ubuntu-latest
