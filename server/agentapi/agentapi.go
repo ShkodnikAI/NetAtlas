@@ -125,7 +125,7 @@ func New(st *store.Store, ca *pki.CA, poll time.Duration) (*API, error) {
 	agentMux.HandleFunc("POST /agent/v1/security", a.handleSecurity)
 	agentMux.HandleFunc("GET /agent/v1/blob", a.handleBlobGet)
 	agentMux.HandleFunc("POST /agent/v1/blob", a.handleBlobPost)
-	agentMux.HandleFunc("POST /agent/v1/job-result", a.handleJobResult)
+	agentMux.HandleFunc("POST /agent/v1/jobs/{id}/result", a.handleJobResult)
 	enrollMux := http.NewServeMux()
 	enrollMux.HandleFunc("POST /agent/v1/enroll", a.handleEnroll)
 	a.agentMux, a.enrollMux = agentMux, enrollMux
@@ -548,15 +548,18 @@ type checkinResponse struct {
 
 // jobPayload — задание для агента: подписанный конверт, содержимое,
 // срок. Подпись проверяется агентом (agent/verify), содержимое — по
-// хэшу конверта.
+// хэшу конверта. ChangesSystem — подсказка агенту снять точку
+// восстановления и метрики «до» (известен только изменяющий тип:
+// для каталога — шаблон не только-чтение, для скрипта — всегда).
 type jobPayload struct {
-	JobID     int64            `json:"job_id"`
-	Name      string           `json:"name"`
-	Kind      string           `json:"kind"`
-	Content   string           `json:"content"`
-	Envelope  signing.Envelope `json:"envelope"`
-	Signature string           `json:"signature"`
-	ExpiresAt string           `json:"expires_at"`
+	JobID         int64            `json:"job_id"`
+	Name          string           `json:"name"`
+	Kind          string           `json:"kind"`
+	Content       string           `json:"content"`
+	Envelope      signing.Envelope `json:"envelope"`
+	Signature     string           `json:"signature"`
+	ExpiresAt     string           `json:"expires_at"`
+	ChangesSystem bool             `json:"changes_system"`
 }
 
 // handleCheckin — POST /agent/v1/checkin: выход агента на связь.
@@ -593,7 +596,9 @@ func (a *API) handleCheckin(w http.ResponseWriter, r *http.Request) {
 // без подписи, с истёкшей подписью (цель помечается expired), вне
 // разрешённого набора или с нарушением конвейера агенту не отдаётся.
 // Раскатка группами: не больше gate.Quota целей задания получили
-// задание.
+// задание. Изменяющий флаг вычисляется на сервере: каталог берёт его
+// из шаблона (только-чтение — не изменяющий), произвольный скрипт —
+// всегда изменяющий.
 func (a *API) dispatchJobs(ctx context.Context, cn string) ([]jobPayload, error) {
 	cands, err := a.st.PendingDispatch(ctx, cn)
 	if err != nil {
@@ -677,13 +682,14 @@ func (a *API) signJobEnvelope(c store.DispatchCandidate, cn string, now time.Tim
 		return jobPayload{}, fmt.Errorf("agentapi: подпись конверта: %w", err)
 	}
 	return jobPayload{
-		JobID:     c.JobID,
-		Name:      c.JobName,
-		Kind:      c.Kind,
-		Content:   c.Content,
-		Envelope:  signed.Envelope,
-		Signature: base64.StdEncoding.EncodeToString(signed.Signature),
-		ExpiresAt: c.Expires.UTC().Format(time.RFC3339),
+		JobID:         c.JobID,
+		Name:          c.JobName,
+		Kind:          c.Kind,
+		Content:       c.Content,
+		Envelope:      signed.Envelope,
+		Signature:     base64.StdEncoding.EncodeToString(signed.Signature),
+		ExpiresAt:     c.Expires.UTC().Format(time.RFC3339),
+		ChangesSystem: c.ChangesSystem,
 	}, nil
 }
 
@@ -725,12 +731,18 @@ type jobResultRequest struct {
 	MetricAfter  *float64 `json:"metric_after,omitempty"`
 }
 
-// handleJobResult — приём результата задания от агента (серверная
-// сторона конвейера; агентская сторона исполнения — NR-025). Провал
-// останавливает раскатку, ухудшение метрики сверх порога — тоже.
+// handleJobResult — POST /agent/v1/jobs/{id}/result: приём
+// результата задания от агента. Агентская сторона исполнения — NR-025.
+// Провал останавливает раскатку, ухудшение метрики сверх порога —
+// тоже. job_id берётся из пути: тело личность задания не задаёт.
 func (a *API) handleJobResult(w http.ResponseWriter, r *http.Request) {
 	cn, ok := a.guardAgent(w, r, "agent_job_result")
 	if !ok {
+		return
+	}
+	jobID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || jobID <= 0 {
+		writeJSON(w, http.StatusBadRequest, errorBody{"id: положительное число"})
 		return
 	}
 	body, ok := readBody(w, r, 64<<10)
@@ -743,12 +755,7 @@ func (a *API) handleJobResult(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{"тело запроса: " + err.Error()})
 		return
 	}
-	if req.JobID <= 0 {
-		a.auditDeny(r.Context(), "agent_job_result", cn, "job_id не положительный")
-		writeJSON(w, http.StatusBadRequest, errorBody{"job_id: положительное число"})
-		return
-	}
-	if _, err := a.st.RecordJobResult(r.Context(), req.JobID, cn, req.OK, req.Detail,
+	if _, err := a.st.RecordJobResult(r.Context(), jobID, cn, req.OK, req.Detail,
 		req.MetricBefore, req.MetricAfter, ActorAgentAPI); err != nil {
 		switch {
 		case errors.Is(err, store.ErrNotFound):

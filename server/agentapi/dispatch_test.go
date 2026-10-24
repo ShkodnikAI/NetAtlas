@@ -8,6 +8,7 @@ package agentapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -363,28 +364,32 @@ func TestJobResultEndpoint(t *testing.T) {
 	_, versionID, _ := d.signedScript(t, gate.KindCatalog, gate.CategoryGeneral, time.Now().Add(24*time.Hour))
 	d.makeJob(t, versionID, []string{"agent:dispatch"})
 
-	code, _ := d.e.post(cl, d.e.mtlsURL("/agent/v1/job-result"), []byte(`{"job_id":1,"ok":true}`))
-	if code != http.StatusConflict {
+	job := strconv.FormatInt(d.jobID, 10)
+	post := func(jobID, body string) int {
+		code, _ := d.e.post(cl, d.e.mtlsURL("/agent/v1/jobs/"+jobID+"/result"), []byte(body))
+		return code
+	}
+	if code := post(job, `{"ok":true}`); code != http.StatusConflict {
 		t.Fatalf("результат без выдачи: код %d", code)
 	}
 	if jobs := d.checkinJobs(t, cl); len(jobs) != 1 {
 		t.Fatalf("задание не выдано: %d", len(jobs))
 	}
-	code, _ = d.e.post(cl, d.e.mtlsURL("/agent/v1/job-result"), []byte(`{"job_id":1,"ok":true,"detail":"готово"}`))
-	if code != http.StatusOK {
+	if code := post(job, `{"ok":true,"detail":"готово"}`); code != http.StatusOK {
 		t.Fatalf("результат: код %d", code)
 	}
-	code, _ = d.e.post(cl, d.e.mtlsURL("/agent/v1/job-result"), []byte(`{"job_id":1,"ok":true}`))
-	if code != http.StatusConflict {
+	if code := post(job, `{"ok":true}`); code != http.StatusConflict {
 		t.Fatalf("повторный результат: код %d", code)
 	}
-	code, _ = d.e.post(cl, d.e.mtlsURL("/agent/v1/job-result"), []byte(`{"job_id":999,"ok":true}`))
-	if code != http.StatusNotFound {
+	if code := post("999", `{"ok":true}`); code != http.StatusNotFound {
 		t.Fatalf("неизвестное задание: код %d", code)
 	}
-	code, _ = d.e.post(cl, d.e.mtlsURL("/agent/v1/job-result"), []byte(`{"job_id":"x"}`))
-	if code != http.StatusBadRequest {
+	if code := post(job, `{"ok":"да"}`); code != http.StatusBadRequest {
 		t.Fatalf("битое тело: код %d", code)
+	}
+	// Нечисловой id пути — 400.
+	if code := post("abc", `{"ok":true}`); code != http.StatusBadRequest {
+		t.Fatalf("нечисловой id: код %d", code)
 	}
 }
 

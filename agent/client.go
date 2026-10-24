@@ -227,6 +227,8 @@ type Transport interface {
 	SendMetrics(ctx context.Context, body []byte) error
 	// SendSecurity отправляет отчёт проверок безопасности (NR-010).
 	SendSecurity(ctx context.Context, body []byte) error
+	// SendJobResult отправляет результат исполнения задания (NR-025).
+	SendJobResult(ctx context.Context, jobID int64, body []byte) error
 }
 
 // Client — HTTP-клиент агентских маршрутов по mTLS.
@@ -265,6 +267,21 @@ func (c *Client) Checkin(ctx context.Context) (Checkin, error) {
 		return Checkin{}, fmt.Errorf("agent: ответ checkin: %w", err)
 	}
 	return out, nil
+}
+
+// SendJobResult — POST /agent/v1/jobs/{id}/result: итог исполнения
+// задания агентом (ok, detail, метрики до/после).
+func (c *Client) SendJobResult(ctx context.Context, jobID int64, body []byte) error {
+	resp, err := c.hc.Post(c.base+fmt.Sprintf("/agent/v1/jobs/%d/result", jobID),
+		"application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("agent: job result: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("agent: job result: код %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // SendInventory — POST /agent/v1/inventory с готовым конвертом.

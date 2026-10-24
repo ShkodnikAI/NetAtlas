@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/pipeline/catalog"
 	"github.com/ShkodnikAI/NetAtlas/pipeline/gate"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 )
@@ -400,6 +401,12 @@ type DispatchCandidate struct {
 	Targets []string `json:"targets"`
 	// IsPilot — задание этапа «один ПК» (pilot).
 	IsPilot bool `json:"is_pilot"`
+	// CatalogKey — ключ шаблона для kind=catalog (изменяющий флаг
+	// агенту вычисляется на сервере из шаблона).
+	CatalogKey string `json:"catalog_key,omitempty"`
+	// ChangesSystem — задание изменяет состояние машины: каталог из
+	// шаблона не только-чтение; произвольный скрипт — всегда.
+	ChangesSystem bool `json:"changes_system"`
 	// Состояние раскатки:
 	Total     int `json:"total"`
 	Done      int `json:"done"`
@@ -411,7 +418,7 @@ type DispatchCandidate struct {
 func (s *Store) PendingDispatch(ctx context.Context, agentID string) ([]DispatchCandidate, error) {
 	rows, err := s.db.QueryContext(ctx, `
                 SELECT j.id, j.name, j.kind, j.pilot,
-                       v.id, v.version, v.status, v.content, v.sha256, v.pilot_ok, s.category,
+                       v.id, v.version, v.status, v.content, v.sha256, v.pilot_ok, s.category, s.catalog_key, s.kind,
                        COALESCE(sig.signed_by, ''), COALESCE(sig.sha256, ''), COALESCE(sig.expires_at, ''),
                        (SELECT COUNT(*) FROM job_targets WHERE job_id = j.id),
                        (SELECT COUNT(*) FROM job_targets WHERE job_id = j.id AND state = 'done'),
@@ -432,15 +439,24 @@ func (s *Store) PendingDispatch(ctx context.Context, agentID string) ([]Dispatch
 	out := []DispatchCandidate{}
 	for rows.Next() {
 		var c DispatchCandidate
-		var pilot, expires, targets sql.NullString
+		var pilot, expires, targets, catalogKey, scriptKind sql.NullString
 		var jobPilot int
 		if err := rows.Scan(&c.JobID, &c.JobName, &c.Kind, &jobPilot,
 			&c.VersionID, &c.Version, &c.Status, &c.Content, &c.SHA256, &pilot, &c.Category,
+			&catalogKey, &scriptKind,
 			&c.SignedBy, &c.SignedSHA, &expires,
 			&c.Total, &c.Done, &c.Delivered, &targets); err != nil {
 			return nil, fmt.Errorf("store: кандидаты выдачи %s: строка: %w", agentID, err)
 		}
 		c.IsPilot = jobPilot == 1
+		c.CatalogKey = catalogKey.String
+		switch {
+		case scriptKind.String == gate.KindScript:
+			c.ChangesSystem = true
+		case scriptKind.String == gate.KindCatalog:
+			tpl, err := catalog.Get(c.CatalogKey)
+			c.ChangesSystem = err == nil && !tpl.ReadOnly
+		}
 		for _, tg := range strings.Split(targets.String, ",") {
 			if tg != "" {
 				c.Targets = append(c.Targets, tg)
