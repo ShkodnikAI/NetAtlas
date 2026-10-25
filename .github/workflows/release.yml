@@ -58,7 +58,9 @@ jobs:
         shell: bash
         run: |
           v="${{ steps.ver.outputs.version }}"
-          prev=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${v}$" | head -1)
+          # || true: первый релиз — предыдущих тегов нет, grep вернёт 1,
+          # а с pipefail это уронило бы шаг.
+          prev=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${v}$" | head -1 || true)
           if [ -n "$prev" ]; then
             range="$prev..HEAD"
           else
