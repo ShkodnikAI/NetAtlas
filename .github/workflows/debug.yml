@@ -18,7 +18,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Изоляция флагов go build
+      # ASCII-only inline script: Windows PowerShell 5.1 reads the step
+      # file in the ANSI codepage, so any non-ASCII text here breaks.
+      - name: Isolate go build flags
         shell: powershell
         run: |
           $env:GOOS='windows'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'
@@ -27,19 +29,19 @@ jobs:
           $ldCommit = "github.com/ShkodnikAI/NetAtlas/internal/version.CommitDate=2026-10-25T15:19:51Z"
 
           function TryBuild($name, $a) {
+              Write-Host "ARGS $name : [$($a -join ' | ')]"
               & go build @a 2>&1 | Out-Null
               $code = $LASTEXITCODE
               if ($code -eq 0) { Write-Host "PASS $name" } else { Write-Host "FAIL $name (code=$code)" }
           }
 
-          TryBuild 'D plain'            @($pkg)
-          TryBuild 'E trimpath'         @('-trimpath', $pkg)
-          TryBuild 'F -s -w'            @('-ldflags', '-s -w', $pkg)
-          TryBuild 'G -X только'        @('-ldflags', "-X $ldVersion", $pkg)
-          TryBuild 'H trimpath -s -w'   @('-trimpath', '-ldflags', '-s -w', $pkg)
-          TryBuild 'I полный'           @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", $pkg)
+          TryBuild 'D-plain'   @($pkg)
+          TryBuild 'G-xonly'   @('-ldflags', "-X $ldVersion", $pkg)
+          TryBuild 'J-join'    @('-ldflags', "-X $ldVersion -X $ldCommit", $pkg)
+          TryBuild 'K-eqform'  @("-ldflags=-s -w -X $ldVersion -X $ldCommit", $pkg)
+          TryBuild 'L-full'    @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", $pkg)
 
-          Write-Host '=== Трассировка -x: строка link ==='
-          & go build -x -trimpath -ldflags "-s -w -X $ldVersion -X $ldCommit" -o _dbg_out.exe $pkg 2>&1 |
-              Where-Object { $_ -match 'link(\.exe)?\s' -or $_ -match 'usage' } |
+          Write-Host '=== xtrace link line ==='
+          & go build -x -trimpath '-ldflags' "-s -w -X $ldVersion -X $ldCommit" -o _dbg_out.exe $pkg 2>&1 |
+              Where-Object { $_ -match 'tool\\\\link|tool\\\\link\.exe|usage' } |
               ForEach-Object { Write-Host $_ }
