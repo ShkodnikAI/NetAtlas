@@ -18,53 +18,28 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Варианты вызова go build
+      - name: Изоляция флагов go build
         shell: powershell
         run: |
-          Write-Host "=== go version ==="
-          go version
+          $env:GOOS='windows'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'
+          $pkg = './cmd/netatlas-server'
           $ldVersion = "github.com/ShkodnikAI/NetAtlas/internal/version.Version=v0.0.0-debug"
           $ldCommit = "github.com/ShkodnikAI/NetAtlas/internal/version.CommitDate=2026-10-25T15:19:51Z"
-          $flags = "-s -w $ldVersion $ldCommit"
 
-          # argv-принтер: отдельный модуль во временной папке
-          $d = Join-Path $env:RUNNER_TEMP 'dbg'
-          New-Item -ItemType Directory -Path $d -Force | Out-Null
-          $src = @'
-          package main
-
-          import (
-              "fmt"
-              "os"
-          )
-
-          func main() {
-              for i, a := range os.Args[1:] {
-                  fmt.Printf("arg[%d]=[%s]\n", i, a)
-              }
+          function TryBuild($name, $a) {
+              & go build @a 2>&1 | Out-Null
+              $code = $LASTEXITCODE
+              if ($code -eq 0) { Write-Host "PASS $name" } else { Write-Host "FAIL $name (code=$code)" }
           }
-          '@
-          Set-Content -Path (Join-Path $d 'main.go') -Value $src -Encoding UTF8
-          Set-Content -Path (Join-Path $d 'go.mod') -Value "module dbg" -Encoding UTF8
-          Add-Content -Path (Join-Path $d 'go.mod') -Value "go 1.27.3" -Encoding UTF8
 
-          Push-Location $d
-          Write-Host "=== Вариант A: как в Build-Release.ps1 ==="
-          $env:GOOS='windows'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'
-          go run . -trimpath -ldflags "$flags" -o out.exe ./cmd/netatlas-server
-          Pop-Location
+          TryBuild 'D plain'            @($pkg)
+          TryBuild 'E trimpath'         @('-trimpath', $pkg)
+          TryBuild 'F -s -w'            @('-ldflags', '-s -w', $pkg)
+          TryBuild 'G -X только'        @('-ldflags', "-X $ldVersion", $pkg)
+          TryBuild 'H trimpath -s -w'   @('-trimpath', '-ldflags', '-s -w', $pkg)
+          TryBuild 'I полный'           @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", $pkg)
 
-          Write-Host "=== Вариант A реальный build (abs -o) ==="
-          & go build -trimpath -ldflags "$flags" -o "$PWD\outA.exe" ./cmd/netatlas-server
-          Write-Host "A code=$LASTEXITCODE"
-
-          Write-Host "=== Вариант B: -ldflags= одним аргументом ==="
-          & go build -trimpath "-ldflags=$flags" -o "$PWD\outB.exe" ./cmd/netatlas-server
-          Write-Host "B code=$LASTEXITCODE"
-
-          Write-Host "=== Вариант C: cmd /c ==="
-          cmd /c "go build -trimpath -ldflags `"$flags`" -o outC.exe ./cmd/netatlas-server"
-          Write-Host "C code=$LASTEXITCODE"
-
-          Write-Host "=== Итоги ==="
-          Get-Item outA.exe, outB.exe, outC.exe -ErrorAction SilentlyContinue | Select-Object Name, Length
+          Write-Host '=== Трассировка -x: строка link ==='
+          & go build -x -trimpath -ldflags "-s -w -X $ldVersion -X $ldCommit" -o _dbg_out.exe $pkg 2>&1 |
+              Where-Object { $_ -match 'link(\.exe)?\s' -or $_ -match 'usage' } |
+              ForEach-Object { Write-Host $_ }
