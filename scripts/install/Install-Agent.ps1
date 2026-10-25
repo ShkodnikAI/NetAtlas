@@ -87,7 +87,6 @@ try {
     $serverArg = [string]$invite.enroll_url
     $tokenArg = [string]$invite.token
     $caArg = [string]$caPem
-    Write-InfoLocal ('  отладка: server={0}; длина токена={1}; ca есть={2}' -f $serverArg, $tokenArg.Length, (Test-Path -LiteralPath $caArg))
     $agentOut = & $agentExe enroll --server $serverArg --token $tokenArg --ca $caArg 2>&1
     if ($LASTEXITCODE -ne 0) {
         $why = Get-MaskedTextLocal -Text ($agentOut | Out-String).Trim()
