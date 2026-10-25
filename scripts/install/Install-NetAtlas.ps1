@@ -99,6 +99,12 @@ try {
         $Dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Dir)
     }
 
+    # Повторная установка: работающий сервер держит .exe — обновить
+    # бинарники нельзя. Останавливаем и процесс, и задачу; задача
+    # запустит сервер снова (или владелец run-server.ps1 в -NoService).
+    Get-Process netatlas-server -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Stop-ScheduledTask -TaskName 'NetAtlasServer' -ErrorAction SilentlyContinue
+
     # --- шаг 2: архив релиза ------------------------------------------------
     Write-Step 2 $total 'Получение архива релиза и проверка хэша'
     $appDir = Join-Path $Dir 'app'
