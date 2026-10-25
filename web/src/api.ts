@@ -412,6 +412,36 @@ export class NetatlasApi {
   activityPurge(agentID: string): Promise<{ ok: boolean; rows: number }> {
     return this.req('DELETE', `/api/activity?computer=${encodeURIComponent(agentID)}`);
   }
+
+  // Отчёты для ИИ (NR-013): граница изоляции. Таблица соответствий
+  // запрашивается отдельным методом — только владельцем, в аудит.
+  reports(): Promise<{ reports: AIReportItem[] }> {
+    return this.req('GET', '/api/reports');
+  }
+
+  createReport(topic: string, agentID: string, question: string): Promise<{ id: number; text: string; warnings: string[] }> {
+    return this.req('POST', '/api/reports', { topic, agent_id: agentID, question });
+  }
+
+  report(id: number): Promise<AIReportFull> {
+    return this.req('GET', `/api/reports/${id}`);
+  }
+
+  reportAnswer(id: number, text: string): Promise<{ ok: boolean; answer: string }> {
+    return this.req('POST', `/api/reports/${id}/answer`, { text });
+  }
+
+  reportAskAI(id: number): Promise<{ ok: boolean; answer: string }> {
+    return this.req('POST', `/api/reports/${id}/answer`, { use_ai: true });
+  }
+
+  reportDraft(id: number, name: string, fragment: string): Promise<{ script_id: number; version_id: number }> {
+    return this.req('POST', `/api/reports/${id}/draft`, { name, fragment });
+  }
+
+  reportMapping(id: number): Promise<{ mapping: AIMappingRow[] }> {
+    return this.req('GET', `/api/reports/${id}/mapping`);
+  }
 }
 
 export interface ActivityStatus {
@@ -524,4 +554,28 @@ export interface CatalogTemplate {
     min?: number;
     max?: number;
   }[];
+}
+
+// --- Отчёты для ИИ (NR-013): граница изоляции -------------------------------
+
+export interface AIReportItem {
+  id: number;
+  topic: string;
+  created_at: string;
+  status: string;
+}
+
+export interface AIReportFull {
+  id: number;
+  topic: string;
+  created_at: string;
+  cleaned_text: string;
+  answer?: string;
+  status: string;
+}
+
+export interface AIMappingRow {
+  alias: string;
+  kind: string;
+  value: string;
 }

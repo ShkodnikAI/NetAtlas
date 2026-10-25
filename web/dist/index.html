@@ -23,7 +23,7 @@
     <button class="item" data-page="scripts">Скрипты и тесты</button>
     <button class="item" data-page="activity">Активность</button>
     <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
-    <button class="item soon" disabled>Отчёты для ИИ <span class="soon-badge">скоро</span></button>
+    <button class="item" data-page="reports">Отчёты для ИИ</button>
     <div id="audit-badge" class="audit-badge" role="status" hidden></div>
   </nav>
 
@@ -127,6 +127,12 @@
       <h2>Активность сотрудников</h2>
       <p class="subtitle">Минимальные сведения о работе за компьютером: активное приложение, домены сайтов, время активности и простоя. Сбор выключен по умолчанию и включается только с подтверждением, что сотрудники уведомлены. Клавиши, переписка, пароли, адреса страниц и скриншоты не собираются — в коде их нет.</p>
       <div id="activity-root"></div>
+    </section>
+
+    <section id="screen-reports" hidden aria-label="Отчёты для ИИ">
+      <h2>Отчёты для ИИ</h2>
+      <p class="subtitle">Граница изоляции: сервер собирает отчёт по единой форме и очищает его — имена и адреса становятся псевдонимами, пароли и ключи вырезаются. Таблица соответствий остаётся только у вас. ИИ отвечает текстом-предложением; из него можно создать только черновик скрипта, исполнение — после всего конвейера и вашей подписи.</p>
+      <div id="reports-root"></div>
     </section>
 
     <section id="screen-scripts" hidden aria-label="Скрипты и тесты">

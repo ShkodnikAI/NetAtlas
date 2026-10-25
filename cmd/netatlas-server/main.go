@@ -24,6 +24,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/scanner/ping"
 	"github.com/ShkodnikAI/NetAtlas/scanner/snmp"
 	"github.com/ShkodnikAI/NetAtlas/server/agentapi"
+	"github.com/ShkodnikAI/NetAtlas/server/ai"
 	"github.com/ShkodnikAI/NetAtlas/server/api"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 	"github.com/ShkodnikAI/NetAtlas/server/metrics"
@@ -90,6 +91,24 @@ func run(cfg config) error {
 	// Подпись скриптов (NR-011): ключ читается маршрутом подписи из
 	// каталога ключей в момент подписания; без каталога — 503.
 	handler.ConfigureScripts(api.ScriptsConfig{KeyDir: cfg.keyDir})
+
+	// Отчёты для ИИ (NR-013): без --ai-enabled — ручной режим
+	// (копировать и вставить); маршрут ответа модели отвечает 503.
+	provider := ai.New(ai.Config{
+		Enabled:   cfg.aiEnabled,
+		Endpoint:  cfg.aiEndpoint,
+		KeyEnv:    cfg.aiKeyEnv,
+		LocalAddr: cfg.aiLocalAddr,
+	})
+	handler.ConfigureAI(provider)
+	if cfg.aiEnabled {
+		// Включение — действие владельца при запуске: уходит в аудит.
+		if err := st.AppendAudit(context.Background(), "server", "ai_enabled", "reports",
+			"провайдер "+provider.Name()); err != nil {
+			fmt.Fprintf(os.Stderr, "netatlas-server: аудит включения ИИ: %v\n", err)
+		}
+		fmt.Fprintf(os.Stderr, "netatlas-server: подключение модели ИИ включено (провайдер %s)\n", provider.Name())
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

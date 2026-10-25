@@ -5,6 +5,7 @@ import { ApiError, NetatlasApi, type DeviceInfo, type Graph, type LinkInfo, type
 import { setAuditBadge } from './audit';
 import { renderComputerCard, renderComputers } from './computers';
 import { renderActivity, validateEnableInput } from './activity';
+import { renderReports, validateAnswerText, validateDraftInput } from './reports';
 import {
   renderDraftForm,
   renderScriptAudit,
@@ -323,7 +324,7 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts' | 'activity';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts' | 'activity' | 'reports';
 
 let openComputerId: string | null = null;
 
@@ -336,6 +337,7 @@ function showScreen(name: ScreenName): void {
   $('screen-security').hidden = name !== 'security';
   $('screen-scripts').hidden = name !== 'scripts';
   $('screen-activity').hidden = name !== 'activity';
+  $('screen-reports').hidden = name !== 'reports';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -351,6 +353,7 @@ function showScreen(name: ScreenName): void {
   if (name === 'security') void initSecurityScreen();
   if (name === 'scripts') void initScriptsScreen();
   if (name === 'activity') void initActivityScreen();
+  if (name === 'reports') void initReportsScreen();
   if (name === 'map') void reload();
 }
 
@@ -622,6 +625,109 @@ async function initActivityScreen(): Promise<void> {
       api.activitySummary('?from=' + encodeURIComponent(new Date(Date.now() - 24 * 3600e3).toISOString())),
     ]);
     renderActivity({ root, onRefresh: () => void initActivityScreen() }, summary, computers.computers, handlers);
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 401)) {
+      showNotice(errMessage(err), true);
+    }
+  }
+}
+
+// --- отчёты для ИИ (NR-013) ------------------------------------------------
+
+async function initReportsScreen(): Promise<void> {
+  const root = $('reports-root');
+  let list: Awaited<ReturnType<typeof api.reports>>['reports'] = [];
+  let current: Awaited<ReturnType<typeof api.report>> | null = null;
+  let mapping: Awaited<ReturnType<typeof api.reportMapping>>['mapping'] | null = null;
+
+  const show = (): void => {
+    renderReports({ root, onRefresh: () => void initReportsScreen() }, list, current, mapping, handlers);
+  };
+
+  const handlers = {
+    onCreate: async (topic: string, agentID: string, question: string) => {
+      try {
+        const res = await api.createReport(topic, agentID, question);
+        showNotice(
+          res.warnings.length > 0
+            ? `Отчёт №${res.id} создан. Внимание: ${res.warnings.join('; ')}`
+            : `Отчёт №${res.id} создан: текст очищен, проверьте перед отправкой.`,
+          res.warnings.length > 0,
+        );
+        await initReportsScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onOpen: async (id: number) => {
+      try {
+        current = await api.report(id);
+        mapping = null;
+        show();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onCopy: (text: string) => {
+      void navigator.clipboard
+        .writeText(text)
+        .then(() => showNotice('Очищенный текст скопирован: вставьте его в диалог с ИИ вручную.', false))
+        .catch(() => showNotice('Браузер не дал доступ к буферу обмена — выделите текст вручную.', true));
+    },
+    onAnswer: async (id: number, text: string) => {
+      const problem = validateAnswerText(text);
+      if (problem !== '') {
+        showNotice(problem, true);
+        return;
+      }
+      try {
+        await api.reportAnswer(id, text);
+        showNotice('Ответ принят как предложение. Из него можно создать черновик.', false);
+        current = await api.report(id);
+        show();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onAskAI: async (id: number) => {
+      try {
+        const res = await api.reportAskAI(id);
+        showNotice('Модель ответила: ответ сохранён как предложение.', false);
+        void res;
+        current = await api.report(id);
+        show();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onDraft: async (id: number, name: string, fragment: string) => {
+      const problem = validateDraftInput(name, fragment);
+      if (problem !== '') {
+        showNotice(problem, true);
+        return;
+      }
+      try {
+        const res = await api.reportDraft(id, name, fragment);
+        showNotice(`Черновик создан: скрипт №${res.script_id}, версия №${res.version_id} (draft). Путь дальше — конвейер скриптов.`, false);
+        current = await api.report(id);
+        show();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+    onMapping: async (id: number) => {
+      try {
+        mapping = (await api.reportMapping(id)).mapping;
+        show();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    },
+  };
+
+  try {
+    list = (await api.reports()).reports;
+    show();
   } catch (err) {
     if (!(err instanceof ApiError && err.status === 401)) {
       showNotice(errMessage(err), true);

@@ -22,6 +22,7 @@ import (
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/rules"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
+	"github.com/ShkodnikAI/NetAtlas/server/ai"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 )
@@ -78,6 +79,12 @@ type Store interface {
 	ActivityAggregates(ctx context.Context, from, to time.Time, agentID, account string) (store.ActivitySummary, error)
 	PurgeOldActivity(ctx context.Context, now time.Time) (int64, error)
 	DeleteActivityFor(ctx context.Context, agentID, actor string) (int64, error)
+	// Отчёты для ИИ (NR-013).
+	CreateAIReport(ctx context.Context, topic, cleanedText string, mapping []store.MappingRow) (int64, error)
+	AIReportByID(ctx context.Context, id int64) (store.AIReport, error)
+	ListAIReports(ctx context.Context) ([]store.AIReport, error)
+	SaveAIAnswer(ctx context.Context, id int64, answer string) error
+	AIMapping(ctx context.Context, id int64) ([]store.MappingRow, error)
 	SignVersion(ctx context.Context, scriptID, versionID int64, sha, signature string, expires time.Time, actor string) (store.VersionRow, error)
 	StageCounts(ctx context.Context) (map[string]int, error)
 	CreateJob(ctx context.Context, in store.CreateJobInput, actor string) (int64, error)
@@ -113,6 +120,10 @@ type API struct {
 	// scriptKeyDir — каталог ключей подписи владельца (NR-011):
 	// подключается ConfigureScripts; пустой → подпись отвечает 503.
 	scriptKeyDir string
+
+	// aiProvider — провайдер ответов ИИ (NR-013): nil = ручной
+	// режим (ai_enabled=false); вызывается только из server/ai.
+	aiProvider ai.Provider
 
 	// Скан (NR-005): конфигурация и подменяемые зависимости;
 	// ConfigureScan подключает, до вызова — 503.
@@ -182,6 +193,13 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("GET /api/activity/computers", a.handleActivityComputers)
 	mux.HandleFunc("GET /api/activity/summary", a.handleActivitySummary)
 	mux.HandleFunc("DELETE /api/activity", a.handleActivityPurge)
+	// Отчёты для ИИ (NR-013): граница изоляции.
+	mux.HandleFunc("GET /api/reports", a.handleReportsList)
+	mux.HandleFunc("POST /api/reports", a.handleReportCreate)
+	mux.HandleFunc("GET /api/reports/{id}", a.handleAIReport)
+	mux.HandleFunc("POST /api/reports/{id}/answer", a.handleReportAnswer)
+	mux.HandleFunc("POST /api/reports/{id}/draft", a.handleReportDraft)
+	mux.HandleFunc("GET /api/reports/{id}/mapping", a.handleReportMapping)
 	mux.HandleFunc("GET /api/jobs", a.handleJobsList)
 	mux.HandleFunc("POST /api/jobs", a.handleJobCreate)
 	mux.HandleFunc("GET /api/jobs/{id}", a.handleJob)

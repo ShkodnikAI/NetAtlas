@@ -194,3 +194,48 @@ func TestParseConfigDispatchFlags(t *testing.T) {
 		t.Fatal("флаги не прочитаны")
 	}
 }
+
+func TestParseConfigAIOffByDefault(t *testing.T) {
+	cfg, err := parseConfig([]string{"--db", "/tmp/x.db", "--subnets", "10.0.0.0/24"}, getenv(map[string]string{"NETATLAS_TOKEN": goodToken}))
+	if err != nil {
+		t.Fatalf("конфигурация: %v", err)
+	}
+	if cfg.aiEnabled {
+		t.Fatal("--ai-enabled включён без флага")
+	}
+}
+
+func TestParseConfigAILocalLoopbackOnly(t *testing.T) {
+	// Нелокальный адрес локальной модели отклоняется без исключений
+	// (данные уходят только на машину владельца).
+	for _, addr := range []string{"192.168.1.10:11434", "0.0.0.0:11434", "ai.internal:8080"} {
+		_, err := parseConfig([]string{"--db", "/tmp/x.db", "--subnets", "10.0.0.0/24", "--ai-enabled", "--ai-local-addr", addr},
+			getenv(map[string]string{"NETATLAS_TOKEN": goodToken}))
+		if err == nil || !strings.Contains(err.Error(), "--ai-local-addr") {
+			t.Fatalf("адрес %q: ошибка = %v, хочу отказ --ai-local-addr", addr, err)
+		}
+	}
+	// Loopback-адреса допустимы.
+	for _, addr := range []string{"127.0.0.1:11434", "localhost:11434", "[::1]:11434"} {
+		if _, err := parseConfig([]string{"--db", "/tmp/x.db", "--subnets", "10.0.0.0/24", "--ai-enabled", "--ai-local-addr", addr},
+			getenv(map[string]string{"NETATLAS_TOKEN": goodToken})); err != nil {
+			t.Fatalf("адрес %q: %v", addr, err)
+		}
+	}
+}
+
+func TestParseConfigAIExternalRequiresKeyEnv(t *testing.T) {
+	_, err := parseConfig([]string{"--db", "/tmp/x.db", "--subnets", "10.0.0.0/24", "--ai-enabled", "--ai-endpoint", "http://example.invalid", "--ai-key-env", " "},
+		getenv(map[string]string{"NETATLAS_TOKEN": goodToken}))
+	if err == nil || !strings.Contains(err.Error(), "--ai-key-env") {
+		t.Fatalf("ошибка = %v, хочу требование --ai-key-env", err)
+	}
+	cfg, err := parseConfig([]string{"--db", "/tmp/x.db", "--subnets", "10.0.0.0/24", "--ai-enabled", "--ai-endpoint", "http://example.invalid"},
+		getenv(map[string]string{"NETATLAS_TOKEN": goodToken}))
+	if err != nil {
+		t.Fatalf("внешний API с ключом по умолчанию: %v", err)
+	}
+	if cfg.aiKeyEnv != "NETATLAS_AI_KEY" {
+		t.Fatalf("aiKeyEnv = %q", cfg.aiKeyEnv)
+	}
+}
