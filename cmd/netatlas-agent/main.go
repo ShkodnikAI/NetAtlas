@@ -71,10 +71,14 @@ type commonFlags struct {
 	dir    string
 }
 
-func parseCommon(args []string) (*flag.FlagSet, commonFlags) {
+// parseCommon возвращает указатель: FlagSet.StringVar держит
+// указатели на поля структуры, возврат по значению давал копию с
+// незаполненным server (найдено E2E NR-029, до этого CLI-слой не
+// был покрыт сквозным тестом).
+func parseCommon(args []string) (*flag.FlagSet, *commonFlags) {
 	fs := flag.NewFlagSet("netatlas-agent", flag.ContinueOnError)
 	fs.SetOutput(nil)
-	var c commonFlags
+	c := &commonFlags{}
 	fs.StringVar(&c.server, "server", "", "адрес агентского API сервера (https://...)")
 	fs.StringVar(&c.dir, "dir", agent.DefaultDir(), "каталог состояния агента")
 	return fs, c

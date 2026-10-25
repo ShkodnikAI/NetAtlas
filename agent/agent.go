@@ -249,6 +249,9 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 	if check.PollSec > 0 {
 		r.Interval = time.Duration(check.PollSec) * time.Second
 	}
+	// Успешный checkin — в файл статуса (NR-029): отчёт на целевом ПК
+	// показывает время последней связи без доступа к серверу.
+	writeCheckinStatus(r.Dir)
 	body, err := r.buildInventory()
 	if err != nil {
 		return err
@@ -358,6 +361,26 @@ func (d *ActivityDeps) accountFor(ctx context.Context) string {
 		return ""
 	}
 	return d.account
+}
+
+// checkinStatusFile — файл «последнее успешное checkin» (NR-029).
+const checkinStatusFile = "checkin-status.json"
+
+// writeCheckinStatus — пишет время успешного checkin (атомарно);
+// ошибка записи не влияет на работу агента.
+func writeCheckinStatus(dir string) {
+	if dir == "" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"last_checkin": time.Now().UTC().Format(time.RFC3339),
+	})
+	path := filepath.Join(dir, checkinStatusFile)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, payload, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, path)
 }
 
 // writeActivityStatus — файл статуса для значка

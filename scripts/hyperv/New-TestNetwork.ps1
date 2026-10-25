@@ -12,7 +12,8 @@
     Путь к эталонному VHDX владельца (обязательный).
 .PARAMETER SwitchType
     Тип виртуального коммутатора: Internal или Private (по умолчанию
-    Private — максимальная изоляция).
+    Internal — NR-029: на ВМ стенда проверяется подключение агента,
+    хост должен видеть ВМ; Private не даёт ВМ связи с хостом).
 .PARAMETER VMCount
     Сколько ВМ создать (2-3, по умолчанию 2).
 .PARAMETER VMMemoryGB
@@ -27,12 +28,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ImagePath,
     [ValidateSet('Internal', 'Private')]
-    [string]$SwitchType = 'Private',
+    [string]$SwitchType = 'Internal',
     [ValidateRange(2, 3)]
     [int]$VMCount = 2,
     [ValidateRange(2, 16)]
-    [int]$VMMemoryGB = 4,
-    [switch]$Confirm
+    [int]$VMMemoryGB = 4
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,8 +82,10 @@ Write-Host "  ВМ: $($vmNames -join ', ') из $(Split-Path -Leaf $ImagePath) (
 Write-Host "  Диски ВМ: $vmDiskDir"
 Write-Host "  Снимок-эталон на каждой ВМ: NetAtlas-эталон"
 
-if (-not $Confirm) {
-    Write-Warning "Режим -WhatIf: выполните с -Confirm для создания стенда."
+# ConfirmImpact=High: без -Confirm будет вопрос подтверждения;
+# без ответа «да» ничего не создано (план выше).
+if (-not $PSCmdlet.ShouldProcess('стенд NetAtlas', 'Создать коммутатор и виртуальные машины')) {
+    Write-Warning 'Подтверждение не дано: ничего не создано (план выше).'
     return
 }
 
