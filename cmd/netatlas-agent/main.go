@@ -38,7 +38,7 @@ func main() {
 		err = cmdUninstall(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
-	case "version":
+	case "version", "--version", "-version":
 		fmt.Println(version.String())
 	default:
 		usage()

@@ -150,3 +150,16 @@ func TestEnrollTokenAndRevoke(t *testing.T) {
 		t.Fatalf("список отзыва %v", revoked)
 	}
 }
+
+// TestCLIVersion — --version (NR-027): версия в выводе, без каталога
+// ключей и подкоманд.
+func TestCLIVersion(t *testing.T) {
+	out, _ := capture(func() {
+		if err := run([]string{"--version"}, func(string) string { return "" }, os.Stdout, os.Stderr); err != nil {
+			t.Errorf("--version: %v", err)
+		}
+	})
+	if !strings.Contains(out, "netatlas ") {
+		t.Fatalf("в выводе нет версии: %q", out)
+	}
+}

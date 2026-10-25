@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/internal/version"
 	"github.com/ShkodnikAI/NetAtlas/pki"
 	"github.com/ShkodnikAI/NetAtlas/rules"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
@@ -37,6 +38,10 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "netatlas-server: %v\n", err)
 		os.Exit(2)
+	}
+	if cfg.showVersion {
+		fmt.Println(version.String())
+		return
 	}
 	if err := run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "netatlas-server: %v\n", err)

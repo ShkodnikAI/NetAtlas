@@ -239,3 +239,16 @@ func TestParseConfigAIExternalRequiresKeyEnv(t *testing.T) {
 		t.Fatalf("aiKeyEnv = %q", cfg.aiKeyEnv)
 	}
 }
+
+// TestParseConfigVersion — флаг --version (NR-027): без --db и без
+// токена конфигурация возвращается с showVersion, остальные проверки
+// не выполняются (проверка релиза запускает программу «голой»).
+func TestParseConfigVersion(t *testing.T) {
+	cfg, err := parseConfig([]string{"--version"}, func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("parseConfig(--version): %v", err)
+	}
+	if !cfg.showVersion {
+		t.Fatal("showVersion не установлен")
+	}
+}

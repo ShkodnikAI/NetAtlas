@@ -1,0 +1,91 @@
+name: release
+
+# Релиз Windows-бинарников (NR-027): сборка по тегу v* или вручную.
+# Права только contents: write — только в этом workflow; остальные
+# остаются contents: read.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия (например v0.1.0). Релиз создаётся по этому имени.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Определить версию
+        id: ver
+        shell: powershell
+        run: |
+          $v = ''
+          if ($env:GITHUB_REF -like 'refs/tags/*') { $v = $env:GITHUB_REF_NAME }
+          elseif ('${{ github.event_name }}' -eq 'workflow_dispatch') { $v = '${{ github.event.inputs.version }}'.Trim() }
+          if ($v -notmatch '^v\d+\.\d+\.\d+$') { throw "Неверная версия: «$v» (ожидается v<число>.<число>.<число>)" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Версия релиза: $v"
+
+      - name: Сборка и архив
+        shell: powershell
+        run: |
+          $commitDate = git log -1 --format=%cI
+          ./scripts/Build-Release.ps1 -Version '${{ steps.ver.outputs.version }}' -OutDir dist -CommitDate $commitDate
+
+      - name: Проверка релиза (Verify-Release)
+        shell: powershell
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          ./scripts/Verify-Release.ps1 -ZipPath "dist\netatlas-$v-windows-amd64.zip" -SumsPath 'dist\SHA256SUMS.txt' -Version $v
+
+      - name: Заметки релиза
+        shell: bash
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          prev=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${v}$" | head -1)
+          if [ -n "$prev" ]; then
+            range="$prev..HEAD"
+          else
+            range="HEAD"
+          fi
+          {
+            echo "NetAtlas $v — Windows amd64 (собрано в CI, проверки: Verify-Release)."
+            echo
+            echo "## Что вошло"
+            echo
+            if [ "$range" = "HEAD" ]; then
+              git log --oneline -30
+            else
+              git log --oneline "$range"
+            fi
+            echo
+            echo "## Установка"
+            echo "Скачайте \`netatlas-${v}-windows-amd64.zip\` и \`SHA256SUMS.txt\`, затем — \`scripts/install/README.md\` в архиве (установка одной вставкой, NR-028)."
+            echo
+            echo "Проверка: \`scripts/Verify-Release.ps1 -ZipPath <архив> -SumsPath SHA256SUMS.txt\`"
+          } > notes.md
+
+      - name: Создать релиз
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          gh release create "$v" \
+            "dist/netatlas-$v-windows-amd64.zip" \
+            "dist/SHA256SUMS.txt" \
+            --title "NetAtlas $v" \
+            --notes-file notes.md

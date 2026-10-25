@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ShkodnikAI/NetAtlas/internal/version"
 	"github.com/ShkodnikAI/NetAtlas/pki"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
 )
@@ -29,6 +30,10 @@ func run(args []string, getenv func(string) string, out, errOut *os.File) error 
 	if len(args) == 0 {
 		fmt.Fprintln(errOut, "использование: netatlas-pki <init|enroll-token|revoke|export-pub> [аргументы]")
 		os.Exit(2)
+	}
+	if len(args) > 0 && (args[0] == "--version" || args[0] == "-version") {
+		fmt.Fprintln(out, version.String())
+		return nil
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
