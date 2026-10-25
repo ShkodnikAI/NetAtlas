@@ -71,7 +71,8 @@ Describe 'E2E агент: приглашение, установка, негат
     }
 
     It 'раздатчик выключен по умолчанию (порт 8765 закрыт)' {
-        $t = Test-NetConnection -ComputerName 127.0.0.1 -Port 8765 -WarningAction SilentlyContinue
+        $addr = '127.0.0.1'
+        $t = Test-NetConnection -ComputerName $addr -Port 8765 -WarningAction SilentlyContinue
         $t.TcpTestSucceeded | Should -BeFalse
     }
 
@@ -145,10 +146,11 @@ Describe 'E2E агент: приглашение, установка, негат
         ) -PassThru -WindowStyle Hidden
         try {
             # Порт открывается после сборки папки (~секунды).
+            $addr = '127.0.0.1'
             $up = $false
             for ($i = 0; $i -lt 30; $i++) {
                 Start-Sleep -Seconds 1
-                $t = Test-NetConnection -ComputerName 127.0.0.1 -Port 8765 -WarningAction SilentlyContinue
+                $t = Test-NetConnection -ComputerName $addr -Port 8765 -WarningAction SilentlyContinue
                 if ($t.TcpTestSucceeded) { $up = $true; break }
             }
             $up | Should -BeTrue
