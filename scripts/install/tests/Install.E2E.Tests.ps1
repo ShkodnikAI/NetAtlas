@@ -92,7 +92,8 @@ Describe 'E2E: установка, запуск сервера, отчёт бе�
         $report = Get-ChildItem -Path (Join-Path $script:NaDir 'logs') -Filter 'report-*.txt' |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         $report | Should -Not -BeNullOrEmpty
-        $content = Get-Content -LiteralPath $report.FullName -Raw
+        # Отчёт пишется в UTF-8: без явной кодировки PS 5.1 читает ANSI.
+        $content = Get-Content -LiteralPath $report.FullName -Raw -Encoding UTF8
         # Токен владельца не попал в отчёт.
         $token = (Get-Content -LiteralPath (Join-Path $script:NaDir 'secrets\owner-token.txt') -TotalCount 1).Trim()
         $content | Should -Not -Match [regex]::Escape($token)
