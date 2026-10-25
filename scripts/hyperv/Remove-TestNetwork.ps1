@@ -10,9 +10,7 @@
     .\Remove-TestNetwork.ps1 -Confirm
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-param(
-    [switch]$Confirm
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $prefix = 'NetAtlas-Test-'
@@ -34,8 +32,10 @@ if ($vms) { Write-Host "  ВМ: $($vms.Name -join ', ')" } else { Write-Host "  
 if ($switch) { Write-Host "  Коммутатор: $($switch.Name)" } else { Write-Host "  Коммутатора ${prefix} нет" }
 if (Test-Path $diskDir) { Write-Host "  Каталог дисков: $diskDir" } else { Write-Host "  Каталога дисков нет" }
 
-if (-not $Confirm) {
-    Write-Warning "Режим -WhatIf: выполните с -Confirm для удаления."
+# ConfirmImpact=High: без -Confirm будет вопрос; без ответа «да»
+# ничего не удалено (план выше).
+if (-not $PSCmdlet.ShouldProcess('стенд NetAtlas', 'Удалить ВМ, коммутатор и каталог дисков')) {
+    Write-Warning 'Подтверждение не дано: ничего не удалено (план выше).'
     return
 }
 

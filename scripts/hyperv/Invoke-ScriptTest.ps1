@@ -25,8 +25,7 @@ param(
     [int]$TimeoutSec = 300,
     [string]$ServerUrl = 'http://127.0.0.1:8484',
     [string]$Token,
-    [string[]]$ServiceNames = @('Spooler', 'Dnscache'),
-    [switch]$Confirm
+    [string[]]$ServiceNames = @('Spooler', 'Dnscache')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,8 +47,10 @@ $snapshot = Get-VMSnapshot -VMName $VMName | Where-Object { $_.Name -eq $snapsho
 if ($null -eq $snapshot) {
     throw "Снимок-эталон не найден: сначала New-TestNetwork.ps1 -Confirm"
 }
-if (-not $Confirm) {
-    Write-Warning "Режим -WhatIf: план — восстановить '$snapshotName' на $VMName, скопировать скрипт ($($scriptContent.Length) байт), запустить с таймаутом ${TimeoutSec}с, собрать метрики, откатить снимок."
+# ConfirmImpact=High: без -Confirm будет вопрос подтверждения;
+# без ответа «да» прогон не начнётся (план напечатан ниже).
+if (-not $PSCmdlet.ShouldProcess($VMName, "Восстановить снимок '$snapshotName', скопировать скрипт ($($scriptContent.Length) байт), запустить с таймаутом ${TimeoutSec}с, собрать метрики, откатить снимок")) {
+    Write-Warning 'Подтверждение не дано: прогон не выполнялся.'
     return
 }
 

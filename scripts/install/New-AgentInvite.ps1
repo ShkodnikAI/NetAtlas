@@ -150,6 +150,10 @@ try {
                             $result.Response.ContentType = 'application/zip'
                             $result.Response.ContentLength64 = $bytes.Length
                             $result.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+                            # Закрыть ответ ДО остановки слушателя: иначе
+                            # клиент получает обрыв соединения.
+                            $result.Response.OutputStream.Flush()
+                            $result.Response.Close()
                             $served = $true
                             Write-Ok 'архив отдан; раздатчик закрывается (раздаётся только один архив)'
                         } else {

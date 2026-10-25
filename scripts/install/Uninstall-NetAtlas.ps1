@@ -16,9 +16,7 @@
 param(
     [string]$Dir = 'C:\NetAtlas',
     # Не удалять data\keys\secrets\logs при удалении каталога.
-    [switch]$KeepData,
-    # Явное подтверждение удаления каталога.
-    [switch]$Confirm
+    [switch]$KeepData
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,15 +42,12 @@ try {
     }
     Write-Ok 'правила удалены (или не существовали)'
 
-    # Каталог: только с -Confirm и только с нашим маркером.
+    # Каталог: только с подтверждением (ConfirmImpact=High: -Confirm
+    # или ответ «да») и только с нашим маркером.
     $marker = Join-Path $Dir '.netatlas'
     if (Test-Path -LiteralPath $Dir) {
         if (-not (Test-Path -LiteralPath $marker)) {
             Write-Info "Каталог $Dir оставлен: нет маркера .netatlas (это не каталог установки NetAtlas)."
-            return
-        }
-        if (-not $Confirm) {
-            Write-Info "Каталог $Dir оставлен. Для полного удаления запустите с -Confirm (-KeepData сохранит данные, ключи и токен)."
             return
         }
         if ($KeepData) {
@@ -67,6 +62,8 @@ try {
             if ($PSCmdlet.ShouldProcess($Dir, 'Удалить каталог установки целиком')) {
                 Remove-Item -LiteralPath $Dir -Recurse -Force
                 Write-Ok "каталог $Dir удалён целиком (данные не сохранялись)"
+            } else {
+                Write-Info "Каталог $Dir оставлен (подтверждение не дано)."
             }
         }
     } else {

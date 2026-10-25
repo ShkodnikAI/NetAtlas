@@ -3,18 +3,16 @@
     Удаление агента NetAtlas с этого компьютера (NR-029).
 .DESCRIPTION
     Останавливает и удаляет службу NetAtlasAgent, затем удаляет
-    каталог состояния агента (с -Confirm). Никаких следов токена
-    регистрации не остаётся: токен никогда не сохранялся в каталоге
-    агента, а invite.json удаляется при установке.
+    каталог состояния агента — только с -Confirm (или ответом «да»
+    на вопрос подтверждения). Никаких следов токена регистрации не
+    остаётся: токен никогда не сохранялся в каталоге агента, а
+    invite.json удаляется при установке.
 .EXAMPLE
     .\Uninstall-Agent.ps1                # служба удалена, каталог остался
     .\Uninstall-Agent.ps1 -Confirm      # + каталог состояния
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-param(
-    # Удалить и каталог состояния агента.
-    [switch]$Confirm
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $serviceName = 'NetAtlasAgent'
@@ -36,11 +34,13 @@ try {
 
     Write-Host '[2/2] Каталог состояния агента'
     if (Test-Path -LiteralPath $agentDir) {
-        if (-not $Confirm) {
-            Write-Host ("Каталог {0} оставлен. Для полного удаления (включая ключи агента) запустите с -Confirm." -f $agentDir)
-        } elseif ($PSCmdlet.ShouldProcess($agentDir, 'Удалить каталог состояния агента')) {
+        # ConfirmImpact=High: вопрос подтверждения всегда; -Confirm
+        # проходит без вопроса.
+        if ($PSCmdlet.ShouldProcess($agentDir, 'Удалить каталог состояния агента (включая ключи агента)')) {
             Remove-Item -LiteralPath $agentDir -Recurse -Force
             Write-Host ("ОК: каталог {0} удалён" -f $agentDir)
+        } else {
+            Write-Host ("Каталог {0} оставлен (подтверждение не дано)." -f $agentDir)
         }
     } else {
         Write-Host 'ОК: каталог состояния не найден'
