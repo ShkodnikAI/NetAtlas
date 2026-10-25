@@ -1,0 +1,68 @@
+name: debug-ps-args
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Варианты вызова go build
+        shell: powershell
+        run: |
+          Write-Host "=== go version ==="
+          go version
+          $ldVersion = "github.com/ShkodnikAI/NetAtlas/internal/version.Version=v0.0.0-debug"
+          $ldCommit = "github.com/ShkodnikAI/NetAtlas/internal/version.CommitDate=2026-10-25T15:19:51Z"
+          $flags = "-s -w $ldVersion $ldCommit"
+
+          # argv-принтер: отдельный модуль во временной папке
+          $d = Join-Path $env:RUNNER_TEMP 'dbg'
+          New-Item -ItemType Directory -Path $d -Force | Out-Null
+          $src = @'
+          package main
+
+          import (
+              "fmt"
+              "os"
+          )
+
+          func main() {
+              for i, a := range os.Args[1:] {
+                  fmt.Printf("arg[%d]=[%s]\n", i, a)
+              }
+          }
+          '@
+          Set-Content -Path (Join-Path $d 'main.go') -Value $src -Encoding UTF8
+          Set-Content -Path (Join-Path $d 'go.mod') -Value "module dbg" -Encoding UTF8
+          Add-Content -Path (Join-Path $d 'go.mod') -Value "go 1.27.3" -Encoding UTF8
+
+          Push-Location $d
+          Write-Host "=== Вариант A: как в Build-Release.ps1 ==="
+          $env:GOOS='windows'; $env:GOARCH='amd64'; $env:CGO_ENABLED='0'
+          go run . -trimpath -ldflags "$flags" -o out.exe ./cmd/netatlas-server
+          Pop-Location
+
+          Write-Host "=== Вариант A реальный build (abs -o) ==="
+          & go build -trimpath -ldflags "$flags" -o "$PWD\outA.exe" ./cmd/netatlas-server
+          Write-Host "A code=$LASTEXITCODE"
+
+          Write-Host "=== Вариант B: -ldflags= одним аргументом ==="
+          & go build -trimpath "-ldflags=$flags" -o "$PWD\outB.exe" ./cmd/netatlas-server
+          Write-Host "B code=$LASTEXITCODE"
+
+          Write-Host "=== Вариант C: cmd /c ==="
+          cmd /c "go build -trimpath -ldflags `"$flags`" -o outC.exe ./cmd/netatlas-server"
+          Write-Host "C code=$LASTEXITCODE"
+
+          Write-Host "=== Итоги ==="
+          Get-Item outA.exe, outB.exe, outC.exe -ErrorAction SilentlyContinue | Select-Object Name, Length
