@@ -71,7 +71,9 @@ try {
     Write-Ok ("сервер {0}:{1} доступен" -f $enrollHost, $enrollPort)
 
     Write-StepLocal 3 5 'Регистрация агента (одноразовый токен)'
-    $agentOut = & $agentExe enroll --server $invite.agent_url --token $invite.token --ca $caPem 2>&1
+    # Регистрация — на слушателе 8444 (по токену); служба потом
+    # работает через mTLS-порт 8443.
+    $agentOut = & $agentExe enroll --server $invite.enroll_url --token $invite.token --ca $caPem 2>&1
     if ($LASTEXITCODE -ne 0) {
         $why = Get-MaskedTextLocal -Text ($agentOut | Out-String).Trim()
         Write-Host ("ОШИБКА: регистрация отклонена ({0}). Если причина — просроченный или использованный токен, попросите владельца выдать новое приглашение." -f $why)

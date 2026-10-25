@@ -45,7 +45,9 @@ BeforeAll {
     if ($LASTEXITCODE -ne 0) { throw 'New-AgentInvite.ps1 завершился с ошибкой' }
     $script:InviteDir = Get-ChildItem -LiteralPath (Join-Path $script:NaDir 'invites') -Directory |
         Sort-Object Name -Descending | Select-Object -First 1
-    $script:EnrollToken = (Get-Content -LiteralPath (Join-Path $script:InviteDir.FullName 'invite.json') -Raw -Encoding UTF8 | ConvertFrom-Json).token
+    $invite = Get-Content -LiteralPath (Join-Path $script:InviteDir.FullName 'invite.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $script:EnrollToken = $invite.token
+    $script:EnrollUrl = $invite.enroll_url
 }
 
 AfterAll {
@@ -117,9 +119,9 @@ Describe 'E2E агент: приглашение, установка, негат
 
     It 'повторное использование токена отвергается сервером' {
         $env:NETATLAS_AGENT_DIR = Join-Path $script:NaDir 'agent-state-2'
+        $ca = Join-Path $script:InviteDir.FullName 'ca.pem'
         & (Join-Path $script:InviteDir.FullName 'netatlas-agent.exe') enroll `
-            --server 'https://127.0.0.1:8443' --token $script:EnrollToken `
-            --ca (Join-Path $script:InviteDir.FullName 'ca.pem') *> $null
+            --server $script:EnrollUrl --token $script:EnrollToken --ca $ca *> $null
         $LASTEXITCODE | Should -Not -Be 0
         Remove-Item Env:NETATLAS_AGENT_DIR -ErrorAction SilentlyContinue
     }
