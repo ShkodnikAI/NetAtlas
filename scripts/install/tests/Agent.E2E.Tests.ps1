@@ -95,7 +95,10 @@ Describe 'E2E агент: приглашение, установка, негат
 
     It 'Install-Agent.ps1 -NoService -Yes: агент регистрируется, сервер его видит' {
         $env:NETATLAS_AGENT_DIR = $script:AgentDir
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:InviteDir.FullName 'Install-Agent.ps1') -NoService -Yes *> $null
+        Write-Host '---- Install-Agent.ps1 вывод ----'
+        $out = (& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:InviteDir.FullName 'Install-Agent.ps1') -NoService -Yes 2>&1 | Out-String)
+        Write-Host $out
+        Write-Host '---- конец вывода ----'
         $LASTEXITCODE | Should -Be 0
         $headers = @{ Authorization = "Bearer $($script:OwnerToken)" }
         $agents = Invoke-RestMethod -Uri 'http://127.0.0.1:8484/api/agents' -Headers $headers -TimeoutSec 10
