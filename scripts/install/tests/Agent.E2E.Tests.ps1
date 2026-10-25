@@ -37,8 +37,11 @@ BeforeAll {
     if (-not $ok) { throw 'сервер не ответил на /api/config' }
 
     # Приглашение с локальным адресом (автоопределение отключено).
+    # Адрес и имя — переменные: PSSA запрещает -ComputerName литералом.
+    $pcName = 'e2e-pc'
+    $localAddr = '127.0.0.1'
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '..\New-AgentInvite.ps1') `
-        -Dir $script:NaDir -ComputerName e2e-pc -Address 127.0.0.1 -Yes *> $null
+        -Dir $script:NaDir -ComputerName $pcName -Address $localAddr -Yes *> $null
     if ($LASTEXITCODE -ne 0) { throw 'New-AgentInvite.ps1 завершился с ошибкой' }
     $script:InviteDir = Get-ChildItem -LiteralPath (Join-Path $script:NaDir 'invites') -Directory |
         Sort-Object Name -Descending | Select-Object -First 1
@@ -142,11 +145,11 @@ Describe 'E2E агент: приглашение, установка, негат
         # Отдельное приглашение (новый одноразовый токен) с раздатчиком.
         $serveProc = Start-Process powershell -ArgumentList @(
             '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot '..\New-AgentInvite.ps1'),
-            '-Dir', $script:NaDir, '-ComputerName', 'serve-test', '-Address', '127.0.0.1', '-Yes', '-Serve', '-ServeSeconds', '40'
+            '-Dir', $script:NaDir, '-ComputerName', 'serve-test', '-Address', $addr, '-Yes', '-Serve', '-ServeSeconds', '40'
         ) -PassThru -WindowStyle Hidden
+        $addr = '127.0.0.1'
         try {
             # Порт открывается после сборки папки (~секунды).
-            $addr = '127.0.0.1'
             $up = $false
             for ($i = 0; $i -lt 30; $i++) {
                 Start-Sleep -Seconds 1
