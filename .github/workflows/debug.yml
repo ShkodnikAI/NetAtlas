@@ -1,6 +1,8 @@
 name: debug-ps-args
 
 on:
+  push:
+    branches: [nr-027]
   workflow_dispatch:
 
 permissions:
