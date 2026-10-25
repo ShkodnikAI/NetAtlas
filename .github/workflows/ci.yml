@@ -81,11 +81,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Сборка релиза (без публикации)
+      - name: Build release (no publish)
         shell: powershell
         run: ./scripts/Build-Release.ps1 -Version v0.0.0-ci -OutDir dist
 
-      - name: Проверка релиза
+      - name: Verify release
         shell: powershell
         run: ./scripts/Verify-Release.ps1 -ZipPath 'dist\netatlas-v0.0.0-ci-windows-amd64.zip' -SumsPath 'dist\SHA256SUMS.txt' -Version v0.0.0-ci
 

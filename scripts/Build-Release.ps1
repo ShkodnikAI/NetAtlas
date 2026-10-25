@@ -66,7 +66,7 @@ foreach ($p in $programs) {
     $env:GOARCH = 'amd64'
     $env:CGO_ENABLED = '0'
     $out = Join-Path $stage "bin\$p.exe"
-    & go build -trimpath -ldflags "-s -w $ldVersion $ldCommit" -o $out (Join-Path $root "cmd\$p")
+    & go build -trimpath -ldflags "-s -w -X $ldVersion -X $ldCommit" -o $out (Join-Path $root "cmd\$p")
     if ($LASTEXITCODE -ne 0) {
         throw "ОШИБКА: go build $p завершился с кодом $LASTEXITCODE"
     }

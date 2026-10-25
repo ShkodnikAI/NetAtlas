@@ -28,24 +28,27 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Определить версию
+      # Inline PowerShell scripts must stay ASCII-only: PS 5.1 reads
+      # the step file in the ANSI codepage (no BOM), so Cyrillic here
+      # becomes garbage. Russian messages live in the .ps1 files (BOM).
+      - name: Resolve version
         id: ver
         shell: powershell
         run: |
           $v = ''
           if ($env:GITHUB_REF -like 'refs/tags/*') { $v = $env:GITHUB_REF_NAME }
           elseif ('${{ github.event_name }}' -eq 'workflow_dispatch') { $v = '${{ github.event.inputs.version }}'.Trim() }
-          if ($v -notmatch '^v\d+\.\d+\.\d+$') { throw "Неверная версия: «$v» (ожидается v<число>.<число>.<число>)" }
+          if ($v -notmatch '^v\d+\.\d+\.\d+$') { throw "Bad version: '$v' (expected v<major>.<minor>.<patch>)" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Host "Версия релиза: $v"
+          Write-Host "Release version: $v"
 
-      - name: Сборка и архив
+      - name: Build and archive
         shell: powershell
         run: |
           $commitDate = git log -1 --format=%cI
           ./scripts/Build-Release.ps1 -Version '${{ steps.ver.outputs.version }}' -OutDir dist -CommitDate $commitDate
 
-      - name: Проверка релиза (Verify-Release)
+      - name: Verify release
         shell: powershell
         run: |
           $v = '${{ steps.ver.outputs.version }}'
