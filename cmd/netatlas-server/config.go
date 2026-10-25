@@ -39,6 +39,9 @@ type config struct {
 	enableDispatch     bool
 	allowCustomScripts bool
 
+	// --version: напечатать версию и выйти (NR-027: проверка релиза).
+	showVersion bool
+
 	// Подключение модели ИИ (NR-013): по умолчанию выключено —
 	// ручной режим (копировать и вставить).
 	aiEnabled   bool
@@ -83,11 +86,18 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		"имя переменной окружения с ключом внешнего API (значение не хранится)")
 	fs.StringVar(&cfg.aiLocalAddr, "ai-local-addr", "127.0.0.1:11434",
 		"адрес локальной модели (только 127.0.0.1)")
+	fs.BoolVar(&cfg.showVersion, "version", false,
+		"показать версию и выйти")
 	if err := fs.Parse(args); err != nil {
 		return config{}, fmt.Errorf("%w: %v", errUsage, err)
 	}
 	if fs.NArg() > 0 {
 		return config{}, fmt.Errorf("%w: лишние аргументы %q", errUsage, fs.Args())
+	}
+	// --version: остальная конфигурация не проверяется (проверка
+	// релиза запускает программу без --db и окружения).
+	if cfg.showVersion {
+		return cfg, nil
 	}
 	if cfg.dbPath == "" {
 		return config{}, fmt.Errorf("%w: нужен --db", errUsage)

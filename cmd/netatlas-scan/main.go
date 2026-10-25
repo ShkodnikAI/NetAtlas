@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
+	"github.com/ShkodnikAI/NetAtlas/internal/version"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
 	"github.com/ShkodnikAI/NetAtlas/scanner/dhcp"
@@ -71,8 +72,15 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 	snmpV2C := fs.Bool("snmp-v2c", false, "SNMPv2c вместо SNMPv3 authPriv (SHA/AES)")
 	leasesPath := fs.String("leases", "", "файл DHCP-аренд (isc или csv); читается только локально")
 	leasesFormat := fs.String("leases-format", "", "формат файла аренд: isc или csv (обязателен вместе с --leases)")
+	showVersion := fs.Bool("version", false, "показать версию и выйти")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	// --version (NR-027): проверка релиза запускает программу без
+	// подсетей и окружения; остальная конфигурация не проверяется.
+	if *showVersion {
+		fmt.Fprintln(stdout, version.String())
+		return 0
 	}
 
 	if *subnets == "" {

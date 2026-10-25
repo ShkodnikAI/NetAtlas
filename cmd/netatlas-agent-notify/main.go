@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ShkodnikAI/NetAtlas/internal/version"
 )
 
 // statusFile — файл статуса от агента в каталоге состояния.
@@ -18,6 +20,18 @@ const statusFile = "activity-status.json"
 
 // pollInterval — период чтения статуса.
 const pollInterval = 30 * time.Second
+
+// main: без аргументов — значок; --version — версия и выход
+// (проверка релиза, NR-027).
+func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
+		fmt.Println(version.String())
+		return
+	}
+	run()
+}
+
+// run — цикл значка (прежний main).
 
 // defaultDir — каталог состояния агента (как у агента: переменная
 // NETATLAS_AGENT_DIR или ProgramData).
@@ -50,7 +64,7 @@ func status(dir string) bool {
 	return st.ActivityEnabled
 }
 
-func main() {
+func run() {
 	dir := defaultDir()
 	if d := os.Getenv("NETATLAS_NOTIFY_DIR"); d != "" {
 		dir = d // точка подмены в тестах

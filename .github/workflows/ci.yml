@@ -70,6 +70,25 @@ jobs:
       - name: dist соответствует коммиту
         run: git diff --exit-code web/dist
 
+  # NR-027: сборка релиза тем же сценарием (без публикации) и проверка
+  # архива — ловит поломку релиза до выпуска тега.
+  release-dry-run:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build release (no publish)
+        shell: powershell
+        run: ./scripts/Build-Release.ps1 -Version v0.0.0-ci -OutDir dist
+
+      - name: Verify release
+        shell: powershell
+        run: ./scripts/Verify-Release.ps1 -ZipPath 'dist\netatlas-v0.0.0-ci-windows-amd64.zip' -SumsPath 'dist\SHA256SUMS.txt' -Version v0.0.0-ci
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

@@ -456,3 +456,23 @@ func TestCLILeasesMerged(t *testing.T) {
 		})
 	}
 }
+
+// TestCLIVersion — флаг --version (NR-027): печатает строку версии
+// без подсетей и окружения, код 0, фабрика walker'ов не вызывается.
+func TestCLIVersion(t *testing.T) {
+	called := false
+	factory := func(netip.Addr, snmp.Auth) (snmp.Walker, error) {
+		called = true
+		return nil, nil
+	}
+	code, stdout, stderr := runForTest(t, []string{"--version"}, noEnv, factory)
+	if code != 0 {
+		t.Fatalf("код = %d, хочу 0 (stderr: %s)", code, stderr)
+	}
+	if called {
+		t.Fatal("фабрика walker'ов вызвана при --version")
+	}
+	if !strings.Contains(stdout, "netatlas ") {
+		t.Fatalf("в stdout нет версии: %q", stdout)
+	}
+}
