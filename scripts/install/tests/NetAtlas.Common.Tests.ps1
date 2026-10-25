@@ -16,7 +16,7 @@ Describe 'ConvertTo-Cidr (адрес + префикс -> сеть)' {
         @{ addr = '172.16.1.6';    prefix = 30; expected = '172.16.1.4/30' }
         @{ addr = '192.168.1.5';   prefix = 32; expected = '192.168.1.5/32' }
         @{ addr = '10.0.0.1';      prefix = 0;  expected = '0.0.0.0/0' }
-        @{ addr = '8.8.8.8';       prefix = 24; expected = '8.8.0.0/24' }
+        @{ addr = '8.8.8.8';       prefix = 24; expected = '8.8.8.0/24' }
     ) {
         param($addr, $prefix, $expected)
         ConvertTo-Cidr -IPAddress $addr -PrefixLength $prefix | Should -Be $expected
