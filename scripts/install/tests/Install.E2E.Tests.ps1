@@ -57,12 +57,27 @@ Describe 'E2E: установка, запуск сервера, отчёт бе�
             } catch { }
         }
         if (-not $ok) {
-            $errLog = Get-ChildItem -Path (Join-Path $script:NaDir 'logs') -Filter 'server-err-*.log' -ErrorAction SilentlyContinue |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($errLog) {
-                $tail = (Get-Content -LiteralPath $errLog.FullName -Tail 10) -join '; '
-                Add-Member -InputObject $proc -NotePropertyName ErrTail -NotePropertyValue $tail -Force
+            Write-Host '---- диагностика: журналы установки ----'
+            Get-ChildItem -Path (Join-Path $script:NaDir 'logs') -File -ErrorAction SilentlyContinue | ForEach-Object {
+                Write-Host ">>> $($_.Name)"
+                Get-Content -LiteralPath $_.FullName -Tail 15 -ErrorAction SilentlyContinue | Write-Host
             }
+            Write-Host '---- диагностика: run-server.ps1 ----'
+            Get-Content -LiteralPath $runScript -ErrorAction SilentlyContinue | Write-Host
+            Write-Host '---- диагностика: прямой запуск сервера ----'
+            $directErr = Join-Path $script:NaDir 'logs\direct-err.log'
+            $exe = Join-Path $script:NaDir 'app\bin\netatlas-server.exe'
+            $dp = Start-Process -FilePath $exe -ArgumentList @(
+                '--db', (Join-Path $script:NaDir 'data\netatlas.db'),
+                '--subnets', '192.0.2.0/29',
+                '--agent-listen', '0.0.0.0:8443',
+                '--agent-enroll-listen', '0.0.0.0:8444',
+                '--allow-remote'
+            ) -PassThru -WindowStyle Hidden -RedirectStandardError $directErr -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+            Write-Host ("прямой запуск жив: {0}" -f (-not $dp.HasExited))
+            Get-Content -LiteralPath $directErr -Tail 10 -ErrorAction SilentlyContinue | Write-Host
+            Get-Process netatlas-server -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         }
         try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
         $ok | Should -BeTrue
