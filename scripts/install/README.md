@@ -1,4 +1,4 @@
-# NetAtlas: установка и работа (Windows 10/11, PowerShell 5.1)
+﻿# NetAtlas: установка и работа (Windows 10/11, PowerShell 5.1)
 
 Всё делается вставкой команд в окно **PowerShell (администратор)**.
 Результаты (текст без секретов) возвращаете аудитору. Токены никуда
@@ -83,12 +83,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<путь к папке п�
 ```
 
 Агент регистрируется и ставится службой (запуск — после подтверждения
-`-Yes`); токен регистрации удаляется с диска после установки. Отчёт о
-состоянии агента для аудитора:
+`-Yes`); токен регистрации удаляется с диска после установки.
+
+Отчёт о состоянии агента для аудитора — тоже из папки приглашения:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\NetAtlas\app\scripts\install\Get-AgentReport.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<путь к папке приглашения>\Get-AgentReport.ps1"
 ```
 
-Удаление агента: `Uninstall-Agent.ps1` из того же каталога
-(с `-Confirm` удаляет и каталог агента).
+Удаление агента — `Uninstall-Agent.ps1` из той же папки приглашения
+(`-Confirm` удаляет и каталог состояния агента).

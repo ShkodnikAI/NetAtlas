@@ -12,7 +12,8 @@
     Путь к эталонному VHDX владельца (обязательный).
 .PARAMETER SwitchType
     Тип виртуального коммутатора: Internal или Private (по умолчанию
-    Private — максимальная изоляция).
+    Internal — NR-029: на ВМ стенда проверяется подключение агента,
+    хост должен видеть ВМ; Private не даёт ВМ связи с хостом).
 .PARAMETER VMCount
     Сколько ВМ создать (2-3, по умолчанию 2).
 .PARAMETER VMMemoryGB
@@ -27,7 +28,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ImagePath,
     [ValidateSet('Internal', 'Private')]
-    [string]$SwitchType = 'Private',
+    [string]$SwitchType = 'Internal',
     [ValidateRange(2, 3)]
     [int]$VMCount = 2,
     [ValidateRange(2, 16)]

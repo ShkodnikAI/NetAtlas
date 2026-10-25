@@ -545,3 +545,28 @@ func newExecHarnessFor(t *testing.T, agentID string) *execHarness {
 	}
 	return &execHarness{deps: deps, runner: runner, priv: priv}
 }
+
+// TestWriteCheckinStatus (NR-029): после успешного checkin файл
+// статуса содержит время; повторная запись перезаписывает атомарно.
+func TestWriteCheckinStatus(t *testing.T) {
+	dir := t.TempDir()
+	writeCheckinStatus(dir)
+	raw, err := os.ReadFile(filepath.Join(dir, "checkin-status.json"))
+	if err != nil {
+		t.Fatalf("файл статуса: %v", err)
+	}
+	var st struct {
+		LastCheckin string `json:"last_checkin"`
+	}
+	if err := json.Unmarshal(raw, &st); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if _, err := time.Parse(time.RFC3339, st.LastCheckin); err != nil {
+		t.Fatalf("время не RFC3339: %q: %v", st.LastCheckin, err)
+	}
+	// пустой каталог — тихий выход, ничего не пишет
+	writeCheckinStatus("")
+	if _, err := os.Stat(filepath.Join(dir, "checkin-status.json")); err != nil {
+		t.Fatalf("файл пропал: %v", err)
+	}
+}

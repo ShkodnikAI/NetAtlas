@@ -162,6 +162,12 @@ jobs:
           NETATLAS_E2E_BIN: ${{ runner.temp }}\na-bin
         run: Invoke-Pester -Path scripts/install/tests/Install.E2E.Tests.ps1 -CI
 
+      - name: E2E agent invite + enroll (NR-029)
+        shell: powershell
+        env:
+          NETATLAS_E2E_BIN: ${{ runner.temp }}\na-bin
+        run: Invoke-Pester -Path scripts/install/tests/Agent.E2E.Tests.ps1 -CI
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:
