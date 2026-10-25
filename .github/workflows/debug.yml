@@ -41,6 +41,21 @@ jobs:
           TryBuild 'K-eqform'  @("-ldflags=-s -w -X $ldVersion -X $ldCommit", $pkg)
           TryBuild 'L-full'    @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", $pkg)
 
+          Write-Host '=== M abs -o ==='
+          $abs = Join-Path $PWD '_dbg_outM.exe'
+          TryBuild 'M-abs-o'   @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", '-o', $abs, $pkg)
+
+          Write-Host '=== N abs pkg ==='
+          $apkg = Join-Path $PWD 'cmd/netatlas-server'
+          TryBuild 'N-abs-pkg' @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", '-o', '_dbg_outN.exe', $apkg)
+
+          Write-Host '=== O both abs (as Build-Release) ==='
+          TryBuild 'O-both'    @('-trimpath', '-ldflags', "-s -w -X $ldVersion -X $ldCommit", '-o', $abs, $apkg)
+
+          Write-Host '=== P: run Build-Release.ps1 directly ==='
+          ./scripts/Build-Release.ps1 -Version v0.0.0-ci -OutDir _dbg_dist
+          Write-Host "P code=$LASTEXITCODE"
+
           Write-Host '=== xtrace link line ==='
           & go build -x -trimpath '-ldflags' "-s -w -X $ldVersion -X $ldCommit" -o _dbg_out.exe $pkg 2>&1 |
               Where-Object { $_ -match 'tool\\\\link|tool\\\\link\.exe|usage' } |
