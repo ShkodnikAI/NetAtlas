@@ -122,9 +122,14 @@ Describe 'E2E агент: приглашение, установка, негат
 
     It 'повторное использование токена отвергается сервером' {
         $env:NETATLAS_AGENT_DIR = Join-Path $script:NaDir 'agent-state-2'
+        $agentExe = Join-Path $script:InviteDir.FullName 'netatlas-agent.exe'
         $ca = Join-Path $script:InviteDir.FullName 'ca.pem'
-        & (Join-Path $script:InviteDir.FullName 'netatlas-agent.exe') enroll `
-            --server $script:EnrollUrl --token $script:EnrollToken --ca $ca *> $null
+        $url = $script:EnrollUrl
+        $tok = $script:EnrollToken
+        $url | Should -Not -BeNullOrEmpty
+        $tok | Should -Not -BeNullOrEmpty
+        $out = (& $agentExe enroll --server $url --token $tok --ca $ca 2>&1 | Out-String)
+        Write-Host ('повторный enroll: код {0}: {1}' -f $LASTEXITCODE, $out.Trim())
         $LASTEXITCODE | Should -Not -Be 0
         Remove-Item Env:NETATLAS_AGENT_DIR -ErrorAction SilentlyContinue
     }

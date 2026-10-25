@@ -39,6 +39,16 @@ function Write-StepLocal {
     Write-Host "[$Number/$Total] $Message"
 }
 
+function Write-OkLocal {
+    param([string]$Message)
+    Write-Host "ОК: $Message"
+}
+
+function Write-InfoLocal {
+    param([string]$Message)
+    Write-Host $Message
+}
+
 try {
     $invitePath = Join-Path $PSScriptRoot 'invite.json'
     if (-not (Test-Path -LiteralPath $invitePath)) {
@@ -58,7 +68,7 @@ try {
         Write-Host ('ОШИБКА: приглашение просрочено (действовало до {0} UTC). Попросите владельца выдать новое: New-AgentInvite.ps1' -f $invite.expires_at)
         exit 1
     }
-    Write-Ok ("приглашение действует до {0} UTC" -f $invite.expires_at)
+    Write-OkLocal ("приглашение действует до {0} UTC" -f $invite.expires_at)
 
     Write-StepLocal 2 5 'Доступность сервера (порт регистрации 8444)'
     $enrollHost = ([Uri]$invite.enroll_url).Host
@@ -68,7 +78,7 @@ try {
         Write-Host ("ОШИБКА: сервер {0}:{1} недоступен. Чаще всего порт закрыт брандмауэром СЕРВЕРА: правило NetAtlas-Agent-In (8443/8444) должно разрешать входящие из этой подсети. Проверьте и запустите снова." -f $enrollHost, $enrollPort)
         exit 1
     }
-    Write-Ok ("сервер {0}:{1} доступен" -f $enrollHost, $enrollPort)
+    Write-OkLocal ("сервер {0}:{1} доступен" -f $enrollHost, $enrollPort)
 
     Write-StepLocal 3 5 'Регистрация агента (одноразовый токен)'
     # Регистрация — на слушателе 8444 (по токену); служба потом
@@ -80,11 +90,11 @@ try {
         exit 1
     }
     $agentId = ($agentOut | Select-Object -First 1)
-    Write-Ok ($agentOut | Out-String).Trim()
+    Write-OkLocal ($agentOut | Out-String).Trim()
 
     if ($NoService) {
         Write-StepLocal 4 5 'Служба: пропущено (-NoService, режим тестов)'
-        Write-Info ('  агент зарегистрирован; каталог состояния: {0}' -f (Join-Path $env:ProgramData 'NetAtlas\agent'))
+        Write-InfoLocal ('  агент зарегистрирован; каталог состояния: {0}' -f (Join-Path $env:ProgramData 'NetAtlas\agent'))
     } else {
         Write-StepLocal 4 5 'Установка службы (запуск — после подтверждения)'
         & $agentExe install --server $invite.agent_url
@@ -98,11 +108,11 @@ try {
         if ($approved) {
             Start-Service -Name 'NetAtlasAgent'
             Start-Sleep -Seconds 2
-            Write-Ok 'служба NetAtlasAgent запущена'
+            Write-OkLocal 'служба NetAtlasAgent запущена'
         } else {
-            Write-Info '  служба установлена, но не запущена: запуск позже — Start-Service NetAtlasAgent'
+            Write-InfoLocal '  служба установлена, но не запущена: запуск позже — Start-Service NetAtlasAgent'
         }
-        Write-Info '  примечание: исполнение заданий выключено по умолчанию и включается владельцем на сервере'
+        Write-InfoLocal '  примечание: исполнение заданий выключено по умолчанию и включается владельцем на сервере'
     }
 
     Write-StepLocal 5 5 'Очистка: токен не остаётся на диске'
@@ -110,7 +120,7 @@ try {
     # регистрации он бесполезен (одноразовый) и удаляется вместе с
     # копией. Токен нигде больше не сохранялся.
     Remove-Item -LiteralPath $invitePath -Force
-    Write-Ok 'invite.json (с токеном) удалён из папки приглашения'
+    Write-OkLocal 'invite.json (с токеном) удалён из папки приглашения'
 
     $status = & $agentExe status 2>$null
     Write-Host ''
