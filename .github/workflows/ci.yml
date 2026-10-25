@@ -89,6 +89,79 @@ jobs:
         shell: powershell
         run: ./scripts/Verify-Release.ps1 -ZipPath 'dist\netatlas-v0.0.0-ci-windows-amd64.zip' -SumsPath 'dist\SHA256SUMS.txt' -Version v0.0.0-ci
 
+  # NR-028: синтаксис под PS 5.1, PSScriptAnalyzer на все *.ps1/*.psm1,
+  # Pester-тесты чистых функций и сквозной тест установки (E2E).
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Inline PS scripts are ASCII-only: Windows PowerShell 5.1 reads
+      # the step file in the ANSI codepage, Cyrillic becomes garbage.
+      # Checks: UTF-8 BOM present for every Cyrillic .ps1/.psm1, and
+      # the syntax parses under real PS 5.1.
+      - name: BOM and syntax check (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $fail = 0
+          Get-ChildItem -Path scripts -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
+              $bytes = [IO.File]::ReadAllBytes($_.FullName)
+              $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+              $text = [IO.File]::ReadAllText($_.FullName)
+              if (-not $hasBom -and $text -match '[\u0400-\u04FF]') {
+                  $fail++; Write-Host "NO-BOM: $($_.FullName) (Cyrillic without BOM is unreadable in PS 5.1)"
+              }
+              $errs = $null
+              $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+              if ($errs.Count -gt 0) {
+                  $fail++
+                  Write-Host "PARSE FAIL: $($_.FullName)"
+                  $errs | ForEach-Object { Write-Host "  line $($_.Extent.StartLineNumber): $($_.Message)" }
+              }
+          }
+          if ($fail -gt 0) { exit 1 }
+          Write-Host 'OK: BOM and syntax'
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Import-Module PSScriptAnalyzer
+          # -Path принимает только одну строку: анализируем каталог
+          # рекурсивно (*.ps1 и *.psm1 входят по умолчанию).
+          $findings = Invoke-ScriptAnalyzer -Path scripts -Recurse -Severity Error, Warning
+          $findings | ForEach-Object { Write-Host "$($_.Severity) $($_.ScriptPath):$($_.Line) $($_.RuleName): $($_.Message)" }
+          $errors = @($findings | Where-Object { $_.Severity -eq 'Error' })
+          if ($errors.Count -gt 0) { exit 1 }
+          Write-Host 'OK: PSScriptAnalyzer без ошибок'
+
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Unit tests (Pester)
+        shell: powershell
+        run: Invoke-Pester -Path scripts/install/tests/NetAtlas.Common.Tests.ps1 -CI
+
+      - name: Build binaries for E2E
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/na-bin"
+          for p in netatlas-server netatlas-agent netatlas-agent-notify netatlas-pki netatlas-scan; do
+            GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/na-bin/$p.exe" "./cmd/$p"
+          done
+          printf 'v0.0.0-e2e\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RUNNER_TEMP/na-bin/VERSION.txt"
+
+      - name: E2E install + server + report
+        shell: powershell
+        env:
+          NETATLAS_E2E_BIN: ${{ runner.temp }}\na-bin
+        run: Invoke-Pester -Path scripts/install/tests/Install.E2E.Tests.ps1 -CI
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

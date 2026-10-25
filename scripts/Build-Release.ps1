@@ -86,6 +86,7 @@ $installDir = Join-Path $root 'scripts\install'
 if (Test-Path -LiteralPath $installDir) {
     New-Item -ItemType Directory -Path (Join-Path $stage 'scripts\install') -Force | Out-Null
     Copy-Item -Path (Join-Path $installDir '*.ps1') -Destination (Join-Path $stage 'scripts\install') -Force
+    Copy-Item -Path (Join-Path $installDir '*.psm1') -Destination (Join-Path $stage 'scripts\install') -Force -ErrorAction SilentlyContinue
     Copy-Item -Path (Join-Path $installDir 'README.md') -Destination (Join-Path $stage 'scripts\install') -Force -ErrorAction SilentlyContinue
 }
 [IO.File]::WriteAllText((Join-Path $stage 'VERSION.txt'), "$Version`n$CommitDate`n")

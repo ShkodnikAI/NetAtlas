@@ -61,10 +61,10 @@ function Get-VMState {
         $services = Get-Service -Name $using:ServiceNames -ErrorAction SilentlyContinue |
             Select-Object Name, Status
         [pscustomobject]@{
-            FreeSpaceGB = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
+            FreeSpaceGB = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
             PingMs = $null   # заполняется хостом ниже (ICMP на хосте)
             Services = $services
-            UptimeSec = [math]::Round([Environment]::TickCount64 / 1000, 0)
+            UptimeSec = [Math]::Round([Environment]::TickCount64 / 1000, 0)
         }
     }
 }
@@ -76,7 +76,7 @@ function Test-HostPing {
     if (-not $ip) { return $null }
     $reply = Test-Connection -ComputerName $ip -Count 3 -ErrorAction SilentlyContinue
     if ($reply) {
-        return [math]::Round(($reply | Measure-Object -Property ResponseTime -Average).Average, 1)
+        return [Math]::Round(($reply | Measure-Object -Property ResponseTime -Average).Average, 1)
     }
     return $null
 }
@@ -123,7 +123,7 @@ try {
     } -ArgumentList $remoteScriptPath -ErrorAction Stop
     $sw.Stop()
 
-    $result.log += "Выполнено за $([math]::Round($sw.Elapsed.TotalSeconds, 1)) с, код $($invocation.Code), вывод $($invocation.Output.Length) симв."
+    $result.log += "Выполнено за $([Math]::Round($sw.Elapsed.TotalSeconds, 1)) с, код $($invocation.Code), вывод $($invocation.Output.Length) симв."
     if ($sw.Elapsed.TotalSeconds -gt $TimeoutSec) {
         $result.log += "Превышен таймаут ${TimeoutSec}с"
     } elseif ($invocation.Code -eq 0) {
