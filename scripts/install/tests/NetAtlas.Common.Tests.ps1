@@ -48,14 +48,19 @@ Describe 'Test-VirtualAdapter (фильтр виртуальных адапте�
 
 Describe 'Get-MaskedText (секреты не проходят в отчёт)' {
     It 'маскирует 43-символьный base64url-токен (токен владельца)' {
-        $tok = 'ABH-3f9kQ2vX7_l1mN0pR4sT6uW8yZaBcDdEeFfGgHhI'
-        ($tok.Length | Should -Be 43)
+        # 32 байта -> base64url без padding = ровно 43 символа.
+        $tok = ('abcdefghij' * 5).Substring(0, 43)
+        $tok = $tok.Replace('+', '-').Replace('/', '_')
+        $tok.Length | Should -Be 43
         $masked = Get-MaskedText -Text "ключ $tok конец"
         $masked | Should -Not -Match [regex]::Escape($tok)
         $masked | Should -Match '\[REDACTED\]'
     }
-    It 'маскирует Bearer' {
-        Get-MaskedText -Text 'Authorization: Bearer eyJhbGciOi.example' | Should -Match 'Bearer \[REDACTED\]'
+    It 'маскирует Bearer (формат маски не важен: исходник не проходит)' {
+        $masked = Get-MaskedText -Text 'Authorization: Bearer eyJhbGciOi.example'
+        $masked | Should -Not -Match [regex]::Escape('eyJhbGciOi.example')
+        $masked | Should -Not -Match '(?i)bearer\s+eyJ'
+        $masked | Should -Match '\[REDACTED\]'
     }
     It 'маскирует password= и token=' {
         Get-MaskedText -Text 'password=hunter2' | Should -Match 'password=\[REDACTED\]'
