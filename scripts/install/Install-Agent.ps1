@@ -126,13 +126,19 @@ try {
     Remove-Item -LiteralPath $invitePath -Force
     Write-OkLocal 'invite.json (с токеном) удалён из папки приглашения'
 
-    $status = & $agentExe status 2>$null
+    # status запрашивает SCM: в режиме без службы его нет.
+    $status = ''
+    if (-not $NoService) {
+        $status = (& $agentExe status 2>$null | Out-String).Trim()
+    }
     Write-Host ''
     Write-Host '—————— ИТОГ ——————'
     Write-Host ("ОК: агент подключён. Компьютер: {0}" -f $env:COMPUTERNAME)
     Write-Host ("  идентификация: {0}" -f ($agentId -replace 'агент зарегистрирован:\s*', ''))
     if (-not $NoService) {
         Write-Host ("  служба: {0}" -f ($(if ($status) { $status } else { 'см. netatlas-agent status' })))
+    } else {
+        Write-Host '  режим без службы (-NoService): службу установит полный запуск без -NoService'
     }
     Write-Host ('  каталог состояния: {0}' -f ($(if ($env:NETATLAS_AGENT_DIR) { $env:NETATLAS_AGENT_DIR } else { Join-Path $env:ProgramData 'NetAtlas\agent' })))
     Write-Host ('  журнал исполнения: {0}' -f (Join-Path ($(if ($env:NETATLAS_AGENT_DIR) { $env:NETATLAS_AGENT_DIR } else { Join-Path $env:ProgramData 'NetAtlas\agent' })) 'exec.log'))

@@ -128,9 +128,14 @@ Describe 'E2E агент: приглашение, установка, негат
         $tok = $script:EnrollToken
         $url | Should -Not -BeNullOrEmpty
         $tok | Should -Not -BeNullOrEmpty
+        # stderr native-команды при EAP=Stop бросает: гасим на время.
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         $out = (& $agentExe enroll --server $url --token $tok --ca $ca 2>&1 | Out-String)
-        Write-Host ('повторный enroll: код {0}: {1}' -f $LASTEXITCODE, $out.Trim())
-        $LASTEXITCODE | Should -Not -Be 0
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = $prev
+        Write-Host ('повторный enroll: код {0}: {1}' -f $code, $out.Trim())
+        $code | Should -Not -Be 0
         Remove-Item Env:NETATLAS_AGENT_DIR -ErrorAction SilentlyContinue
     }
 
@@ -153,11 +158,11 @@ Describe 'E2E агент: приглашение, установка, негат
 
     It 'раздатчик (-Serve): включён только явно, живёт ограниченное время, отдаёт один архив' {
         # Отдельное приглашение (новый одноразовый токен) с раздатчиком.
+        $addr = '127.0.0.1'
         $serveProc = Start-Process powershell -ArgumentList @(
             '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot '..\New-AgentInvite.ps1'),
             '-Dir', $script:NaDir, '-ComputerName', 'serve-test', '-Address', $addr, '-Yes', '-Serve', '-ServeSeconds', '40'
         ) -PassThru -WindowStyle Hidden
-        $addr = '127.0.0.1'
         try {
             # Порт открывается после сборки папки (~секунды).
             $up = $false
