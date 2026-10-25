@@ -82,8 +82,13 @@ try {
 
     Write-StepLocal 3 5 'Регистрация агента (одноразовый токен)'
     # Регистрация — на слушателе 8444 (по токену); служба потом
-    # работает через mTLS-порт 8443.
-    $agentOut = & $agentExe enroll --server $invite.enroll_url --token $invite.token --ca $caPem 2>&1
+    # работает через mTLS-порт 8443. Аргументы — явные строки:
+    # PS 5.1 иногда теряет свойства объекта при передаче native.
+    $serverArg = [string]$invite.enroll_url
+    $tokenArg = [string]$invite.token
+    $caArg = [string]$caPem
+    Write-InfoLocal ('  отладка: server={0}; длина токена={1}; ca есть={2}' -f $serverArg, $tokenArg.Length, (Test-Path -LiteralPath $caArg))
+    $agentOut = & $agentExe enroll --server $serverArg --token $tokenArg --ca $caArg 2>&1
     if ($LASTEXITCODE -ne 0) {
         $why = Get-MaskedTextLocal -Text ($agentOut | Out-String).Trim()
         Write-Host ("ОШИБКА: регистрация отклонена ({0}). Если причина — просроченный или использованный токен, попросите владельца выдать новое приглашение." -f $why)
