@@ -53,30 +53,45 @@ func standScripts(t *testing.T) map[string]string {
 }
 
 // У каждого скрипта стенда: подтверждение или WhatIf-режим.
+// Механизм подтверждения — ShouldProcess с ConfirmImpact=High
+// (явный [switch]$Confirm конфликтует с общим параметром -Confirm
+// от CmdletBinding и не давал скриптам запускаться; найдено E2E
+// NR-029). Скрипт обязан описывать, что без подтверждения он
+// ничего не делает.
 func TestEveryScriptHasConfirmOrWhatIf(t *testing.T) {
+	mutating := map[string]bool{
+		"New-TestNetwork.ps1": true, "Remove-TestNetwork.ps1": true, "Invoke-ScriptTest.ps1": true,
+	}
 	for name, src := range standScripts(t) {
-		hasParam := strings.Contains(src, "[switch]$Confirm")
 		hasShouldProcess := strings.Contains(src, "SupportsShouldProcess")
-		hasWhatIfMessage := strings.Contains(src, "WhatIf") // текст режима без -Confirm
-		if !hasParam && !hasShouldProcess {
-			t.Errorf("%s: нет ни [switch]$Confirm, ни SupportsShouldProcess", name)
+		if !hasShouldProcess {
+			t.Errorf("%s: нет SupportsShouldProcess", name)
 		}
-		if !hasWhatIfMessage {
-			t.Errorf("%s: нет описания режима -WhatIf (без -Confirm скрипт ничего не делает)", name)
+		// Мутационные — с высоким порогом подтверждения; чистый
+		// анализ (Invoke-StaticCheck) — с обычным.
+		if mutating[name] && !strings.Contains(src, "ConfirmImpact = 'High'") {
+			t.Errorf("%s: нет ConfirmImpact=High", name)
+		}
+		hasNoActionMessage := strings.Contains(src, "WhatIf") ||
+			strings.Contains(src, "Подтверждение не дано")
+		if !hasNoActionMessage {
+			t.Errorf("%s: нет описания поведения без подтверждения", name)
 		}
 	}
 }
 
-// Изменяющие скрипты что-то делают только с -Confirm: ветка
-// "if (-not $Confirm) … return" присутствует у создающих/удаляющих.
+// Изменяющие скрипты что-то делают только после подтверждения:
+// ранний гейт ShouldProcess перед действиями (без ответа «да» —
+// выход; -Confirm проходит без вопроса пользователя не отменяет —
+// вопрос остаётся, т.к. ConfirmImpact=High).
 func TestMutatingScriptsRequireConfirm(t *testing.T) {
 	for _, name := range []string{"New-TestNetwork.ps1", "Remove-TestNetwork.ps1", "Invoke-ScriptTest.ps1"} {
 		src, ok := standScripts(t)[name]
 		if !ok {
 			t.Fatalf("нет скрипта %s", name)
 		}
-		if !strings.Contains(src, "if (-not $Confirm)") {
-			t.Errorf("%s: нет проверки -Confirm перед действиями", name)
+		if !strings.Contains(src, "if (-not $PSCmdlet.ShouldProcess") {
+			t.Errorf("%s: нет гейта ShouldProcess перед действиями", name)
 		}
 	}
 }

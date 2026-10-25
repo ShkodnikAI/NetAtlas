@@ -12,7 +12,7 @@
 .EXAMPLE
     .\Invoke-ScriptTest.ps1 -ScriptPath .\script.ps1 -VMName NetAtlas-Test-VM1 -Credential (Get-Credential) -Confirm
 #>
-[CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ScriptPath,

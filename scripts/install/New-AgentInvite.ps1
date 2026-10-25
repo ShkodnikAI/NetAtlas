@@ -148,6 +148,7 @@ try {
                         if ($result.Request.Url.AbsolutePath -eq "/$zipName") {
                             $bytes = [IO.File]::ReadAllBytes("$serveDir.zip")
                             $result.Response.ContentType = 'application/zip'
+                            $result.Response.KeepAlive = $false
                             $result.Response.ContentLength64 = $bytes.Length
                             $result.Response.OutputStream.Write($bytes, 0, $bytes.Length)
                             # Закрыть ответ ДО остановки слушателя: иначе
@@ -163,6 +164,8 @@ try {
                     } catch { }
                 }
             }
+            # Пауза: дать клиенту дочитать до остановки слушателя.
+            Start-Sleep -Milliseconds 800
             $listener.Stop()
             $listener.Close()
             if (-not $served) { Write-Info 'Раздатчик закрыт по времени: архив никому не отдан.' }

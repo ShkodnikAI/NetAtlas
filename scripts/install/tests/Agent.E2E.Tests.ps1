@@ -189,9 +189,11 @@ Describe 'E2E агент: приглашение, установка, негат
         }
     }
 
-    It 'Uninstall-Agent.ps1 удаляет службу-состояние и каталог (с -Confirm)' {
+    It 'Uninstall-Agent.ps1 удаляет службу-состояние и каталог (с подтверждением)' {
         $env:NETATLAS_AGENT_DIR = $script:AgentDir
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '..\Uninstall-Agent.ps1') -Confirm *> $null
+        # ConfirmImpact=High: скрипт спрашивает подтверждение; «y» из
+        # stdin — ответ «да» (поведение как у владельца с -Confirm).
+        'y' | powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '..\Uninstall-Agent.ps1') *> $null
         $LASTEXITCODE | Should -Be 0
         (Test-Path -LiteralPath $script:AgentDir) | Should -BeFalse
         Remove-Item Env:NETATLAS_AGENT_DIR -ErrorAction SilentlyContinue
