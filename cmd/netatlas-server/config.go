@@ -38,6 +38,13 @@ type config struct {
 	// Конвейер скриптов (NR-011): оба выключены по умолчанию.
 	enableDispatch     bool
 	allowCustomScripts bool
+
+	// Подключение модели ИИ (NR-013): по умолчанию выключено —
+	// ручной режим (копировать и вставить).
+	aiEnabled   bool
+	aiEndpoint  string
+	aiKeyEnv    string
+	aiLocalAddr string
 }
 
 // errUsage — ошибки конфигурации: завершение с кодом 2.
@@ -68,6 +75,14 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		"выдавать задания агентам в checkin (по умолчанию выключено)")
 	fs.BoolVar(&cfg.allowCustomScripts, "allow-custom-scripts", false,
 		"разрешить задания из произвольных скриптов (по умолчанию выключено)")
+	fs.BoolVar(&cfg.aiEnabled, "ai-enabled", false,
+		"подключить модель ИИ к отчётам (по умолчанию выключено — ручной режим)")
+	fs.StringVar(&cfg.aiEndpoint, "ai-endpoint", "",
+		"адрес внешнего API модели (пусто — локальная модель)")
+	fs.StringVar(&cfg.aiKeyEnv, "ai-key-env", "NETATLAS_AI_KEY",
+		"имя переменной окружения с ключом внешнего API (значение не хранится)")
+	fs.StringVar(&cfg.aiLocalAddr, "ai-local-addr", "127.0.0.1:11434",
+		"адрес локальной модели (только 127.0.0.1)")
 	if err := fs.Parse(args); err != nil {
 		return config{}, fmt.Errorf("%w: %v", errUsage, err)
 	}
@@ -116,6 +131,26 @@ func parseConfig(args []string, getenv func(string) string) (config, error) {
 		}
 		if cfg.agentListen == "" {
 			return config{}, fmt.Errorf("%w: --enable-dispatch без --agent-listen: агентам некуда приходить", errUsage)
+		}
+	}
+
+	// Подключение модели ИИ (NR-013): локальная модель — только
+	// loopback, без исключений; внешний API требует имя переменной
+	// с ключом (само значение читается в момент запроса).
+	if cfg.aiEnabled {
+		if cfg.aiEndpoint == "" {
+			host := cfg.aiLocalAddr
+			if i := strings.LastIndex(host, ":"); i > 0 {
+				host = host[:i]
+			}
+			host = strings.Trim(host, "[]")
+			switch host {
+			case "127.0.0.1", "::1", "localhost":
+			default:
+				return config{}, fmt.Errorf("%w: --ai-local-addr: только 127.0.0.1 (данные уходят лишь на машину владельца)", errUsage)
+			}
+		} else if strings.TrimSpace(cfg.aiKeyEnv) == "" {
+			return config{}, fmt.Errorf("%w: --ai-endpoint без --ai-key-env: нечем авторизоваться", errUsage)
 		}
 	}
 

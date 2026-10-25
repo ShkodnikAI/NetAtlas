@@ -675,3 +675,24 @@ func (f *fakeStore) PurgeOldActivity(ctx context.Context, now time.Time) (int64,
 func (f *fakeStore) DeleteActivityFor(ctx context.Context, agentID, actor string) (int64, error) {
 	panic("активность тестируется на настоящем store")
 }
+
+// --- Отчёты для ИИ (NR-013): настоящие тесты на store.
+func (f *fakeStore) CreateAIReport(ctx context.Context, topic, cleanedText string, mapping []store.MappingRow) (int64, error) {
+	panic("отчёты тестируются на настоящем store")
+}
+
+func (f *fakeStore) AIReportByID(ctx context.Context, id int64) (store.AIReport, error) {
+	panic("отчёты тестируются на настоящем store")
+}
+
+func (f *fakeStore) ListAIReports(ctx context.Context) ([]store.AIReport, error) {
+	panic("отчёты тестируются на настоящем store")
+}
+
+func (f *fakeStore) SaveAIAnswer(ctx context.Context, id int64, answer string) error {
+	panic("отчёты тестируются на настоящем store")
+}
+
+func (f *fakeStore) AIMapping(ctx context.Context, id int64) ([]store.MappingRow, error) {
+	panic("отчёты тестируются на настоящем store")
+}

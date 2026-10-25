@@ -488,3 +488,22 @@ textarea{width:100%;box-sizing:border-box;min-height:90px}
 .act-ctl-row{display:flex;gap:8px;align-items:center;font-size:12.5px;flex-wrap:wrap}
 .act-list-row{font-size:13px;padding:8px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
 .act-card input{margin-bottom:4px}
+
+/* --- Отчёты для ИИ (NR-013) --- */
+.rep-zones{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin-bottom:16px}
+.rep-zones .act-card{flex:1 1 220px}
+.rep-arrow{align-self:center;color:var(--muted);font-size:18px}
+.rep-zone{font-size:12px;font-weight:600}
+.rep-zone-net{color:var(--ok)}
+.rep-zone-report{color:var(--accent)}
+.rep-zone-ai{color:var(--warn)}
+.rep-select{margin-bottom:4px}
+.rep-item{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer}
+.rep-item:hover{border-color:var(--line2)}
+.rep-status{color:var(--muted);font-size:12px;white-space:nowrap}
+.rep-current{margin-top:4px}
+.rep-pre{font-family:var(--mono);font-size:11.5px;line-height:1.6;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;margin:0}
+.rep-answer{width:100%;box-sizing:border-box;min-height:90px;margin-bottom:4px}
+.rep-mapping{border-collapse:collapse;font-size:12.5px;width:100%}
+.rep-mapping td{border-top:1px solid var(--line);padding:6px 8px;word-break:break-word}
+.rep-mapping td:first-child{font-family:var(--mono)}
