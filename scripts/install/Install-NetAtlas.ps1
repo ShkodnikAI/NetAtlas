@@ -338,10 +338,13 @@ Write-Host "сервер запущен; журнал: logs\server-err-`$logStam
         Write-Info '  режим -NoService: сервер не запущен; для запуска выполните:'
         Write-Info "    powershell -NoProfile -ExecutionPolicy Bypass -File `"$runScript`""
     } else {
+        # Все маршруты сервера, включая /api/config, требуют Bearer-токен
+        # владельца (проверено E2E: без токена сервер отвечает 401).
         $ready = $false
         for ($i = 0; $i -lt 15; $i++) {
             try {
-                $null = Invoke-NaApi -Uri "http://127.0.0.1:${serverPort}/api/config" -TimeoutSec 2
+                $tok = Read-OwnerToken -Dir $Dir
+                $null = Invoke-NaApi -Uri "http://127.0.0.1:${serverPort}/api/config" -Token $tok -TimeoutSec 2
                 $ready = $true
                 break
             } catch {

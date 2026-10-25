@@ -63,15 +63,18 @@ try {
     } catch { }
     $lines.Add(('Порт 8484 слушается: {0}' -f $(if ($portOk) { 'да' } else { 'нет' })))
 
-    # API: конфигурация и цепочка аудита (без токена: /api/config открыт).
+    # API: конфигурация и цепочка аудита. Все маршруты сервера, включая
+    # /api/config, требуют Bearer-токен владельца (проверено E2E).
+    $token = $null
+    try { $token = Read-OwnerToken -Dir $Dir } catch { }
     try {
-        $cfg = Invoke-NaApi -Uri 'http://127.0.0.1:8484/api/config' -TimeoutSec 10
+        $cfg = Invoke-NaApi -Uri 'http://127.0.0.1:8484/api/config' -Token $token -TimeoutSec 10
         $lines.Add(('Ответ /api/config: подсети=[{0}], snmp={1}, audit_ok={2}' -f (($cfg.subnets) -join ', '), $cfg.snmp, $cfg.audit_ok))
     } catch {
         $lines.Add(('Ответ /api/config: сервер не отвечает ({0})' -f $_.Exception.Message))
     }
     try {
-        $token = Read-OwnerToken -Dir $Dir
+        if (-not $token) { $token = Read-OwnerToken -Dir $Dir }
         $ver = Invoke-NaApi -Uri 'http://127.0.0.1:8484/api/audit/verify' -Token $token -TimeoutSec 10
         $lines.Add(('Цепочка аудита (/api/audit/verify): ok={0}{1}' -f $ver.ok, $(if ($ver.error) { ', ' + $ver.error } else { '' })))
 
@@ -99,7 +102,8 @@ try {
     }
     if ($latest) {
         $lines.Add(('---- последние 30 строк {0} (маскировано) ----' -f $latest.Name))
-        $tail = @(Get-Content -LiteralPath $latest.FullName -Tail 30 -ErrorAction SilentlyContinue)
+        # Журнал сервера пишется в UTF-8: читаем с явной кодировкой.
+        $tail = @(Get-Content -LiteralPath $latest.FullName -Tail 30 -Encoding UTF8 -ErrorAction SilentlyContinue)
         foreach ($l in $tail) { $lines.Add((Get-MaskedText -Text $l)) }
     } else {
         $lines.Add('Журнал сервера: не найден (сервер не запускался)')

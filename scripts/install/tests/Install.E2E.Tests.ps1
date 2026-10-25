@@ -48,11 +48,14 @@ Describe 'E2E: установка, запуск сервера, отчёт бе�
     It 'run-server.ps1 запускает сервер: /api/config отвечает' {
         $runScript = Join-Path $script:NaDir 'app\run-server.ps1'
         $proc = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $runScript) -PassThru -WindowStyle Hidden
+        # Все маршруты сервера требуют Bearer-токен (включая /api/config).
+        $tok = (Get-Content -LiteralPath (Join-Path $script:NaDir 'secrets\owner-token.txt') -TotalCount 1).Trim()
+        $headers = @{ Authorization = "Bearer $tok" }
         $ok = $false
         for ($i = 0; $i -lt 30; $i++) {
             Start-Sleep -Seconds 2
             try {
-                $cfg = Invoke-RestMethod -Uri 'http://127.0.0.1:8484/api/config' -TimeoutSec 2
+                $cfg = Invoke-RestMethod -Uri 'http://127.0.0.1:8484/api/config' -Headers $headers -TimeoutSec 2
                 if ($null -ne $cfg) { $ok = $true; break }
             } catch { }
         }
