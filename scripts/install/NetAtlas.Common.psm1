@@ -195,14 +195,22 @@ function Format-NaDeviceRows {
         [AllowEmptyCollection()]
         [object[]]$Devices
     )
+    # Сервер не отдаёт пустые vendor/hostname/ssid (omitempty), а при
+    # StrictMode обращение к отсутствующему свойству бросает исключение.
+    $get = {
+        param($o, [string]$n)
+        $p = $o.PSObject.Properties[$n]
+        if ($null -ne $p) { $p.Value } else { $null }
+    }
     $rows = @()
     foreach ($d in @($Devices | Where-Object { $_ })) {
-        $ips = @($d.ips | Where-Object { $_ }) -join ', '
-        $names = @($d.names | Where-Object { $_ } | ForEach-Object { $_.name }) -join ', '
-        $sources = @($d.observations | Where-Object { $_ } | ForEach-Object { $_.source } | Sort-Object -Unique) -join ','
+        $ips = @(& $get $d 'ips' | Where-Object { $_ }) -join ', '
+        $names = @(& $get $d 'names' | Where-Object { $_ } | ForEach-Object { & $get $_ 'name' }) -join ', '
+        $sources = @(& $get $d 'observations' | Where-Object { $_ } | ForEach-Object { & $get $_ 'source' } | Sort-Object -Unique) -join ','
         $mac = ''
-        if ($d.mac -and -not $d.mac.StartsWith('ip:')) { $mac = [string]$d.mac }
-        $vendor = [string]$d.vendor
+        $rawMac = [string](& $get $d 'mac')
+        if ($rawMac -and -not $rawMac.StartsWith('ip:')) { $mac = $rawMac }
+        $vendor = [string](& $get $d 'vendor')
         $row = '{0}  {1}  {2}' -f $mac.PadRight(19), $ips.PadRight(16), $vendor.PadRight(22)
         if ($names) { $row += "  $names" }
         if ($sources) { $row += "  [$sources]" }
