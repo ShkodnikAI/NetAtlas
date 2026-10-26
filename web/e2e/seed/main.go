@@ -1,8 +1,10 @@
-// Command seed — фикстура сквозных тестов интерфейса (NR-031):
+// Command seed — фикстура сквозных тестов интерфейса (NR-031, NR-032):
 // открывает базу SQLite, накатывает миграции и заполняет её
-// подставными данными сканирования. Запускается до старта сервера;
-// данные детерминированы: 12 устройств с длинными MAC, из них 4
-// связаны через коммутатор, остальные без связей (сетка на карте).
+// подставными данными сканирования. Сеть NR-032 (п.6): роутер Huawei
+// на адресе шлюза, принтер Canon, телефон со случайным MAC и именем
+// Android.local, сервер, два компьютера, IoT-модуль; связей
+// LLDP/FDB нет — карта рисует предполагаемые связи «устройство —
+// шлюз» и раскладывает узлы сеткой. Данные детерминированы.
 //
 // Использование: seed <путь-к-базе>
 package main
@@ -57,20 +59,27 @@ func run() error {
 	type spec struct {
 		mac, hostname, vendor, ip string
 		sources                   []string
+		names                     []struct{ source, value string }
 	}
 	specs := []spec{
-		{"02:00:00:00:00:0a", "office-pc-01", "", "192.168.100.10", []string{"arp", "ping"}},
-		{"02:00:00:00:00:0b", "office-pc-02", "", "192.168.100.11", []string{"ping"}},
-		{"02:00:00:00:00:0c", "nas-server", "", "192.168.100.12", []string{"arp", "ping", "snmp"}},
-		{"02:00:00:00:00:0d", "", "TP-Link Technologies", "192.168.100.13", []string{"arp"}},
-		{"02:00:00:00:00:0e", "", "Espressif Inc.", "192.168.100.14", []string{"arp", "ping"}},
-		{"02:00:00:00:00:0f", "", "Raspberry Pi Trading Ltd", "192.168.100.15", []string{"arp"}},
-		{"02:00:00:00:00:10", "", "", "192.168.100.16", []string{"arp", "ping"}},
-		{"02:00:00:00:00:11", "", "", "192.168.100.17", []string{"ping"}},
-		{"02:00:00:00:00:12", "", "", "192.168.100.18", []string{"arp"}},
-		{"02:00:00:00:00:13", "", "", "", []string{"arp"}},
-		{"02:00:00:00:00:14", "", "", "", []string{"ping"}},
-		{"02:00:00:00:00:15", "", "", "", nil},
+		// Шлюз: Huawei на адресе маршрутизатора по умолчанию.
+		{"d8:0d:17:00:00:01", "", "Huawei Technologies", "192.168.100.1", []string{"arp", "ping"}, nil},
+		// Сервер и два компьютера.
+		{"02:00:00:00:00:0c", "SERVAK", "Giga-Byte Technology", "192.168.100.12", []string{"arp", "ping"}, nil},
+		{"02:00:00:00:00:0a", "office-pc-01", "", "192.168.100.10", []string{"arp", "ping"}, nil},
+		{"02:00:00:00:00:0b", "office-pc-02", "", "192.168.100.11", []string{"ping"}, nil},
+		// Принтер Canon.
+		{"00:80:77:00:00:01", "", "Canon", "192.168.100.20", []string{"arp"}, []struct{ source, value string }{{model.NameSourceNetBIOS, "canon-lbp-1 этаж"}}},
+		// Телефон со случайным MAC (бит U/L) и mDNS-именем.
+		{"b2:be:ad:1f:22:33", "", "", "192.168.100.30", []string{"arp", "ping"}, []struct{ source, value string }{{model.NameSourceMDNS, "Android.local"}}},
+		// IoT-модуль.
+		{"24:6f:28:00:00:01", "", "Espressif Inc.", "192.168.100.31", []string{"arp"}, nil},
+		// Прочие: подписи, таблица устройств.
+		{"02:00:00:00:00:0f", "", "Raspberry Pi Trading Ltd", "192.168.100.15", []string{"arp"}, nil},
+		{"02:00:00:00:00:10", "", "", "192.168.100.16", []string{"arp", "ping"}, nil},
+		{"02:00:00:00:00:11", "", "", "192.168.100.17", []string{"ping"}, nil},
+		{"02:00:00:00:00:12", "", "", "192.168.100.18", []string{"arp"}, nil},
+		{"02:00:00:00:00:13", "", "", "", []string{"arp"}, nil},
 	}
 	devices := make([]model.Device, 0, len(specs))
 	for i, s := range specs {
@@ -78,27 +87,17 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("устройство %d: %w", i, err)
 		}
-		// Имена у двух устройств: подпись на карте берётся из них.
-		if s.mac == "02:00:00:00:00:10" {
-			if err := name(&d, model.NameSourceNetBIOS, "printer-hp-1 этаж"); err != nil {
-				return fmt.Errorf("имя printer: %w", err)
-			}
-		}
-		if s.mac == "02:00:00:00:00:11" {
-			if err := name(&d, model.NameSourceMDNS, "cam-lobby.local"); err != nil {
-				return fmt.Errorf("имя камеры: %w", err)
+		for _, nm := range s.names {
+			if err := name(&d, nm.source, nm.value); err != nil {
+				return fmt.Errorf("имя устройства %d: %w", i, err)
 			}
 		}
 		devices = append(devices, d)
 	}
 
-	sw := netip.MustParseAddr("192.168.100.1")
+	// Связей LLDP/FDB нет (SNMP-коммутатора в сети нет): карта строит
+	// предполагаемые связи «устройство — шлюз» (NR-032 п.3).
 	topology := model.NewTopology()
-	topology.Links = []model.Link{
-		{A: "02:00:00:00:00:0a", APort: "eth0", B: "02:00:00:00:00:0b", BPort: "eth0", Source: "fdb"},
-		{A: "02:00:00:00:00:0a", APort: "eth0", B: "ip:" + sw.String(), BPort: "ge1", Source: "lldp"},
-		{A: "02:00:00:00:00:0b", APort: "eth0", B: "ip:" + sw.String(), BPort: "ge2", Source: "fdb"},
-	}
 
 	scan := store.ScanResult{
 		Started:  time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC),
@@ -106,11 +105,12 @@ func run() error {
 		Subnets:  []string{"192.168.100.0/24"},
 		Devices:  devices,
 		Topology: topology,
+		Gateways: []netip.Addr{netip.MustParseAddr("192.168.100.1")},
 	}
 	if err := st.SaveScan(context.Background(), scan, "e2e"); err != nil {
 		return fmt.Errorf("SaveScan: %w", err)
 	}
-	fmt.Println("seed: 12 устройств, 3 связи записаны")
+	fmt.Println("seed: 12 устройств, шлюз 192.168.100.1, связей нет (карта построит предполагаемые)")
 	return nil
 }
 

@@ -42,13 +42,13 @@ describe('fillEdit', () => {
   it('кнопка удаления есть только у ручного элемента', () => {
     const manual = document.createElement('div');
     fillEdit(manual, info({ manual: true, id: 'manual:1' }), {
-      onRename: () => {}, onClass: () => {}, onVerify: () => {}, onDelete: () => {},
+      onRename: () => {}, onClass: () => {}, onKind: () => {}, onVerify: () => {}, onDelete: () => {},
     });
     expect(manual.textContent).toContain('Удалить ручной элемент');
 
     const found = document.createElement('div');
     fillEdit(found, info({ manual: false }), {
-      onRename: () => {}, onClass: () => {}, onVerify: () => {}, onDelete: () => {},
+      onRename: () => {}, onClass: () => {}, onKind: () => {}, onVerify: () => {}, onDelete: () => {},
     });
     expect(found.textContent).not.toContain('Удалить ручной элемент');
   });
@@ -56,7 +56,7 @@ describe('fillEdit', () => {
   it('классы перечислены и выбран текущий', () => {
     const page = document.createElement('div');
     fillEdit(page, info({ class: 'guest' }), {
-      onRename: () => {}, onClass: () => {}, onVerify: () => {}, onDelete: () => {},
+      onRename: () => {}, onClass: () => {}, onKind: () => {}, onVerify: () => {}, onDelete: () => {},
     });
     const select = page.querySelector('select') as HTMLSelectElement;
     expect(select.options).toHaveLength(4);
@@ -70,7 +70,10 @@ describe('fillEdit', () => {
       onRename: (_id, name) => {
         got = name;
       },
-      onClass: () => {}, onVerify: () => {}, onDelete: () => {},
+      onClass: () => {},
+      onKind: () => {},
+      onVerify: () => {},
+      onDelete: () => {},
     });
     const input = page.querySelector('input[type="text"]') as HTMLInputElement;
     input.value = 'новое';
@@ -97,5 +100,60 @@ describe('fillNet', () => {
     expect(page.textContent).toContain('00:00:00:00:00:01 (eth0)');
     expect(page.textContent).toContain('вручную');
     expect(page.textContent).toContain('arp');
+  });
+});
+
+describe('тип узла: автоматический вывод и ручной выбор (NR-032 п.1)', () => {
+  it('автоматический тип помечен «определён автоматически, изменить»', () => {
+    const page = document.createElement('div');
+    fillOverview(page, info({ kind: 'printer', kindAuto: 'printer' }), 'printer');
+    const dd = page.querySelector('dd');
+    expect(dd?.textContent).toContain('принтер');
+    expect(dd?.textContent).toContain('определён автоматически');
+    const change = dd?.querySelector('button');
+    expect(change?.textContent).toBe('изменить');
+    // Клик «изменить» зовёт колбэк (переход на вкладку «Правка»).
+    let called = false;
+    fillOverview(page, info({ kind: 'printer', kindAuto: 'printer' }), 'printer', () => {
+      called = true;
+    });
+    (page.querySelector('dd button') as HTMLButtonElement).click();
+    expect(called).toBe(true);
+  });
+
+  it('ручной тип помечен «указан вручную» и не даёт пометку автомата', () => {
+    const page = document.createElement('div');
+    fillOverview(page, info({ kind: 'server', kindAuto: 'printer', kindManual: true }), 'server');
+    const dd = page.querySelector('dd');
+    expect(dd?.textContent).toContain('сервер');
+    expect(dd?.textContent).toContain('указан вручную');
+    expect(dd?.textContent).not.toContain('определён автоматически');
+  });
+
+  it('в «Правке» есть выбор типа с новыми kind и кнопкой смены', () => {
+    const page = document.createElement('div');
+    fillEdit(page, info({ kind: 'phone' }), {
+      onRename: () => {},
+      onClass: () => {},
+      onKind: (id, kind) => {
+        // Ручной тип уходит в обработчик с id узла.
+        expect(id).toBe('00:00:00:00:00:0b');
+        expect(kind).toBe('tv');
+      },
+      onVerify: () => {},
+      onDelete: () => {},
+    });
+    const select = page.querySelector('#edit-kind') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    const kinds = [...select.options].map((o) => o.value);
+    for (const k of ['device', 'printer', 'phone', 'iot', 'tv', 'router']) {
+      expect(kinds).toContain(k);
+    }
+    expect(select.value).toBe('phone');
+    select.value = 'tv';
+    const apply = [...page.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Сменить тип'),
+    );
+    (apply as HTMLButtonElement).click();
   });
 });

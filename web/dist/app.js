@@ -98,6 +98,15 @@
     updateDevice(id2, patch) {
       return this.req("PATCH", `/api/devices/${encodeURIComponent(id2)}`, patch);
     }
+    positions() {
+      return this.req("GET", "/api/positions");
+    }
+    savePosition(id2, x2, y2) {
+      return this.req("PUT", `/api/positions/${encodeURIComponent(id2)}`, { x: x2, y: y2 });
+    }
+    clearPositions() {
+      return this.req("DELETE", "/api/positions");
+    }
     deleteDevice(id2) {
       return this.req("DELETE", `/api/devices/${encodeURIComponent(id2)}`);
     }
@@ -31742,6 +31751,10 @@
     device: "M9 20h6M12 16v4 M3 4h18v12H3z",
     laptop: "M2.5 19h19 M5 5h14v10H5z",
     printer: "M7 9V4h10v5 M7 14h10v6H7z M4 9h16v8H4z",
+    // NR-032 п.5: смартфон, чип IoT и телевизор.
+    phone: "M8 2.5h8A1.5 1.5 0 0 1 17.5 4v16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 20V4A1.5 1.5 0 0 1 8 2.5z M10.5 18.5h3",
+    iot: "M7 7h10v10H7z M10 10h4v4h-4z M12 3.5V7 M12 17v3.5 M3.5 12H7 M17 12h3.5 M8 3.5V7 M16 3.5V7 M8 17v3.5 M16 17v3.5 M3.5 8H7 M3.5 16H7 M17 8h3.5 M17 16h3.5",
+    tv: "M3 5h18v12H3z M8.5 21h7 M12 17v4",
     cloud: "M9 12h6 M5 5h14v14H5z",
     unknown: "M9 12h6 M5 5h14v14H5z",
     host: "M12 7v.01M12 10v5 M4 4h16v16H4z"
@@ -31755,6 +31768,10 @@
     device: "\u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440",
     laptop: "\u043D\u043E\u0443\u0442\u0431\u0443\u043A",
     printer: "\u043F\u0440\u0438\u043D\u0442\u0435\u0440",
+    // NR-032 п.5: новые типы классификатора.
+    phone: "\u0442\u0435\u043B\u0435\u0444\u043E\u043D",
+    iot: "IoT-\u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
+    tv: "\u0442\u0435\u043B\u0435\u0432\u0438\u0437\u043E\u0440",
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
     host: "\u0445\u043E\u0441\u0442 \u0431\u0435\u0437 MAC"
@@ -31768,6 +31785,10 @@
     device: "round-rectangle",
     laptop: "rhomboid",
     printer: "concave-hexagon",
+    // NR-032 п.5: форма нового типа отличима на карте.
+    phone: "barrel",
+    iot: "diamond",
+    tv: "round-rectangle",
     cloud: "tag",
     unknown: "ellipse",
     host: "round-rectangle"
@@ -31780,12 +31801,13 @@
   function nodeStyle(n) {
     const known = Object.prototype.hasOwnProperty.call(SHAPES, n.kind);
     const kind = known ? n.kind : "unknown";
+    const size3 = kind === "cloud" || kind === "unknown" ? { w: 44, h: 34 } : kind === "tv" ? { w: 48, h: 34 } : { w: 40, h: 32 };
     return {
       shape: SHAPES[kind] ?? "ellipse",
       icon: svgIcon(kind),
       kindLabel: KIND_LABELS[kind] ?? KIND_LABELS["unknown"] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
-      width: kind === "cloud" || kind === "unknown" ? 44 : 40,
-      height: kind === "cloud" || kind === "unknown" ? 34 : 32
+      width: size3.w,
+      height: size3.h
     };
   }
 
@@ -31798,7 +31820,6 @@
   var NODE_GAP = 18;
   var GRID_STEP_X = LABEL_MAX_WIDTH + 60;
   var GRID_STEP_Y = NODE_SIZE.height + LABEL_GAP + LABEL_LINE_HEIGHT + 66;
-  var GRID_COLUMNS = 5;
   function measureLabel(text2) {
     const lines = text2.split("\n");
     let linesCount = 0;
@@ -31823,30 +31844,6 @@
   }
   function expanded(b, gap) {
     return { x1: b.x1 - gap, y1: b.y1 - gap, x2: b.x2 + gap, y2: b.y2 + gap };
-  }
-  function gridPlacement(connected) {
-    if (connected === null) {
-      return { originX: 0, originY: 0, stepX: GRID_STEP_X, stepY: GRID_STEP_Y };
-    }
-    return {
-      originX: connected.x2 + 160,
-      originY: connected.y1,
-      stepX: GRID_STEP_X,
-      stepY: GRID_STEP_Y
-    };
-  }
-  function gridPositions(ids, placement) {
-    const out = /* @__PURE__ */ new Map();
-    for (let i2 = 0; i2 < ids.length; i2++) {
-      const id2 = ids[i2] ?? "";
-      const col = i2 % GRID_COLUMNS;
-      const row = Math.floor(i2 / GRID_COLUMNS);
-      out.set(id2, {
-        x: placement.originX + col * placement.stepX,
-        y: placement.originY + row * placement.stepY
-      });
-    }
-    return out;
   }
   function deoverlap(nodes3) {
     const MAX_ROUNDS = 120;
@@ -31876,12 +31873,66 @@
       if (!moved) break;
     }
   }
+  var ROW_ORDER = [
+    "internet",
+    "router",
+    "switch",
+    "ap",
+    "server",
+    "device",
+    "laptop",
+    "printer",
+    "phone",
+    "iot",
+    "tv",
+    "cloud",
+    "host",
+    "unknown"
+  ];
+  function rowRank(kind) {
+    const i2 = ROW_ORDER.indexOf(kind);
+    return i2 === -1 ? ROW_ORDER.length : i2;
+  }
+  function arrangeGrid(nodes3, saved) {
+    const out = /* @__PURE__ */ new Map();
+    const auto = nodes3.filter((n) => !saved.has(n.id));
+    if (auto.length === 0) return out;
+    const rows = /* @__PURE__ */ new Map();
+    for (const n of auto) {
+      const rank = rowRank(n.kind);
+      const row = rows.get(rank) ?? [];
+      row.push(n);
+      rows.set(rank, row);
+    }
+    for (const row of rows.values()) {
+      row.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    }
+    const ranks = [...rows.keys()].sort((a, b) => a - b);
+    let y2 = 0;
+    for (const rank of ranks) {
+      const row = rows.get(rank) ?? [];
+      let widest = 0;
+      for (const n of row) {
+        widest = Math.max(widest, measureLabel(n.label).width);
+      }
+      const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
+      const totalWidth = (row.length - 1) * stepX;
+      let x2 = rank === ranks[0] ? -totalWidth / 2 : 0;
+      for (const n of row) {
+        out.set(n.id, { x: x2, y: y2 });
+        x2 += stepX;
+      }
+      y2 += GRID_STEP_Y;
+    }
+    return out;
+  }
 
   // src/graph.ts
   var STROKE = {
     lldp: "#7C8798",
     fdb: "#5F6B7B",
     inferred: "#8FB8E8",
+    assumed: "#B48FE8",
     manual: "#F5B83D"
   };
   var LABEL_MAX_CHARS = 28;
@@ -32023,9 +32074,8 @@ ${marks}`;
       verified: Boolean(e.data("verified"))
     };
   }
-  function setGraph(cy2, g) {
+  function setGraph(cy2, g, saved) {
     const positions2 = /* @__PURE__ */ new Map();
-    const fresh = [];
     cy2.nodes().forEach((n) => {
       positions2.set(n.id(), n.position());
     });
@@ -32035,7 +32085,6 @@ ${marks}`;
     for (const n of g.nodes) {
       const st = nodeStyle(n);
       hasGuests = hasGuests || n.class === "guest";
-      if (!positions2.has(n.id)) fresh.push(n.id);
       elements.push({
         group: "nodes",
         data: {
@@ -32082,7 +32131,7 @@ ${marks}`;
           target: l.b,
           color,
           label: edgeLabel(l),
-          dashed: l.source === "inferred" || l.manual ? "true" : "false",
+          dashed: l.source === "inferred" || l.source === "assumed" || l.manual ? "true" : "false",
           // полные поля для панели и callbacks
           a: l.a,
           aPort: l.aPort,
@@ -32095,53 +32144,64 @@ ${marks}`;
       });
     }
     cy2.add(elements);
-    void cy2.layout({ name: "cose", animate: false, randomize: positions2.size === 0 }).run();
-    arrangeFresh(cy2, fresh);
+    arrangeMap(cy2, g, saved ?? /* @__PURE__ */ new Set());
+    renderA11y(g);
   }
-  function arrangeFresh(cy2, fresh) {
-    const linked = /* @__PURE__ */ new Set();
-    cy2.edges().forEach((e) => {
-      linked.add(e.source().id());
-      linked.add(e.target().id());
-    });
-    const isolated = fresh.filter((id2) => !linked.has(id2));
+  function arrangeMap(cy2, g, saved) {
     const nodeEls = [];
     cy2.nodes().forEach((n) => {
       if (!n.isParent()) nodeEls.push(n);
     });
-    const all = nodeEls.map((n) => ({
+    const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
+    const grid = arrangeGrid(
+      nodeEls.map((n) => ({
+        id: n.id(),
+        kind: kinds.get(n.id()) ?? "unknown",
+        label: String(n.data("label") ?? "")
+      })),
+      saved
+    );
+    for (const n of nodeEls) {
+      const p2 = grid.get(n.id());
+      if (p2 !== void 0) n.position({ x: p2.x, y: p2.y });
+    }
+    const auto = nodeEls.filter((n) => grid.has(n.id())).map((n) => ({
       id: n.id(),
       x: n.position("x"),
       y: n.position("y"),
       label: measureLabel(String(n.data("label") ?? ""))
     }));
-    if (isolated.length > 0) {
-      let connectedBox = null;
-      for (const p2 of all) {
-        if (linked.has(p2.id)) {
-          const b = boxOf(p2.x, p2.y, p2.label);
-          connectedBox = connectedBox === null ? b : {
-            x1: Math.min(connectedBox.x1, b.x1),
-            y1: Math.min(connectedBox.y1, b.y1),
-            x2: Math.max(connectedBox.x2, b.x2),
-            y2: Math.max(connectedBox.y2, b.y2)
-          };
-        }
-      }
-      const grid = gridPositions(isolated, gridPlacement(connectedBox));
-      for (const p2 of all) {
-        const g = grid.get(p2.id);
-        if (g !== void 0) {
-          p2.x = g.x;
-          p2.y = g.y;
-        }
+    deoverlap(auto);
+    for (const p2 of auto) {
+      const n = cy2.$id(p2.id).first();
+      if (n !== void 0) n.position({ x: p2.x, y: p2.y });
+    }
+    const others = nodeEls.filter((n) => !grid.has(n.id()) && saved.has(n.id())).map((n) => ({
+      id: n.id(),
+      x: n.position("x"),
+      y: n.position("y"),
+      label: measureLabel(String(n.data("label") ?? ""))
+    }));
+    if (others.length > 0) {
+      const combined = [...auto, ...others];
+      deoverlap(combined);
+      for (const p2 of combined) {
+        const n = cy2.$id(p2.id).first();
+        if (n !== void 0) n.position({ x: p2.x, y: p2.y });
       }
     }
-    deoverlap(all);
-    for (const p2 of all) {
-      const n = cy2.$id(p2.id);
-      const first2 = n.first();
-      if (first2 !== void 0 && !first2.isParent()) n.position({ x: p2.x, y: p2.y });
+  }
+  function renderA11y(g) {
+    const box = document.getElementById("map-a11y");
+    if (box === null) return;
+    box.textContent = "";
+    for (const n of g.nodes) {
+      const li = document.createElement("li");
+      li.dataset.kind = n.kind;
+      li.dataset.id = n.id;
+      const st = nodeStyle(n);
+      li.textContent = `${n.label} \u2014 ${st.kindLabel}`;
+      box.append(li);
     }
   }
   function nodeLabel(n) {
@@ -32160,11 +32220,84 @@ ${marks}`;
   }
   function edgeLabel(l) {
     if (l.manual) return "\u0432\u0440\u0443\u0447\u043D\u0443\u044E";
+    if (l.source === "assumed") return "";
     if (!l.verified) return "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D";
     return "";
   }
   function edgeId(l) {
     return `${l.a}|${l.aPort}|${l.b}|${l.bPort}`;
+  }
+
+  // src/legend.ts
+  var KIND_ORDER = [
+    "internet",
+    "router",
+    "switch",
+    "ap",
+    "server",
+    "device",
+    "laptop",
+    "printer",
+    "phone",
+    "iot",
+    "tv",
+    "cloud",
+    "host",
+    "unknown"
+  ];
+  var ASSUMED_TEXT = "\u043F\u0440\u0435\u0434\u043F\u043E\u043B\u0430\u0433\u0430\u0435\u043C\u0430\u044F \u0441\u0432\u044F\u0437\u044C: \u0434\u0430\u043D\u043D\u044B\u0445 \u043E \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440\u0435 \u043D\u0435\u0442";
+  function legendItems(g) {
+    const present = /* @__PURE__ */ new Set();
+    for (const n of g.nodes) {
+      present.add(n.kind);
+    }
+    const kinds = [...present].sort((a, b) => {
+      const ia = KIND_ORDER.indexOf(a);
+      const ib = KIND_ORDER.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    return kinds.map((kind) => ({
+      kind,
+      label: KIND_LABELS[kind] ?? kind,
+      icon: svgIcon(kind)
+    }));
+  }
+  function hasAssumedLinks(g) {
+    return g.links.some((l) => l.source === "assumed");
+  }
+  function renderLegend(container2, g) {
+    container2.textContent = "";
+    const items = legendItems(g);
+    if (items.length === 0 && !hasAssumedLinks(g)) {
+      container2.hidden = true;
+      return;
+    }
+    container2.hidden = false;
+    for (const item of items) {
+      const chip = document.createElement("span");
+      chip.className = "legend-item";
+      chip.dataset.kind = item.kind;
+      const img = document.createElement("img");
+      img.src = item.icon;
+      img.alt = "";
+      img.width = 16;
+      img.height = 16;
+      chip.append(img, document.createTextNode(item.label));
+      container2.append(chip);
+    }
+    if (hasAssumedLinks(g)) {
+      const chip = document.createElement("span");
+      chip.className = "legend-item legend-assumed";
+      chip.dataset.kind = "assumed";
+      const line = document.createElement("span");
+      line.className = "legend-dash";
+      line.setAttribute("aria-hidden", "true");
+      chip.append(line, document.createTextNode(ASSUMED_TEXT));
+      container2.append(chip);
+    }
   }
 
   // src/panels.ts
@@ -32183,9 +32316,27 @@ ${marks}`;
     device: "\u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440",
     laptop: "\u043D\u043E\u0443\u0442\u0431\u0443\u043A",
     printer: "\u043F\u0440\u0438\u043D\u0442\u0435\u0440",
+    phone: "\u0442\u0435\u043B\u0435\u0444\u043E\u043D",
+    iot: "IoT-\u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
+    tv: "\u0442\u0435\u043B\u0435\u0432\u0438\u0437\u043E\u0440",
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"
   };
+  var KIND_OPTIONS = [
+    ["device", "\u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440"],
+    ["laptop", "\u043D\u043E\u0443\u0442\u0431\u0443\u043A"],
+    ["server", "\u0441\u0435\u0440\u0432\u0435\u0440"],
+    ["router", "\u0440\u043E\u0443\u0442\u0435\u0440"],
+    ["switch", "\u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440"],
+    ["ap", "\u0442\u043E\u0447\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u0430"],
+    ["printer", "\u043F\u0440\u0438\u043D\u0442\u0435\u0440"],
+    ["phone", "\u0442\u0435\u043B\u0435\u0444\u043E\u043D"],
+    ["iot", "IoT-\u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"],
+    ["tv", "\u0442\u0435\u043B\u0435\u0432\u0438\u0437\u043E\u0440"],
+    ["internet", "\u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442"],
+    ["cloud", "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440"],
+    ["unknown", "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
+  ];
   function el7(tag, className2) {
     const e = document.createElement(tag);
     if (className2) e.className = className2;
@@ -32194,17 +32345,35 @@ ${marks}`;
   function text(parent4, value) {
     parent4.textContent = value;
   }
-  function fillOverview(page, info, kind) {
+  function fillOverview(page, info, kind, onChangeKind = () => void 0) {
     page.textContent = "";
     const dl = el7("dl", "kv");
-    const row = (dt, dd) => {
+    const row = (dt2, dd2) => {
       const t = el7("dt");
-      text(t, dt);
+      text(t, dt2);
       const d = el7("dd");
-      text(d, dd);
+      text(d, dd2);
       dl.append(t, d);
     };
-    row("\u0422\u0438\u043F", KIND_LABELS2[kind] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E");
+    const typeRow = el7("div", "kv-row");
+    const dt = el7("dt");
+    text(dt, "\u0422\u0438\u043F");
+    const dd = el7("dd");
+    text(dd, KIND_LABELS2[kind] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E");
+    if (info.kindManual) {
+      const b = el7("span", "badge manual");
+      text(b, "\u0443\u043A\u0430\u0437\u0430\u043D \u0432\u0440\u0443\u0447\u043D\u0443\u044E");
+      dd.append(document.createTextNode(" "), b);
+    } else if (info.kindAuto !== "" && info.kindAuto === kind) {
+      dd.append(document.createTextNode(" (\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0451\u043D \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438, "));
+      const change = el7("button", "link");
+      change.type = "button";
+      text(change, "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C");
+      change.addEventListener("click", onChangeKind);
+      dd.append(change, document.createTextNode(")"));
+    }
+    typeRow.append(dt, dd);
+    dl.append(typeRow);
     row("ID", info.id);
     if (info.hostname !== "") row("\u0418\u043C\u044F", info.hostname);
     row("IP", info.ips.length > 0 ? info.ips.join(", ") : "\u2014");
@@ -32312,6 +32481,21 @@ ${marks}`;
     const apply2 = el7("button");
     text(apply2, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u043A\u043B\u0430\u0441\u0441");
     apply2.addEventListener("click", () => handlers.onClass(info.id, select.value));
+    const kindLabel2 = el7("label");
+    kindLabel2.setAttribute("for", "edit-kind");
+    text(kindLabel2, "\u0422\u0438\u043F \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430");
+    const kindSelect = el7("select");
+    kindSelect.id = "edit-kind";
+    for (const [value, label] of KIND_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      text(opt, label);
+      if (value === info.kind) opt.selected = true;
+      kindSelect.append(opt);
+    }
+    const kindApply = el7("button");
+    text(kindApply, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u0442\u0438\u043F");
+    kindApply.addEventListener("click", () => handlers.onKind(info.id, kindSelect.value));
     const verdict = el7("div", "verdict");
     const check = el7("button");
     text(check, "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (ping)");
@@ -32321,15 +32505,17 @@ ${marks}`;
     const row2 = el7("div", "row");
     row2.append(apply2);
     const row3 = el7("div", "row");
-    row3.append(check);
-    page.append(nameLabel, name, row1, classLabel, select, row2, verdict, row3);
+    row3.append(kindApply);
+    const row4 = el7("div", "row");
+    row4.append(check);
+    page.append(nameLabel, name, row1, classLabel, select, row2, kindLabel2, kindSelect, row3, verdict, row4);
     if (info.manual) {
       const del = el7("button");
       text(del, "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0440\u0443\u0447\u043D\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442");
       del.addEventListener("click", () => handlers.onDelete(info.id));
-      const row4 = el7("div", "row");
-      row4.append(del);
-      page.append(row4);
+      const row5 = el7("div", "row");
+      row5.append(del);
+      page.append(row5);
     }
   }
 
@@ -32532,6 +32718,7 @@ ${marks}`;
   var currentLink = null;
   var selectedIds = [];
   var connectMode = false;
+  var savedPositions = /* @__PURE__ */ new Set();
   var addKinds = [
     ["internet", "\u0418\u043D\u0442\u0435\u0440\u043D\u0435\u0442"],
     ["router", "\u0420\u043E\u0443\u0442\u0435\u0440"],
@@ -32541,6 +32728,9 @@ ${marks}`;
     ["device", "\u041A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440"],
     ["laptop", "\u041D\u043E\u0443\u0442\u0431\u0443\u043A"],
     ["printer", "\u041F\u0440\u0438\u043D\u0442\u0435\u0440"],
+    ["phone", "\u0422\u0435\u043B\u0435\u0444\u043E\u043D"],
+    ["iot", "IoT-\u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"],
+    ["tv", "\u0422\u0435\u043B\u0435\u0432\u0438\u0437\u043E\u0440"],
     ["cloud", "\u041D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440"],
     ["unknown", "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
   ];
@@ -32556,7 +32746,13 @@ ${marks}`;
   async function reload() {
     try {
       graph = await api2.topology();
-      setGraph(cy, graph);
+      try {
+        const { positions: positions2 } = await api2.positions();
+        savedPositions = new Set(positions2.map((p2) => p2.id));
+      } catch {
+      }
+      setGraph(cy, graph, savedPositions);
+      renderLegend($2("map-legend"), graph);
       hideNotice();
       if (current !== null) {
         current = graph.nodes.find((n) => n.id === current?.id) ?? null;
@@ -32593,6 +32789,21 @@ ${marks}`;
     }
   };
   var cy = createGraph($2("graph"), callbacks);
+  cy.on("dragfree", "node", (ev) => {
+    const n = ev.target;
+    savedPositions.add(n.id());
+    void api2.savePosition(n.id(), n.position("x"), n.position("y")).catch(() => {
+    });
+  });
+  $2("btn-arrange").addEventListener("click", async () => {
+    try {
+      await api2.clearPositions();
+    } catch {
+    }
+    savedPositions = /* @__PURE__ */ new Set();
+    setGraph(cy, graph, savedPositions);
+    renderLegend($2("map-legend"), graph);
+  });
   function pushSelection(id2) {
     if (!selectedIds.includes(id2)) selectedIds.push(id2);
     cy.$("node").forEach((n) => {
@@ -32644,7 +32855,7 @@ ${marks}`;
       panel.classList.add("open");
       const title = $2("panel-title");
       title.textContent = info.hostname !== "" ? info.hostname : info.id;
-      fillOverview($2("page-overview"), info, kind);
+      fillOverview($2("page-overview"), info, kind, () => selectTab("tab-edit"));
       const handlers = {
         onRename: async (nid, name) => {
           try {
@@ -32657,6 +32868,15 @@ ${marks}`;
         onClass: async (nid, klass) => {
           try {
             await api2.updateDevice(nid, { class: klass });
+            await reload();
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        // Ручной тип (NR-032 п.1) перекрывает автоматический вывод.
+        onKind: async (nid, newKind) => {
+          try {
+            await api2.updateDevice(nid, { kind: newKind });
             await reload();
           } catch (err) {
             showNotice(errMessage(err), true);

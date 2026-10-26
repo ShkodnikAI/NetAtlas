@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/internal/gateway"
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/scanner"
 	"github.com/ShkodnikAI/NetAtlas/scanner/arp"
@@ -53,6 +54,10 @@ type Deps struct {
 	// Hostname — имя этой машины для источника «local» (NR-030).
 	// nil — os.Hostname.
 	Hostname func() (string, error)
+	// DefaultGateways — адреса шлюзов по умолчанию этой машины
+	// (NR-032 п.2); nil — чтение таблицы маршрутов через API ОС
+	// (internal/gateway).
+	DefaultGateways func() ([]netip.Addr, error)
 }
 
 // Config — параметры одного сканирования: границы, методы, SNMP,
@@ -93,13 +98,14 @@ type Counters struct {
 	LeasesSkipped int `json:"leases_skipped"`
 }
 
-// Result — итог конвейера: устройства, хосты, SNMP-сбор, топология и
-// счётчики.
+// Result — итог конвейера: устройства, хосты, SNMP-сбор, топология,
+// шлюзы по умолчанию внутри границ скана (NR-032 п.2) и счётчики.
 type Result struct {
 	Devices  []model.Device      `json:"devices"`
 	Hosts    []model.Host        `json:"hosts"`
 	Snmp     []snmp.TargetResult `json:"snmp"`
 	Topology model.Topology      `json:"topology"`
+	Gateways []netip.Addr        `json:"gateways"`
 	Counts   Counters            `json:"counts"`
 }
 
@@ -216,7 +222,24 @@ func Run(ctx context.Context, cfg Config, deps Deps) (Result, error) {
 		Hosts:    res.Hosts,
 		Snmp:     []snmp.TargetResult{},
 		Topology: model.NewTopology(),
+		Gateways: []netip.Addr{},
 		Counts:   Counters{Devices: len(res.Devices), Hosts: len(res.Hosts), Leases: leases, LeasesSkipped: skipped},
+	}
+
+	// Шлюзы по умолчанию (NR-032 п.2): таблица маршрутов хоста
+	// сервера через API ОС; остаются только шлюзы внутри границ
+	// скана. Ошибка чтения не отменяет скан — карта работает без
+	// предполагаемых связей.
+	readGW := deps.DefaultGateways
+	if readGW == nil {
+		readGW = gateway.Default
+	}
+	if gws, gerr := readGW(); gerr == nil {
+		for _, gw := range gws {
+			if cfg.Scope.Contains(gw) {
+				out.Gateways = append(out.Gateways, gw)
+			}
+		}
 	}
 
 	// SNMP только чтение; цели внутри границ проверены вызывающим
@@ -228,8 +251,11 @@ func Run(ctx context.Context, cfg Config, deps Deps) (Result, error) {
 		out.Snmp = collectSNMP(ctx, targets, cfg.SNMPAuth, cfg.Limiter, deps.NewWalker)
 		out.Counts.SNMPTargets = len(out.Snmp)
 		out.Topology = topology.Build(res.Devices, out.Snmp)
-		stage(cfg, "topology")
 	}
+	// Топология строится и без SNMP (NR-032 п.3): устройства остаются
+	// узлами графа, а предполагаемые связи «устройство — шлюз» рисует
+	// отдача карты по шлюзам последнего скана.
+	stage(cfg, "topology")
 	out.Counts.Links = len(out.Topology.Links)
 	return out, nil
 }

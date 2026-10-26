@@ -314,6 +314,7 @@ func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, lea
 		Devices:  res.Devices,
 		Hosts:    res.Hosts,
 		Topology: res.Topology,
+		Gateways: res.Gateways,
 	}, ActorOwner)
 	a.scanMu.Lock()
 	defer a.scanMu.Unlock()

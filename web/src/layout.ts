@@ -171,3 +171,88 @@ export function anyOverlap(nodes: Positioned[]): boolean {
   }
   return false;
 }
+
+// --- NR-032 п.4: детерминированная раскладка карты ----------------------
+
+// Приоритет типа в ряду: роутеры и коммутаторы сверху, затем серверы,
+// компьютеры, принтеры, телефоны, прочее.
+const ROW_ORDER: string[] = [
+  'internet',
+  'router',
+  'switch',
+  'ap',
+  'server',
+  'device',
+  'laptop',
+  'printer',
+  'phone',
+  'iot',
+  'tv',
+  'cloud',
+  'host',
+  'unknown',
+];
+
+// rowRank — номер ряда типа: известные — по ROW_ORDER, прочие — в
+// конец.
+export function rowRank(kind: string): number {
+  const i = ROW_ORDER.indexOf(kind);
+  return i === -1 ? ROW_ORDER.length : i;
+}
+
+// GridKindNode — узел для раскладки: id, тип, подпись.
+export interface GridKindNode {
+  id: string;
+  kind: string;
+  label: string;
+}
+
+// arrangeGrid — детерминированная раскладка: шлюзы и роутеры по
+// центру первого ряда, остальные узлы сеткой по рядам с шагом,
+// учитывающим ширину самой длинной подписи в ряду; порядок внутри
+// ряда — по id (устойчиво к порядку входа). Позиции из saved
+// (сдвинутые владельцем, NR-032 п.4) не трогаются; эти узлы
+// исключаются из раскладки, но остаются в deoverlap.
+export function arrangeGrid(
+  nodes: GridKindNode[],
+  saved: ReadonlySet<string>,
+): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>();
+  const auto = nodes.filter((n) => !saved.has(n.id));
+  if (auto.length === 0) return out;
+
+  // Разбивка по рядам; внутри ряда — по id.
+  const rows = new Map<number, GridKindNode[]>();
+  for (const n of auto) {
+    const rank = rowRank(n.kind);
+    const row = rows.get(rank) ?? [];
+    row.push(n);
+    rows.set(rank, row);
+  }
+  for (const row of rows.values()) {
+    row.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
+  // Ряды сверху вниз: нулевой (шлюзы) — с центрированием первого
+  // ряда, остальные слева направо.
+  const ranks = [...rows.keys()].sort((a, b) => a - b);
+  let y = 0;
+  for (const rank of ranks) {
+    const row = rows.get(rank) ?? [];
+    // Шаг ряда: не меньше ширины самой длинной подписи в ряду.
+    let widest = 0;
+    for (const n of row) {
+      widest = Math.max(widest, measureLabel(n.label).width);
+    }
+    const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
+    // Общая ширина ряда — для центрирования верхнего.
+    const totalWidth = (row.length - 1) * stepX;
+    let x = rank === ranks[0] ? -totalWidth / 2 : 0;
+    for (const n of row) {
+      out.set(n.id, { x, y });
+      x += stepX;
+    }
+    y += GRID_STEP_Y;
+  }
+  return out;
+}

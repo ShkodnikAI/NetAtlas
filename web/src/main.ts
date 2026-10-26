@@ -19,6 +19,7 @@ import { renderDisks } from './disks';
 import { renderQuality } from './quality';
 import { renderSecurity } from './security';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
+import { renderLegend } from './legend';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import {
   renderDevicesTable,
@@ -46,6 +47,10 @@ let current: NodeInfo | null = null;
 let currentLink: LinkInfo | null = null;
 let selectedIds: string[] = [];
 let connectMode = false;
+// savedPositions — узлы, сдвинутые владельцем (NR-032 п.4):
+// детерминированная раскладка их не трогает; кнопка «Выстроить
+// сеткой» очищает набор (и на сервере).
+let savedPositions = new Set<string>();
 
 const addKinds: [string, string][] = [
   ['internet', 'Интернет'],
@@ -56,6 +61,9 @@ const addKinds: [string, string][] = [
   ['device', 'Компьютер'],
   ['laptop', 'Ноутбук'],
   ['printer', 'Принтер'],
+  ['phone', 'Телефон'],
+  ['iot', 'IoT-устройство'],
+  ['tv', 'Телевизор'],
   ['cloud', 'Неуправляемый коммутатор'],
   ['unknown', 'Неизвестное'],
 ];
@@ -76,7 +84,15 @@ function hideNotice(): void {
 async function reload(): Promise<void> {
   try {
     graph = await api.topology();
-    setGraph(cy, graph);
+    // Позиции владельца (NR-032 п.4): сервер помнит сдвинутые узлы.
+    try {
+      const { positions } = await api.positions();
+      savedPositions = new Set(positions.map((p) => p.id));
+    } catch {
+      // без позиций — вся карта сеткой
+    }
+    setGraph(cy, graph, savedPositions);
+    renderLegend($('map-legend'), graph);
     hideNotice();
     if (current !== null) {
       current = graph.nodes.find((n) => n.id === current?.id) ?? null;
@@ -120,6 +136,29 @@ const callbacks: GraphCallbacks = {
 };
 
 const cy = createGraph($('graph'), callbacks);
+
+// Перетаскивание узла запоминается на сервере (NR-032 п.4): позиция
+// переживёт перезагрузку страницы и не будет тронута раскладкой.
+cy.on('dragfree', 'node', (ev) => {
+  const n = ev.target;
+  savedPositions.add(n.id());
+  void api.savePosition(n.id(), n.position('x'), n.position('y')).catch(() => {
+    // позиция косметическая: ошибка сети не роняет интерфейс
+  });
+});
+
+// «Выстроить сеткой» (NR-032 п.4): очистить сохранённые позиции и
+// заново выстроить карту детерминированной сеткой.
+$('btn-arrange').addEventListener('click', async () => {
+  try {
+    await api.clearPositions();
+  } catch {
+    // даже при ошибке сети выстроим локально
+  }
+  savedPositions = new Set<string>();
+  setGraph(cy, graph, savedPositions);
+  renderLegend($('map-legend'), graph);
+});
 
 function pushSelection(id: string): void {
   if (!selectedIds.includes(id)) selectedIds.push(id);
@@ -184,7 +223,7 @@ async function openPanel(id: string): Promise<void> {
     const title = $('panel-title');
     title.textContent = info.hostname !== '' ? info.hostname : info.id;
 
-    fillOverview($('page-overview'), info, kind);
+    fillOverview($('page-overview'), info, kind, () => selectTab('tab-edit'));
 
     const handlers: PanelHandlers = {
       onRename: async (nid, name) => {
@@ -198,6 +237,15 @@ async function openPanel(id: string): Promise<void> {
       onClass: async (nid, klass) => {
         try {
           await api.updateDevice(nid, { class: klass });
+          await reload();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      // Ручной тип (NR-032 п.1) перекрывает автоматический вывод.
+      onKind: async (nid, newKind) => {
+        try {
+          await api.updateDevice(nid, { kind: newKind });
           await reload();
         } catch (err) {
           showNotice(errMessage(err), true);

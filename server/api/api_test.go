@@ -32,6 +32,11 @@ type fakeStore struct {
 	deletedLink   string
 
 	agents        []store.Agent
+	positions     map[string][2]float64
+	positionOrder []string
+	// graph — заглушка для Topology, если задана (тесты NR-032).
+	graph         *store.Graph
+	kindUpdates   []store.Update
 	metrics       map[string][]store.MetricAgg
 	inventory     map[string]store.InventoryRow
 	security      map[string]string // agent → тело отчёта (NR-010)
@@ -64,6 +69,9 @@ func (f *fakeStore) addDev(id string, ips ...netip.Addr) {
 }
 
 func (f *fakeStore) Topology(ctx context.Context) (store.Graph, error) {
+	if f.graph != nil {
+		return *f.graph, nil
+	}
 	g := store.Graph{Nodes: []store.NodeInfo{}, Links: []store.LinkInfo{}}
 	for id, d := range f.devices {
 		g.Nodes = append(g.Nodes, store.NodeInfo{Node: model.Node{ID: id, Kind: model.NodeKindDevice, Label: id},
@@ -91,6 +99,7 @@ func (f *fakeStore) AddManualDevice(ctx context.Context, kind, label, actor stri
 }
 
 func (f *fakeStore) UpdateDevice(ctx context.Context, id string, upd store.Update, actor string) error {
+	f.kindUpdates = append(f.kindUpdates, upd)
 	d, ok := f.devices[id]
 	if !ok {
 		return store.ErrNotFound
@@ -138,6 +147,35 @@ func (f *fakeStore) DeleteManualLink(ctx context.Context, id, actor string) erro
 		return store.ErrNotFound
 	}
 	f.deletedLink = id
+	return nil
+}
+
+func (f *fakeStore) Positions(ctx context.Context) ([]store.NodePosition, error) {
+	out := []store.NodePosition{}
+	for _, id := range f.positionOrder {
+		p := f.positions[id]
+		out = append(out, store.NodePosition{ID: id, X: p[0], Y: p[1]})
+	}
+	return out, nil
+}
+
+func (f *fakeStore) SavePosition(ctx context.Context, id string, x, y float64, actor string) error {
+	if _, ok := f.devices[id]; !ok {
+		return store.ErrNotFound
+	}
+	if f.positions == nil {
+		f.positions = map[string][2]float64{}
+	}
+	if _, seen := f.positions[id]; !seen {
+		f.positionOrder = append(f.positionOrder, id)
+	}
+	f.positions[id] = [2]float64{x, y}
+	return nil
+}
+
+func (f *fakeStore) ClearPositions(ctx context.Context, actor string) error {
+	f.positions = map[string][2]float64{}
+	f.positionOrder = nil
 	return nil
 }
 

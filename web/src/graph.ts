@@ -1,23 +1,17 @@
 // Граф карты сети на cytoscape: связи различаются стилем линии по
-// источнику (lldp/fdb — сплошные, inferred — пунктир, manual —
-// пунктир с подписью «вручную»); ручные и непроверенные элементы
-// помечены. NR-031: «не проверен» — маркер на узле, а не строка в
-// подписи; длинные подписи обрезаются с подсказкой; узлы без связей
-// выстраиваются сеткой; подписи не пересекаются.
+// источнику (lldp/fdb — сплошные, inferred — пунктир, assumed —
+// пунктир другого цвета (NR-032 п.3), manual — пунктир с подписью
+// «вручную»); ручные и непроверенные элементы помечены. NR-031:
+// «не проверен» — маркер на узле, а не строка в подписи; длинные
+// подписи обрезаются с подсказкой; подписи не пересекаются.
+// NR-032: детерминированная раскладка сеткой (п.4), скрытый a11y-слой
+// с data-kind для скринридеров и сквозных тестов (п.6).
 
 import cytoscape from 'cytoscape';
 import type { Core, ElementDefinition, EventObject, NodeSingular } from 'cytoscape';
 import type { Graph, LinkInfo, NodeInfo } from './api';
 import { nodeStyle } from './nodes';
-import {
-  boxOf,
-  deoverlap,
-  gridPlacement,
-  gridPositions,
-  measureLabel,
-  type Box,
-  type Positioned,
-} from './layout';
+import { arrangeGrid, deoverlap, measureLabel, type Positioned } from './layout';
 
 export interface GraphCallbacks {
   // Клик по узлу (или выбор с клавиатуры).
@@ -30,6 +24,7 @@ const STROKE: Record<string, string> = {
   lldp: '#7C8798',
   fdb: '#5F6B7B',
   inferred: '#8FB8E8',
+  assumed: '#B48FE8',
   manual: '#F5B83D',
 };
 
@@ -186,11 +181,12 @@ function linkInfoOf(e: cytoscape.EdgeSingular): LinkInfo {
   };
 }
 
-// setGraph перезаливает данные графа, сохраняя позиции узлов; новые
-// узлы раскладываются так, чтобы подписи не пересекались (NR-031).
-export function setGraph(cy: Core, g: Graph): void {
+// setGraph перезаливает данные графа, сохраняя позиции узлов;
+// раскладка детерминированная (NR-032 п.4): узлы без сохранённой
+// позиции выстраиваются сеткой (шлюз сверху, ряды по типам), узлы,
+// сдвинутые владельцем (saved), не трогаются.
+export function setGraph(cy: Core, g: Graph, saved?: ReadonlySet<string>): void {
   const positions = new Map<string, { x: number; y: number }>();
-  const fresh: string[] = [];
   cy.nodes().forEach((n) => {
     positions.set(n.id(), n.position());
   });
@@ -201,7 +197,6 @@ export function setGraph(cy: Core, g: Graph): void {
   for (const n of g.nodes) {
     const st = nodeStyle(n);
     hasGuests = hasGuests || n.class === 'guest';
-    if (!positions.has(n.id)) fresh.push(n.id);
     elements.push({
       group: 'nodes',
       data: {
@@ -250,7 +245,7 @@ export function setGraph(cy: Core, g: Graph): void {
         target: l.b,
         color,
         label: edgeLabel(l),
-        dashed: l.source === 'inferred' || l.manual ? 'true' : 'false',
+        dashed: l.source === 'inferred' || l.source === 'assumed' || l.manual ? 'true' : 'false',
         // полные поля для панели и callbacks
         a: l.a, aPort: l.aPort, b: l.b, bPort: l.bPort,
         src: l.source, manual: l.manual, verified: l.verified,
@@ -258,64 +253,80 @@ export function setGraph(cy: Core, g: Graph): void {
     });
   }
   cy.add(elements);
-  void cy
-    .layout({ name: 'cose', animate: false, randomize: positions.size === 0 })
-    .run();
-  arrangeFresh(cy, fresh);
+  arrangeMap(cy, g, saved ?? new Set());
+  renderA11y(g);
 }
 
-// arrangeFresh — раскладка новых узлов: без связей — сеткой с шагом
-// по ширине подписи (NR-031 п.4), затем разведение пересечений для
-// всего графа. Существующие позиции не трогаются без нужды.
-function arrangeFresh(cy: Core, fresh: string[]): void {
-  const linked = new Set<string>();
-  cy.edges().forEach((e) => {
-    linked.add(e.source().id());
-    linked.add(e.target().id());
-  });
-  const isolated = fresh.filter((id) => !linked.has(id));
-  // Compound-родители (группа гостей) позиционируются cytoscape сами.
+// arrangeMap — детерминированная раскладка (NR-032 п.4): позиции
+// узлов без сохранённого смещения — из arrangeGrid (шлюз сверху,
+// ряды по типам); затем deoverlap для защиты от пересечений, если
+// сохранённые позиции влезли в сетку.
+function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
   const nodeEls: NodeSingular[] = [];
   cy.nodes().forEach((n) => {
     if (!n.isParent()) nodeEls.push(n);
   });
-  const all: Positioned[] = nodeEls.map((n) => ({
-    id: n.id(),
-    x: n.position('x'),
-    y: n.position('y'),
-    label: measureLabel(String(n.data('label') ?? '')),
-  }));
-  if (isolated.length > 0) {
-    // Габарит связанной части: сетка одиночных уходит правее неё.
-    let connectedBox: Box | null = null;
-    for (const p of all) {
-      if (linked.has(p.id)) {
-        const b = boxOf(p.x, p.y, p.label);
-        connectedBox =
-          connectedBox === null
-            ? b
-            : {
-                x1: Math.min(connectedBox.x1, b.x1),
-                y1: Math.min(connectedBox.y1, b.y1),
-                x2: Math.max(connectedBox.x2, b.x2),
-                y2: Math.max(connectedBox.y2, b.y2),
-              };
-      }
-    }
-    const grid = gridPositions(isolated, gridPlacement(connectedBox));
-    for (const p of all) {
-      const g = grid.get(p.id);
-      if (g !== undefined) {
-        p.x = g.x;
-        p.y = g.y;
-      }
+  const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
+  const grid = arrangeGrid(
+    nodeEls.map((n) => ({
+      id: n.id(),
+      kind: kinds.get(n.id()) ?? 'unknown',
+      label: String(n.data('label') ?? ''),
+    })),
+    saved,
+  );
+  for (const n of nodeEls) {
+    const p = grid.get(n.id());
+    if (p !== undefined) n.position({ x: p.x, y: p.y });
+  }
+  // Пересечения разводятся только среди автоматически расставленных:
+  // узлы владельца не сдвигаются.
+  const auto: Positioned[] = nodeEls
+    .filter((n) => grid.has(n.id()))
+    .map((n) => ({
+      id: n.id(),
+      x: n.position('x'),
+      y: n.position('y'),
+      label: measureLabel(String(n.data('label') ?? '')),
+    }));
+  deoverlap(auto);
+  for (const p of auto) {
+    const n = cy.$id(p.id).first() as NodeSingular | undefined;
+    if (n !== undefined) n.position({ x: p.x, y: p.y });
+  }
+  // Прочие (сохранённые) участвуют в деоверкапе, только если сетка
+  // наехала на них — они сдвигаются минимально.
+  const others: Positioned[] = nodeEls
+    .filter((n) => !grid.has(n.id()) && saved.has(n.id()))
+    .map((n) => ({
+      id: n.id(),
+      x: n.position('x'),
+      y: n.position('y'),
+      label: measureLabel(String(n.data('label') ?? '')),
+    }));
+  if (others.length > 0) {
+    const combined: Positioned[] = [...auto, ...others];
+    deoverlap(combined);
+    for (const p of combined) {
+      const n = cy.$id(p.id).first() as NodeSingular | undefined;
+      if (n !== undefined) n.position({ x: p.x, y: p.y });
     }
   }
-  deoverlap(all);
-  for (const p of all) {
-    const n = cy.$id(p.id);
-    const first = n.first() as NodeSingular | undefined;
-    if (first !== undefined && !first.isParent()) n.position({ x: p.x, y: p.y });
+}
+
+// renderA11y — скрытый список узлов для скринридеров и сквозных
+// тестов (NR-032 п.6): каждый узел — строка с data-kind и типом.
+export function renderA11y(g: Graph): void {
+  const box = document.getElementById('map-a11y');
+  if (box === null) return;
+  box.textContent = '';
+  for (const n of g.nodes) {
+    const li = document.createElement('li');
+    li.dataset.kind = n.kind;
+    li.dataset.id = n.id;
+    const st = nodeStyle(n);
+    li.textContent = `${n.label} — ${st.kindLabel}`;
+    box.append(li);
   }
 }
 
@@ -339,8 +350,11 @@ function nodeMarks(n: NodeInfo): string[] {
   return out;
 }
 
+// edgeLabel — подпись связи: ручная помечается, предполагаемая
+// объясняется легендой (NR-032 п.3), непроверенная — маркером.
 function edgeLabel(l: LinkInfo): string {
   if (l.manual) return 'вручную';
+  if (l.source === 'assumed') return '';
   if (!l.verified) return 'не проверен';
   return '';
 }

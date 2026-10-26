@@ -9,15 +9,18 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/ShkodnikAI/NetAtlas/internal/devkind"
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/server/audit"
 )
 
 // ScanResult — итог одного сканирования для сохранения: устройства,
-// хосты без MAC и топология из scanner.Result, границы скана и время.
+// хосты без MAC и топология из scanner.Result, границы скана, шлюзы
+// по умолчанию (NR-032 п.2) и время.
 type ScanResult struct {
 	Started  time.Time      `json:"started"`
 	Finished time.Time      `json:"finished"`
@@ -25,6 +28,7 @@ type ScanResult struct {
 	Devices  []model.Device `json:"devices"`
 	Hosts    []model.Host   `json:"hosts"`
 	Topology model.Topology `json:"topology"`
+	Gateways []netip.Addr   `json:"gateways"`
 }
 
 // SaveScan сохраняет результат сканирования одной транзакцией:
@@ -89,9 +93,26 @@ func (s *Store) SaveScan(ctx context.Context, scan ScanResult, actor string) err
 	}
 	started := scan.Started.UTC().Format(time.RFC3339Nano)
 	finished := now.UTC().Format(time.RFC3339Nano)
+	// Шлюзы по умолчанию скана (NR-032 п.2): предполагаемые связи
+	// строятся при отдаче карты по последнему скану; валидные адреса,
+	// без повторов.
+	gatewaySet := map[string]bool{}
+	gws := make([]string, 0, len(scan.Gateways))
+	for _, gw := range scan.Gateways {
+		if !gw.IsValid() || gatewaySet[gw.String()] {
+			continue
+		}
+		gatewaySet[gw.String()] = true
+		gws = append(gws, gw.String())
+	}
+	sort.Strings(gws)
+	gatewaysJSON, err := json.Marshal(gws)
+	if err != nil {
+		return fmt.Errorf("store: шлюзы скана: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO scans (started, finished, subnets) VALUES (?, ?, ?)`,
-		started, finished, string(subnetsJSON)); err != nil {
+		`INSERT INTO scans (started, finished, subnets, gateways) VALUES (?, ?, ?, ?)`,
+		started, finished, string(subnetsJSON), string(gatewaysJSON)); err != nil {
 		return fmt.Errorf("store: строка скана: %w", err)
 	}
 	known := map[string]bool{}
@@ -113,7 +134,7 @@ func (s *Store) SaveScan(ctx context.Context, scan ScanResult, actor string) err
 	}
 
 	for _, d := range scan.Devices {
-		if err := upsertDevice(ctx, tx, d, switchIDs[d.ID], now); err != nil {
+		if err := upsertDevice(ctx, tx, d, switchIDs[d.ID], gatewaySet, now); err != nil {
 			return err
 		}
 	}
@@ -283,9 +304,12 @@ func hasObservation(obs []model.Observation, source string) bool {
 
 // upsertDevice добавляет или обновляет устройство и его данные.
 // Обновляются только данные сканера: hostname, vendor, ssid, IP,
-// имена, наблюдения, last_seen, kind. class, label, verified и manual
-// устройства не трогаются.
-func upsertDevice(ctx context.Context, tx *sql.Tx, d model.Device, isSwitch bool, now time.Time) error {
+// имена, наблюдения, last_seen и тип: kind_auto — вывод
+// классификатора по метаданным (NR-032 п.1), kind — тип узла на
+// карте (switch из SNMP-факта, иначе kind_auto), но при ручном
+// выборе владельца (kind_manual = 1) тип не меняется. class, label,
+// verified и manual устройства не трогаются.
+func upsertDevice(ctx context.Context, tx *sql.Tx, d model.Device, isSwitch bool, gateways map[string]bool, now time.Time) error {
 	if d.ID == "" || strings.HasPrefix(d.ID, "manual:") {
 		return fmt.Errorf("store: устройство без MAC-идентификатора %q", d.ID)
 	}
@@ -298,15 +322,30 @@ func upsertDevice(ctx context.Context, tx *sql.Tx, d model.Device, isSwitch bool
 		}
 	}
 	names := make([]model.Name, 0, len(d.Names))
+	nameValues := make([]string, 0, len(d.Names))
 	for _, n := range d.Names {
 		fixed, err := model.NewName(n.Source, n.Name, n.Seen)
 		if err != nil {
 			return fmt.Errorf("store: устройство %s: имя: %w", d.ID, err)
 		}
 		names = append(names, fixed)
+		nameValues = append(nameValues, fixed.Name)
 	}
-	kind := model.NodeKindDevice
+	// Тип по метаданным (NR-032 п.1): классификатор чистый, сеть не
+	// трогает; совпадение IP с шлюзом по умолчанию — сильнейшее
+	// свидетельство роутера.
+	in := devkind.Input{Vendor: d.Vendor, Hostname: d.Hostname, Names: nameValues, MAC: d.ID}
+	for _, ip := range d.IPs {
+		if gateways[ip.String()] {
+			in.IsGateway = true
+			break
+		}
+	}
+	kindAuto := devkind.Classify(in)
+	kind := kindAuto
 	if isSwitch {
+		// SNMP-факт сильнее предположения: коммутатор остаётся
+		// коммутатором, даже если OUI похож на роутер.
 		kind = model.NodeKindSwitch
 	}
 	ts := now.UTC().Format(time.RFC3339Nano)
@@ -315,15 +354,16 @@ func upsertDevice(ctx context.Context, tx *sql.Tx, d model.Device, isSwitch bool
 	ssid := strings.TrimSpace(d.SSID)
 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO devices
-		(id, kind, class, label, hostname, vendor, ssid, manual, verified, first_seen, last_seen)
-		VALUES (?, ?, 'unknown', '', ?, ?, ?, 0, 0, ?, ?)
+		(id, kind, kind_auto, class, label, hostname, vendor, ssid, manual, verified, first_seen, last_seen)
+		VALUES (?, ?, ?, 'unknown', '', ?, ?, ?, 0, 0, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			kind = excluded.kind,
+			kind = CASE WHEN devices.kind_manual = 1 THEN devices.kind ELSE excluded.kind END,
+			kind_auto = excluded.kind_auto,
 			hostname = CASE WHEN excluded.hostname != '' THEN excluded.hostname ELSE devices.hostname END,
 			vendor   = CASE WHEN excluded.vendor   != '' THEN excluded.vendor   ELSE devices.vendor   END,
 			ssid     = CASE WHEN excluded.ssid     != '' THEN excluded.ssid     ELSE devices.ssid     END,
 			last_seen = excluded.last_seen`,
-		d.ID, kind, hostname, vendor, ssid, ts, ts); err != nil {
+		d.ID, kind, kindAuto, hostname, vendor, ssid, ts, ts); err != nil {
 		return fmt.Errorf("store: устройство %s: %w", d.ID, err)
 	}
 	for _, ip := range d.IPs {
