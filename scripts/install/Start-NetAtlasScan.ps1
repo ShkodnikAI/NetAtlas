@@ -48,7 +48,7 @@ try {
         ping         = $true
         names        = $true
         confirm      = $true
-        snmp_targets = @($SnmpTargets)
+        snmp_targets = @($SnmpTargets | Where-Object { $_ })
     }
     $resp = Invoke-NaApi -Uri 'http://127.0.0.1:8484/api/scan' -Method POST -Token $token `
         -JsonBody ($body | ConvertTo-Json -Depth 4)
