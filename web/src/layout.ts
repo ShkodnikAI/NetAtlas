@@ -22,6 +22,20 @@ export const GRID_STEP_Y = NODE_SIZE.height + LABEL_GAP + LABEL_LINE_HEIGHT + 66
 // Колонок в сетке одиночных узлов.
 export const GRID_COLUMNS = 5;
 
+// Шаг привязки к сетке при перетаскивании (NR-033 п.1): по X —
+// полшага раскладки (ряды ниже первого стоят на полшага со сдвигом,
+// колонка шлюза свободна), по Y — шаг рядов.
+export const SNAP_STEP_X = 100;
+export const SNAP_STEP_Y = GRID_STEP_Y;
+
+// snapToGrid — ближайший узел сетки для позиции dragged-узла.
+export function snapToGrid(x: number, y: number): { x: number; y: number } {
+  return {
+    x: Math.round(x / SNAP_STEP_X) * SNAP_STEP_X,
+    y: Math.round(y / SNAP_STEP_Y) * SNAP_STEP_Y,
+  };
+}
+
 // LabelSize — оценка габаритов подписи после переноса по ширине.
 export interface LabelSize {
   width: number;
@@ -233,11 +247,16 @@ export function arrangeGrid(
     row.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
-  // Ряды сверху вниз: нулевой (шлюзы) — с центрированием первого
-  // ряда, остальные слева направо.
+  // Ряды сверху вниз: первый — по центру, остальные — слева
+  // направо с полшаговым сдвигом (NR-033 п.1): колонки шлюзов
+  // остаются свободными, вертикальные участки связей к шлюзу идут
+  // по свободной колонке и не проходят сквозь узлы.
   const ranks = [...rows.keys()].sort((a, b) => a - b);
   let y = 0;
-  for (const rank of ranks) {
+  let lowerStart = 0;
+  for (let i = 0; i < ranks.length; i++) {
+    const rank = ranks[i];
+    if (rank === undefined) continue;
     const row = rows.get(rank) ?? [];
     // Шаг ряда: не меньше ширины самой длинной подписи в ряду.
     let widest = 0;
@@ -247,7 +266,13 @@ export function arrangeGrid(
     const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
     // Общая ширина ряда — для центрирования верхнего.
     const totalWidth = (row.length - 1) * stepX;
-    let x = rank === ranks[0] ? -totalWidth / 2 : 0;
+    let x: number;
+    if (i === 0) {
+      x = -totalWidth / 2;
+      lowerStart = x + SNAP_STEP_X;
+    } else {
+      x = lowerStart;
+    }
     for (const n of row) {
       out.set(n.id, { x, y });
       x += stepX;

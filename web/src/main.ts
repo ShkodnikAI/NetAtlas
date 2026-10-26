@@ -18,9 +18,13 @@ import {
 import { renderDisks } from './disks';
 import { renderQuality } from './quality';
 import { renderSecurity } from './security';
-import { createGraph, setGraph, type GraphCallbacks } from './graph';
+import { createGraph, setGraph, renderA11y, type GraphCallbacks, type GraphStatuses } from './graph';
 import { renderLegend } from './legend';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
+import { fillCard, type CardHandlers } from './card';
+import { renderAttentionPanel, statusesOf, type SignalStatus } from './signals';
+import { snapToGrid } from './layout';
+import type { SignalsView } from './api';
 import {
   renderDevicesTable,
   expectedStages,
@@ -47,6 +51,11 @@ let current: NodeInfo | null = null;
 let currentLink: LinkInfo | null = null;
 let selectedIds: string[] = [];
 let connectMode = false;
+// Сигналы внимания (NR-033 п.4): статусы узлов, панель, счётчик.
+let signalsView: SignalsView = { signals: [], statuses: [] };
+let attentionOpen = false;
+// Открытая полная карточка (NR-033 п.3).
+let openCardId: string | null = null;
 // savedPositions — узлы, сдвинутые владельцем (NR-032 п.4):
 // детерминированная раскладка их не трогает; кнопка «Выстроить
 // сеткой» очищает набор (и на сервере).
@@ -91,8 +100,16 @@ async function reload(): Promise<void> {
     } catch {
       // без позиций — вся карта сеткой
     }
-    setGraph(cy, graph, savedPositions);
-    renderLegend($('map-legend'), graph);
+    // Сигналы внимания (NR-033 п.4): сбой не мешает карте.
+    try {
+      signalsView = await api.signals();
+    } catch {
+      signalsView = { signals: [], statuses: [] };
+    }
+    setGraph(cy, graph, savedPositions, statusProvider());
+    renderA11y(graph, statusProvider());
+    renderLegend($('map-legend'), graph, statusProvider());
+    refreshAttention();
     hideNotice();
     if (current !== null) {
       current = graph.nodes.find((n) => n.id === current?.id) ?? null;
@@ -104,6 +121,47 @@ async function reload(): Promise<void> {
       showNotice(err instanceof Error ? err.message : 'Не удалось загрузить карту', true);
     }
   }
+}
+
+// statusProvider — сводный статус узла: ■ > ▲ > ○ из сигналов;
+// ◇ не проверен и ● в сети подставляются в setGraph/renderA11y.
+function statusProvider(): GraphStatuses {
+  const map = statusesOf(signalsView);
+  return {
+    status: (id: string): SignalStatus =>
+      map.get(id) ?? { status: 'online', decisions: 0 },
+  };
+}
+
+// refreshAttention — панель «Требуют внимания» и счётчик на кнопке.
+function refreshAttention(): void {
+  const panel = $('attention-panel');
+  renderAttentionPanel(panel, signalsView.signals, graph.nodes, {
+    onFocus: (deviceId) => focusNode(deviceId),
+  });
+  panel.hidden = !attentionOpen || signalsView.signals.length === 0;
+  const count = $('attention-count');
+  count.textContent = String(signalsView.signals.length);
+  count.hidden = signalsView.signals.length === 0;
+}
+
+// focusNode — клик по строке панели фокусирует узел (NR-033 п.4):
+// показать карту, выбрать и отцентровать узел, открыть боковую панель.
+function focusNode(deviceId: string): void {
+  const node = graph.nodes.find((n) => n.id === deviceId);
+  if (node === undefined) return;
+  if ((document.querySelector('.workspace') as HTMLElement | null)?.hidden === true) {
+    showScreen('map');
+  }
+  current = node;
+  currentLink = null;
+  cy.$(':selected').unselect();
+  const target = cy.$id(deviceId);
+  if (target.nonempty()) {
+    target.select();
+    cy.animate({ center: { eles: target } }, { duration: 200 });
+  }
+  void openPanel(deviceId);
 }
 
 // --- граф -----------------------------------------------------------------
@@ -122,6 +180,11 @@ const callbacks: GraphCallbacks = {
     currentLinkId = null;
     btn('btn-disconnect').disabled = true;
     void openPanel(node.id);
+  },
+  // Двойной клик по узлу открывает полную карточку (NR-033 п.3).
+  onNodeOpen: (node) => {
+    if (connectMode) return;
+    void openCard(node.id);
   },
   onLinkSelect: (link, edgeId) => {
     if (link === null || edgeId === null) return;
@@ -142,6 +205,13 @@ const cy = createGraph($('graph'), callbacks);
 cy.on('dragfree', 'node', (ev) => {
   const n = ev.target;
   savedPositions.add(n.id());
+  // Привязка к сетке (NR-033 п.1): включена по умолчанию,
+  // переключатель на панели карты.
+  const snap = $('snap-grid') as HTMLInputElement;
+  if (snap.checked) {
+    const snapped = snapToGrid(n.position('x'), n.position('y'));
+    n.position(snapped);
+  }
   void api.savePosition(n.id(), n.position('x'), n.position('y')).catch(() => {
     // позиция косметическая: ошибка сети не роняет интерфейс
   });
@@ -156,8 +226,9 @@ $('btn-arrange').addEventListener('click', async () => {
     // даже при ошибке сети выстроим локально
   }
   savedPositions = new Set<string>();
-  setGraph(cy, graph, savedPositions);
-  renderLegend($('map-legend'), graph);
+  setGraph(cy, graph, savedPositions, statusProvider());
+  renderA11y(graph, statusProvider());
+  renderLegend($('map-legend'), graph, statusProvider());
 });
 
 function pushSelection(id: string): void {
@@ -223,7 +294,7 @@ async function openPanel(id: string): Promise<void> {
     const title = $('panel-title');
     title.textContent = info.hostname !== '' ? info.hostname : info.id;
 
-    fillOverview($('page-overview'), info, kind, () => selectTab('tab-edit'));
+    fillOverview($('page-overview'), info, kind, () => selectTab('tab-edit'), () => void openCard(info.id));
 
     const handlers: PanelHandlers = {
       onRename: async (nid, name) => {
@@ -294,6 +365,147 @@ async function openPanel(id: string): Promise<void> {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Неизвестная ошибка';
+}
+
+// --- полная карточка устройства (NR-033 п.3) --------------------------------
+
+// openCard — двойной клик, Enter на выбранном узле или кнопка в
+// боковой панели: экран «Карточка устройства» со всей информацией.
+async function openCard(id: string): Promise<void> {
+  try {
+    const info: DeviceInfo = await api.device(id);
+    openCardId = id;
+    // Открытые решения устройства — из уже загруженных сигналов;
+    // если сигналов нет, карточка честно показывает «решений нет».
+    const decisions = signalsView.signals.filter((s) => s.device_id === id && s.decision);
+    // Ручная связь для разрыва: первая ручная связь устройства.
+    const manualLink = graph.links.find((l) => l.manual && (l.a === id || l.b === id));
+    const handlers: CardHandlers = {
+      onClose: () => {
+        openCardId = null;
+        showScreen('map');
+      },
+      onClass: async (nid, klass) => {
+        try {
+          await api.updateDevice(nid, { class: klass });
+          showNotice('Класс изменён.', false);
+          await refreshAfterCardAction(nid);
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onKind: async (nid, kind) => {
+        try {
+          await api.updateDevice(nid, { kind });
+          showNotice('Тип изменён.', false);
+          await refreshAfterCardAction(nid);
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onVerify: async (nid) => {
+        const verdict = document.getElementById('card-verdict');
+        try {
+          const rep = await api.verify(nid);
+          const alive = rep.results.filter((r) => r.alive).length;
+          if (verdict !== null) {
+            verdict.className = `verdict ${rep.verified ? 'ok' : 'bad'}`;
+            verdict.textContent = rep.verified
+              ? `Живых адресов: ${alive} из ${rep.results.length} — устройство проверено`
+              : `Ответов нет: 0 из ${rep.results.length}`;
+          }
+          await refreshAfterCardAction(nid);
+        } catch (err) {
+          if (verdict !== null) {
+            verdict.className = 'verdict bad';
+            verdict.textContent = errMessage(err);
+          }
+        }
+      },
+      onConnect: (nid) => {
+        openCardId = null;
+        showScreen('map');
+        connectMode = true;
+        selectedIds = [nid];
+        btn('btn-connect').disabled = true;
+        cy.$id(nid).select();
+        updateConnectHint();
+      },
+      onDisconnect: async (nid) => {
+        const link = graph.links.find((l) => l.manual && (l.a === nid || l.b === nid));
+        if (link === undefined) return;
+        try {
+          await api.deleteLink(`${link.a}|${link.aPort}|${link.b}|${link.bPort}`);
+          showNotice('Связь разорвана.', false);
+          await refreshAfterCardAction(nid);
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onDelete: async (nid) => {
+        try {
+          await api.deleteDevice(nid);
+          openCardId = null;
+          showScreen('map');
+          await reload();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onAccept: async (nid, klass) => {
+        try {
+          await api.updateDevice(nid, { class: klass });
+          showNotice('Решение принято: класс устройства изменён.', false);
+          await refreshAfterCardAction(nid);
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onSnooze: async (nid, kind, days) => {
+        try {
+          await api.snoozeSignal(nid, kind, days);
+          showNotice(`Сигнал скрыт на ${days} дн.`, false);
+          await refreshAfterCardAction(nid);
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+      onReport: async (_nid, agentID, label) => {
+        try {
+          const res = await api.createReport(
+            'custom',
+            agentID,
+            `Устройство «${label}»: что о нём известно и что стоит проверить.`,
+          );
+          showNotice(
+            res.warnings.length > 0
+              ? `Отчёт №${res.id} создан. Внимание: ${res.warnings.join('; ')}`
+              : `Отчёт №${res.id} создан: текст очищен, проверьте перед отправкой.`,
+            res.warnings.length > 0,
+          );
+          openCardId = null;
+          showScreen('reports');
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      },
+    };
+    fillCard($('card-root'), info, graph, decisions, manualLink !== undefined, handlers);
+    showScreen('card');
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 401)) {
+      showNotice(errMessage(err), true);
+    }
+  }
+}
+
+// refreshAfterCardAction — перезагрузить данные и переоткрыть
+// карточку с новыми данными (решение принято, бейджи обновились).
+async function refreshAfterCardAction(id: string): Promise<void> {
+  await reload();
+  if (openCardId === id) {
+    await openCard(id);
+  }
 }
 
 // --- вкладки ---------------------------------------------------------------
@@ -382,7 +594,7 @@ api.onUnauthorized = () => askToken();
 
 // --- экраны ----------------------------------------------------------------
 
-type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts' | 'activity' | 'reports';
+type ScreenName = 'map' | 'scan' | 'devices' | 'computers' | 'disks' | 'quality' | 'security' | 'scripts' | 'activity' | 'reports' | 'card';
 
 let openComputerId: string | null = null;
 
@@ -396,6 +608,7 @@ function showScreen(name: ScreenName): void {
   $('screen-scripts').hidden = name !== 'scripts';
   $('screen-activity').hidden = name !== 'activity';
   $('screen-reports').hidden = name !== 'reports';
+  $('screen-card').hidden = name !== 'card';
   (document.querySelector('.workspace') as HTMLElement).hidden = name !== 'map';
   document.querySelectorAll('nav .item[data-page]').forEach((item) => {
     const on = (item as HTMLElement).dataset.page === name;
@@ -973,6 +1186,12 @@ async function refreshAuditBadge(): Promise<void> {
 $('panel-close').addEventListener('click', closePanel);
 $('btn-reload').addEventListener('click', () => void reload());
 
+// Панель «Требуют внимания» (NR-033 п.4): показать/скрыть список.
+$('btn-attention').addEventListener('click', () => {
+  attentionOpen = !attentionOpen;
+  refreshAttention();
+});
+
 $('btn-connect').addEventListener('click', () => {
   if (connectMode) {
     exitConnectMode();
@@ -1003,8 +1222,24 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
     if (($('add-dialog') as HTMLDialogElement).open) return;
     if (($('token-dialog') as HTMLDialogElement).open) return;
+    if ((document.getElementById('screen-card') as HTMLElement | null)?.hidden === false) {
+      openCardId = null;
+      showScreen('map');
+      return;
+    }
     closePanel();
     if (connectMode) exitConnectMode();
+  }
+  // Клавиатурный доступ (NR-033 п.3): Enter на выбранном узле
+  // открывает полную карточку; в полях ввода и диалогах — нет.
+  if (ev.key === 'Enter' && current !== null) {
+    const tag = (ev.target as HTMLElement | null)?.tagName ?? '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (($('token-dialog') as HTMLDialogElement).open) return;
+    if (($('add-dialog') as HTMLDialogElement).open) return;
+    if ((document.getElementById('screen-card') as HTMLElement | null)?.hidden === false) return;
+    ev.preventDefault();
+    void openCard(current.id);
   }
 });
 

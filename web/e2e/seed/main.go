@@ -11,10 +11,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/netip"
 	"os"
 	"time"
+
+	_ "modernc.org/sqlite" // драйвер «sqlite» без cgo
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
 	"github.com/ShkodnikAI/NetAtlas/server/store"
@@ -110,7 +113,27 @@ func run() error {
 	if err := st.SaveScan(context.Background(), scan, "e2e"); err != nil {
 		return fmt.Errorf("SaveScan: %w", err)
 	}
+	if err := makeStale(os.Args[1]); err != nil {
+		return err
+	}
 	fmt.Println("seed: 12 устройств, шлюз 192.168.100.1, связей нет (карта построит предполагаемые)")
+	return nil
+}
+
+// makeStale — одно устройство не видело сеть трое суток: на карте
+// есть сигнал «не отвечает дольше порога» и маркер ○ (NR-033 п.4).
+// Прямой UPDATE после SaveScan: сеялке нужно именно старое время
+// последнего обнаружения.
+func makeStale(dbPath string) error {
+	d, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return fmt.Errorf("stale: открытие: %w", err)
+	}
+	defer d.Close()
+	old := time.Now().AddDate(0, 0, -3).UTC().Format(time.RFC3339Nano)
+	if _, err := d.Exec(`UPDATE devices SET last_seen = ? WHERE id = '02:00:00:00:00:12'`, old); err != nil {
+		return fmt.Errorf("stale: update: %w", err)
+	}
 	return nil
 }
 

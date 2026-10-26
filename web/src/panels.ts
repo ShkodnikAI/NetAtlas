@@ -74,6 +74,7 @@ export function fillOverview(
   info: DeviceInfo,
   kind: string,
   onChangeKind: () => void = () => undefined,
+  onOpenCard: () => void = () => undefined,
 ): void {
   page.textContent = '';
   const dl = el('dl', 'kv');
@@ -125,6 +126,14 @@ export function fillOverview(
     marks.append(b);
   }
   if (marks.childNodes.length > 0) page.append(marks);
+
+  // NR-033 п.3: одинарный клик — краткая панель, полная карточка —
+  // по двойному клику или по этой кнопке.
+  const open = el('button', 'link') as HTMLButtonElement;
+  open.type = 'button';
+  text(open, 'Открыть полную карточку');
+  open.addEventListener('click', onOpenCard);
+  page.append(open);
 }
 
 // className — человекочитаемое название класса.

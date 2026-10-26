@@ -6,16 +6,21 @@
 // подписи обрезаются с подсказкой; подписи не пересекаются.
 // NR-032: детерминированная раскладка сеткой (п.4), скрытый a11y-слой
 // с data-kind для скринридеров и сквозных тестов (п.6).
+// NR-033: связи ортогональные (curve-style taxi, излом под прямым
+// углом в зазоре между рядами), двойной клик открывает полную
+// карточку, значки несут маркер статуса и счётчик решений.
 
 import cytoscape from 'cytoscape';
 import type { Core, ElementDefinition, EventObject, NodeSingular } from 'cytoscape';
 import type { Graph, LinkInfo, NodeInfo } from './api';
-import { nodeStyle } from './nodes';
+import { nodeStyle, STATUS_STYLES, type NodeStatusKind } from './nodes';
 import { arrangeGrid, deoverlap, measureLabel, type Positioned } from './layout';
 
 export interface GraphCallbacks {
   // Клик по узлу (или выбор с клавиатуры).
   onNodeSelect: (node: NodeInfo | null) => void;
+  // Двойной клик по узлу: открыть полную карточку (NR-033 п.3).
+  onNodeOpen: (node: NodeInfo) => void;
   // Клик по связи (для разрыва ручной связи): вторым — id связи cytoscape.
   onLinkSelect: (link: LinkInfo | null, edgeId: string | null) => void;
 }
@@ -53,7 +58,8 @@ export function createGraph(
           'background-fit': 'contain',
           'background-opacity': 1,
           'border-width': 2,
-          'border-color': '#2E3A4C',
+          // Ободок статуса (NR-033 п.2): цвет от сигналов узла.
+          'border-color': 'data(border)',
           color: '#E6EAF0',
           'font-size': 11,
           'font-family': 'system-ui, sans-serif',
@@ -71,15 +77,10 @@ export function createGraph(
         style: { 'border-color': '#F5B83D' },
       },
       {
-        // NR-031 п.4: «не проверен» — жёлтый ореол вокруг узла, а не
-        // строка в подписи.
+        // NR-031 п.4, NR-033 п.2: «не проверен» — пунктирный ободок и
+        // маркер ◇ на значке, а не строка в подписи.
         selector: 'node.unverified',
-        style: {
-          'border-style': 'dashed',
-          'overlay-color': '#F5B83D',
-          'overlay-opacity': 0.55,
-          'overlay-padding': 3,
-        },
+        style: { 'border-style': 'dashed' },
       },
       {
         selector: 'edge',
@@ -87,7 +88,15 @@ export function createGraph(
           width: 1.6,
           'line-color': 'data(color)',
           'target-arrow-color': 'data(color)',
-          'curve-style': 'straight',
+          // Ортогональные связи (NR-033 п.1): ломаная под прямыми
+          // углами. taxi-direction vertical: вертикальный участок у
+          // источника, горизонталь в зазоре между рядами (излом на
+          // полшага ряда — 35px + половина высоты узла от центра),
+          // вертикаль по колонке цели.
+          'curve-style': 'taxi',
+          'taxi-direction': 'vertical',
+          'taxi-turn': '35px',
+          'taxi-turn-min-distance': 8,
           color: '#9AA6B5',
           'font-size': 10,
           label: 'data(label)',
@@ -109,9 +118,23 @@ export function createGraph(
     wheelSensitivity: 0.2,
   });
 
+  // Двойной клик (NR-033 п.3): cytoscape не умеет dblclick — два
+  // быстрых tap по одному узлу в пределах 400 мс открывают карточку.
+  let lastTapId = '';
+  let lastTapAt = 0;
   cy.on('tap', 'node', (ev: EventObject) => {
     const n = ev.target as NodeSingular;
-    cb.onNodeSelect(nodeInfoOf(n));
+    const info = nodeInfoOf(n);
+    const now = Date.now();
+    if (info.id === lastTapId && now - lastTapAt < 400) {
+      lastTapId = '';
+      lastTapAt = 0;
+      cb.onNodeOpen(info);
+      return;
+    }
+    lastTapId = info.id;
+    lastTapAt = now;
+    cb.onNodeSelect(info);
     cb.onLinkSelect(null, null);
   });
   cy.on('tap', 'edge', (ev: EventObject) => {
@@ -185,7 +208,18 @@ function linkInfoOf(e: cytoscape.EdgeSingular): LinkInfo {
 // раскладка детерминированная (NR-032 п.4): узлы без сохранённой
 // позиции выстраиваются сеткой (шлюз сверху, ряды по типам), узлы,
 // сдвинутые владельцем (saved), не трогаются.
-export function setGraph(cy: Core, g: Graph, saved?: ReadonlySet<string>): void {
+// GraphStatuses — статусы узлов из сигналов (NR-033 п.4): маркер на
+// значке, ободок плашки и счётчик открытых решений.
+export interface GraphStatuses {
+  status: (id: string) => { status: NodeStatusKind; decisions: number };
+}
+
+export function setGraph(
+  cy: Core,
+  g: Graph,
+  saved?: ReadonlySet<string>,
+  statuses?: GraphStatuses,
+): void {
   const positions = new Map<string, { x: number; y: number }>();
   cy.nodes().forEach((n) => {
     positions.set(n.id(), n.position());
@@ -195,7 +229,12 @@ export function setGraph(cy: Core, g: Graph, saved?: ReadonlySet<string>): void 
   const elements: ElementDefinition[] = [];
   let hasGuests = false;
   for (const n of g.nodes) {
-    const st = nodeStyle(n);
+    const nodeStatus = statuses?.status(n.id) ?? { status: 'online' as NodeStatusKind, decisions: 0 };
+    // Непроверенный узел без более сильного сигнала показывается как
+    // ◇ не проверен (NR-033 п.2).
+    const status: NodeStatusKind =
+      nodeStatus.status === 'online' && !n.verified ? 'unverified' : nodeStatus.status;
+    const st = nodeStyle(n, status, nodeStatus.decisions);
     hasGuests = hasGuests || n.class === 'guest';
     elements.push({
       group: 'nodes',
@@ -206,6 +245,7 @@ export function setGraph(cy: Core, g: Graph, saved?: ReadonlySet<string>): void 
         fullLabel: n.label || n.id,
         marks: nodeMarks(n).join(', '),
         icon: st.icon,
+        border: st.borderColor,
         manual: n.manual,
         verified: n.verified,
         kindLabel: st.kindLabel,
@@ -254,7 +294,19 @@ export function setGraph(cy: Core, g: Graph, saved?: ReadonlySet<string>): void 
   }
   cy.add(elements);
   arrangeMap(cy, g, saved ?? new Set());
-  renderA11y(g);
+  fitIfClipped(cy);
+}
+
+// fitIfClipped — если карта не влезает в окно (шлюз у края канвы,
+// NR-033 п.1: обзор всей карты), подгоняет масштаб; пока карта видна
+// целиком, зум и панорама владельца не трогаются.
+function fitIfClipped(cy: Core): void {
+  if (cy.elements().length === 0) return;
+  const bb = cy.elements().boundingBox();
+  const ext = cy.extent();
+  const inside =
+    bb.x1 >= ext.x1 && bb.x2 <= ext.x2 && bb.y1 >= ext.y1 && bb.y2 <= ext.y2;
+  if (!inside) cy.fit(cy.elements(), 90);
 }
 
 // arrangeMap — детерминированная раскладка (NR-032 п.4): позиции
@@ -315,8 +367,9 @@ function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
 }
 
 // renderA11y — скрытый список узлов для скринридеров и сквозных
-// тестов (NR-032 п.6): каждый узел — строка с data-kind и типом.
-export function renderA11y(g: Graph): void {
+// тестов (NR-032 п.6): каждый узел — строка с data-kind, типом и
+// статусом (NR-033 п.4).
+export function renderA11y(g: Graph, statuses?: GraphStatuses): void {
   const box = document.getElementById('map-a11y');
   if (box === null) return;
   box.textContent = '';
@@ -324,8 +377,13 @@ export function renderA11y(g: Graph): void {
     const li = document.createElement('li');
     li.dataset.kind = n.kind;
     li.dataset.id = n.id;
+    const nodeStatus = statuses?.status(n.id) ?? { status: 'online' as NodeStatusKind, decisions: 0 };
+    const status: NodeStatusKind =
+      nodeStatus.status === 'online' && !n.verified ? 'unverified' : nodeStatus.status;
     const st = nodeStyle(n);
-    li.textContent = `${n.label} — ${st.kindLabel}`;
+    const glyph = STATUS_STYLES[status]?.glyph ?? '';
+    const label = STATUS_STYLES[status]?.label ?? '';
+    li.textContent = `${n.label} — ${st.kindLabel} — ${glyph} ${label}`;
     box.append(li);
   }
 }

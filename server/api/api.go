@@ -56,6 +56,15 @@ type Store interface {
 	SaveScan(ctx context.Context, scan store.ScanResult, actor string) error
 	ListAlerts(ctx context.Context) ([]store.Alert, error)
 	AckAlert(ctx context.Context, id int64, actor string) error
+	// Сигналы внимания (NR-033 п.4).
+	SignalDevices(ctx context.Context) ([]store.SignalDeviceRow, error)
+	OpenAlerts(ctx context.Context) ([]store.OpenAlert, error)
+	OpenAlertsByDevice(ctx context.Context, deviceID string) ([]store.OpenAlert, error)
+	AgentsByMAC(ctx context.Context) (map[string]store.AgentRef, error)
+	ActiveSnoozes(ctx context.Context, now time.Time) (map[string]bool, error)
+	SnoozeSignal(ctx context.Context, deviceID, kind string, until time.Time, actor string, now time.Time) error
+	LastActivityAccount(ctx context.Context, agentID string) (string, error)
+	AuditForTarget(ctx context.Context, target string, limit int) ([]store.HistoryEntry, error)
 	IssueEnrollToken(ctx context.Context, actor string) (string, error)
 	ListAgents(ctx context.Context) ([]store.Agent, error)
 	RevokeAgent(ctx context.Context, id, actor string) error
@@ -152,6 +161,9 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	a.auditOK.Store(true) // цепочка целая, пока проверка старта не скажет иное
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/topology", a.handleTopology)
+	// Сигналы внимания (NR-033 п.4).
+	mux.HandleFunc("GET /api/signals", a.handleSignals)
+	mux.HandleFunc("POST /api/signals/snooze", a.handleSnoozeSignal)
 	mux.HandleFunc("GET /api/devices/{id}", a.handleDevice)
 	mux.HandleFunc("POST /api/devices", a.handleAddDevice)
 	mux.HandleFunc("PATCH /api/devices/{id}", a.handleUpdateDevice)
@@ -321,14 +333,16 @@ func (a *API) handleTopology(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, g)
 }
 
-// handleDevice — GET /api/devices/{id}: карточка устройства.
+// handleDevice — GET /api/devices/{id}: полная карточка устройства
+// (NR-033 п.2a): базовые сведения плюс агент, инвентарь,
+// безопасность, порты, качество, оповещения, история.
 func (a *API) handleDevice(w http.ResponseWriter, r *http.Request) {
 	info, err := a.store.Device(r.Context(), r.PathValue("id"))
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, info)
+	writeJSON(w, http.StatusOK, a.enrichDeviceCard(r, info))
 }
 
 // addDeviceBody — тело POST /api/devices.
