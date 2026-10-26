@@ -2,7 +2,8 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
 
 permissions:
@@ -69,6 +70,38 @@ jobs:
 
       - name: dist соответствует коммиту
         run: git diff --exit-code web/dist
+
+      # NR-031: сквозной тест интерфейса в настоящем Chromium.
+      # Сервер собирается со встроенным web/dist (go:embed), сеется
+      # фикстурой из web/e2e/seed, браузер входит токеном и проверяет
+      # экраны; скриншоты выкладываются артефактом.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: сборка сервера и сеялки фикстуры
+        run: |
+          go build -o "$RUNNER_TEMP/netatlas-server" ./cmd/netatlas-server
+          go build -o "$RUNNER_TEMP/seed" ./web/e2e/seed
+
+      - name: install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: e2e (Playwright, Chromium)
+        working-directory: web
+        env:
+          NETATLAS_E2E_SERVER: ${{ runner.temp }}/netatlas-server
+          NETATLAS_E2E_SEED: ${{ runner.temp }}/seed
+        run: npm run e2e
+
+      - name: скриншоты экранов (артефакт)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-screens
+          path: web/e2e-results/screens
+          if-no-files-found: warn
 
   # NR-027: сборка релиза тем же сценарием (без публикации) и проверка
   # архива — ловит поломку релиза до выпуска тега.

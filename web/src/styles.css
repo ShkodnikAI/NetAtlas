@@ -18,6 +18,12 @@
 
 * { box-sizing: border-box; }
 
+/* NR-031 п.1: скрытость через атрибут hidden обязана работать всегда:
+   правила с display по идентификатору/классу перебивают браузерное
+   [hidden] { display: none } (специфичность), из-за чего три экрана
+   были видны одновременно. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -352,12 +358,90 @@ dialog .error { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-si
 
 #scan-subnets label, #scan-subnets .row { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; }
 
+/* NR-031 п.2: сообщение об ошибке загрузки конфигурации и повтор. */
+#scan-config-error { margin: 6px 0 0; }
+
+#screen-scan button:not([aria-pressed]),
+#screen-devices button:not([aria-pressed]) {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+#screen-scan button:not([aria-pressed]):disabled { opacity: 0.5; cursor: default; }
+
+#screen-scan button:not([aria-pressed]):hover:not(:disabled) { border-color: var(--accent); }
+
+/* NR-031 п.7: сворачиваемый блок «Дополнительно» (файл аренд). */
+#scan-advanced {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+#scan-advanced summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+#scan-advanced[open] summary { margin-bottom: 8px; }
+
+#scan-advanced label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+
+#scan-advanced input[type='text'],
+#scan-advanced select {
+  width: 100%;
+  max-width: 420px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* NR-031 п.4: всплывающая подсказка с полной подписью узла. */
+#graph-tooltip {
+  position: absolute;
+  z-index: 10;
+  max-width: 320px;
+  background: rgba(14, 17, 22, 0.95);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: pre-line;
+  word-break: break-all;
+}
+
+/* NR-031 п.3: пустое состояние таблицы устройств. */
+#devices-table td.empty {
+  font-family: var(--sans);
+  color: var(--muted);
+  padding: 18px 8px;
+  text-align: center;
+}
+
 #devices-table td {
   padding: 6px 8px;
   border-bottom: 1px solid var(--line);
   font-family: var(--mono);
   font-size: 12px;
   word-break: break-all;
+}
+
+#devices-table td select {
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
 }
 
 #devices-table button { margin-right: 4px; }

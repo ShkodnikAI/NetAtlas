@@ -22,7 +22,6 @@
     <button class="item" data-page="security">Безопасность</button>
     <button class="item" data-page="scripts">Скрипты и тесты</button>
     <button class="item" data-page="activity">Активность</button>
-    <button class="item soon" disabled>Активность <span class="soon-badge">скоро</span></button>
     <button class="item" data-page="reports">Отчёты для ИИ</button>
     <div id="audit-badge" class="audit-badge" role="status" hidden></div>
   </nav>
@@ -49,6 +48,8 @@
       <fieldset style="border:1px solid var(--line);border-radius:8px;padding:12px">
         <legend>Подсети</legend>
         <div id="scan-subnets" class="row">Загрузка конфигурации…</div>
+        <p id="scan-config-error" class="verdict bad" hidden></p>
+        <button id="scan-retry" hidden>Повторить</button>
       </fieldset>
       <fieldset style="border:1px solid var(--line);border-radius:8px;padding:12px">
         <legend>Методы</legend>
@@ -57,19 +58,23 @@
           <label style="margin:0"><input type="checkbox" id="scan-names" checked> Имена (NetBIOS, mDNS, SSDP)</label>
         </div>
         <label for="scan-snmp">Цели SNMP (только чтение, через запятую)</label>
-        <input type="text" id="scan-snmp" placeholder="192.168.1.1, 192.168.1.2" spellcheck="false">
+        <input type="text" id="scan-snmp" placeholder="192.168.100.1" spellcheck="false">
         <p class="subtitle" id="scan-snmp-note" hidden>SNMP-учётные данные не настроены на сервере: цели указывать бессмысленно.</p>
-        <label for="scan-leases-path">Файл DHCP-аренд на сервере (необязательно)</label>
-        <input type="text" id="scan-leases-path" placeholder="/var/lib/dhcp/dhcpd.leases" spellcheck="false">
-        <label for="scan-leases-format">Формат файла аренд</label>
-        <select id="scan-leases-format">
-          <option value="isc">isc (dhcpd.leases)</option>
-          <option value="csv">csv</option>
-        </select>
-        <p class="subtitle">Файл читается на сервере (не больше 5 МБ); аренды вне выбранных подсетей игнорируются.</p>
+        <details id="scan-advanced">
+          <summary>Дополнительно — файл DHCP-аренд</summary>
+          <label for="scan-leases-path">Файл DHCP-аренд на сервере (необязательно)</label>
+          <input type="text" id="scan-leases-path" placeholder="например, C:\путь\к\файлу" spellcheck="false">
+          <label for="scan-leases-format">Формат файла аренд</label>
+          <select id="scan-leases-format">
+            <option value="isc">isc (dhcpd.leases)</option>
+            <option value="csv">csv</option>
+          </select>
+          <p class="subtitle">Файл читается на сервере (не больше 5 МБ); аренды вне выбранных подсетей игнорируются.</p>
+        </details>
       </fieldset>
       <div class="row">
         <button id="scan-run">Запустить сканирование</button>
+        <span id="scan-run-hint" class="subtitle"></span>
         <span id="scan-error" class="verdict bad" hidden></span>
       </div>
       <div id="scan-progress-wrap" hidden>
@@ -91,6 +96,8 @@
             <th style="padding:6px 8px;border-bottom:1px solid var(--line)">MAC</th>
             <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Производитель</th>
             <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Класс</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Последнее обнаружение</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Источники</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -155,6 +162,7 @@
     <div class="workspace">
       <section class="canvas-wrap" aria-label="Граф сети">
         <div id="graph" role="application" aria-label="Карта сети"></div>
+        <div id="graph-tooltip" hidden></div>
         <div class="hint">Сплошные линии — LLDP и таблицы MAC; пунктир — вывод построителя и ручные связи</div>
       </section>
 

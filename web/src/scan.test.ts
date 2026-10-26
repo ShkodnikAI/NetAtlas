@@ -5,11 +5,15 @@ import { describe, expect, it } from 'vitest';
 import type { DeviceInfo } from './api';
 import {
   deviceRow,
+  displayName,
   expectedStages,
   renderAlerts,
+  renderDevicesTable,
   renderProgress,
   setupScanScreen,
+  sortDevicesByIP,
   startScan,
+  subnetGateway,
   type ScreenElems,
 } from './scan';
 
@@ -44,6 +48,20 @@ describe('setupScanScreen', () => {
     expect((boxes[0] as HTMLInputElement).checked).toBe(true);
     expect(el.snmp.disabled).toBe(true);
     expect(el.snmpNote.hidden).toBe(false);
+  });
+
+  it('все подсети отмечены по умолчанию, подсказка SNMP из первой подсети (NR-031 п.7)', () => {
+    const el = elems();
+    setupScanScreen({ subnets: ['192.168.100.0/24'], snmp: true }, el);
+    const boxes = [...el.subnets.querySelectorAll('input[type="checkbox"]')];
+    expect(boxes.every((b) => (b as HTMLInputElement).checked)).toBe(true);
+    expect(el.snmp.placeholder).toBe('192.168.100.1');
+  });
+
+  it('мусор вместо подсети не ломает подсказку', () => {
+    const el = elems();
+    setupScanScreen({ subnets: ['мусор'], snmp: true }, el);
+    expect(el.snmp.placeholder).toBe('');
   });
 });
 
@@ -137,7 +155,10 @@ describe('deviceRow', () => {
     class: 'unknown',
     ips: ['10.0.0.11'],
     names: [],
-    observations: [],
+    observations: [
+      { source: 'arp', seen: '2026-10-26T08:00:00Z' },
+      { source: 'ping', seen: '2026-10-26T09:00:00Z' },
+    ],
     vendor: 'Cisco',
     ssid: '',
     manual: false,
@@ -150,16 +171,125 @@ describe('deviceRow', () => {
     expect(tr.textContent).toContain('printer');
   });
 
-  it('четыре кнопки класса вызывают PATCH-обработчик', () => {
+  it('семь ячеек: имя, IP, MAC, производитель, класс, время, источники (NR-031)', () => {
+    const tr = deviceRow(base, () => {});
+    const tds = [...tr.querySelectorAll('td')];
+    expect(tds).toHaveLength(7);
+    expect(tds[0]?.textContent).toBe('printer');
+    expect(tds[1]?.textContent).toBe('10.0.0.11');
+    expect(tds[2]?.textContent).toBe('00:00:00:00:00:0b');
+    expect(tds[3]?.textContent).toBe('Cisco');
+    expect(tds[5]?.textContent).not.toBe('—');
+    expect(tds[6]?.textContent).toBe('arp, ping');
+  });
+
+  it('класс — выбор из четырёх вариантов, смена вызывает обработчик (NR-031)', () => {
     let got: [string, string] | null = null;
     const tr = deviceRow(base, (id, klass) => {
       got = [id, klass];
     });
-    const buttons = [...tr.querySelectorAll('button')];
-    expect(buttons).toHaveLength(4);
-    const guest = buttons.find((b) => b.textContent === 'Гость') as HTMLButtonElement;
-    guest.click();
+    const select = tr.querySelector('select') as HTMLSelectElement;
+    expect(select.options).toHaveLength(4);
+    expect(select.value).toBe('unknown');
+    select.value = 'guest';
+    select.dispatchEvent(new Event('change'));
     expect(got).toEqual(['00:00:00:00:00:0b', 'guest']);
+  });
+
+  it('имя без hostname берётся из первого имени, потом производитель', () => {
+    const named: DeviceInfo = {
+      ...base,
+      hostname: '',
+      names: [{ source: 'dns', name: 'nas.local', seen: '2026-10-26T08:00:00Z' }],
+    };
+    expect(displayName(named)).toBe('nas.local');
+    const vendored: DeviceInfo = { ...base, hostname: '', names: [] };
+    expect(displayName(vendored)).toBe('Cisco');
+    expect(displayName({ ...base, hostname: '', names: [], vendor: '' })).toBe(base.id);
+  });
+
+  it('без наблюдений время — прочерк, источники пусты', () => {
+    const tr = deviceRow({ ...base, observations: [] }, () => {});
+    const tds = [...tr.querySelectorAll('td')];
+    expect(tds[5]?.textContent).toBe('—');
+    expect(tds[6]?.textContent).toBe('');
+  });
+});
+
+describe('subnetGateway', () => {
+  it('первый хост подсети (NR-031 п.7)', () => {
+    expect(subnetGateway('192.168.100.0/24')).toBe('192.168.100.1');
+    expect(subnetGateway('10.0.0.128/25')).toBe('10.0.0.1');
+  });
+
+  it('не IPv4 или мусор — null', () => {
+    expect(subnetGateway('fd00::/64')).toBeNull();
+    expect(subnetGateway('мусор')).toBeNull();
+    expect(subnetGateway('300.1.1.0/24')).toBeNull();
+    expect(subnetGateway('10.0.0.0')).toBeNull();
+  });
+});
+
+describe('sortDevicesByIP (NR-031 п.3)', () => {
+  const dev = (id: string, ips: string[]): DeviceInfo => ({
+    id,
+    hostname: '',
+    class: 'unknown',
+    ips,
+    names: [],
+    observations: [],
+    vendor: '',
+    ssid: '',
+    manual: false,
+    verified: false,
+  });
+
+  it('сортирует по первому IPv4 численно, без адреса — в конец', () => {
+    const sorted = sortDevicesByIP([
+      dev('aa', ['192.168.100.23']),
+      dev('bb', []),
+      dev('cc', ['10.0.0.2', '192.168.100.1']),
+      dev('dd', ['192.168.100.9']),
+    ]);
+    expect(sorted.map((d) => d.id)).toEqual(['cc', 'dd', 'aa', 'bb']);
+  });
+
+  it('два без адреса сортируются по MAC', () => {
+    const sorted = sortDevicesByIP([dev('ff', []), dev('aa', [])]);
+    expect(sorted.map((d) => d.id)).toEqual(['aa', 'ff']);
+  });
+});
+
+describe('renderDevicesTable (NR-031 п.3)', () => {
+  const tbody = (): HTMLElement => document.createElement('tbody');
+  const dev = (id: string, ips: string[]): DeviceInfo => ({
+    id,
+    hostname: '',
+    class: 'unknown',
+    ips,
+    names: [],
+    observations: [],
+    vendor: '',
+    ssid: '',
+    manual: false,
+    verified: false,
+  });
+
+  it('пустой список — одна строка с подсказкой запустить скан', () => {
+    const tb = tbody();
+    renderDevicesTable(tb, [], () => {});
+    const rows = tb.querySelectorAll('tr');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toContain('Устройств пока нет');
+    expect(rows[0]?.textContent).toContain('запустите сканирование');
+  });
+
+  it('строки идут по возрастанию IP', () => {
+    const tb = tbody();
+    renderDevicesTable(tb, [dev('bb', ['192.168.100.20']), dev('aa', ['192.168.100.3'])], () => {});
+    const tds = [...tb.querySelectorAll('tr td:first-child')];
+    // Имя без hostname/имени — MAC; порядок: 192.168.100.3, потом .20.
+    expect(tds.map((td) => td.textContent)).toEqual(['aa', 'bb']);
   });
 });
 

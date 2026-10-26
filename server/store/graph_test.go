@@ -106,3 +106,49 @@ func TestListDevicesFillsSlices(t *testing.T) {
 		t.Fatalf("фильтр по классу потерял данные: %+v", unknown)
 	}
 }
+
+// NR-031 п.4: подпись узла без имён — «производитель + последние 3
+// байта MAC»; без производителя — голый MAC.
+func TestTopologyLabelVendorFallback(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	vendored, err := model.NewDevice("02:00:00:00:00:aa")
+	if err != nil {
+		t.Fatalf("фикстура: %v", err)
+	}
+	vendored.Vendor = "TP-Link"
+	vendored.IPs = []netip.Addr{netip.MustParseAddr("10.0.0.9")}
+
+	bare, err := model.NewDevice("02:00:00:00:00:bb")
+	if err != nil {
+		t.Fatalf("фикстура: %v", err)
+	}
+
+	scan := ScanResult{
+		Started:  now.Add(-time.Minute),
+		Finished: now,
+		Subnets:  []string{"10.0.0.0/24"},
+		Devices:  []model.Device{vendored, bare},
+		Topology: model.NewTopology(),
+	}
+	if err := s.SaveScan(ctx, scan, "owner"); err != nil {
+		t.Fatalf("SaveScan: %v", err)
+	}
+
+	g, err := s.Topology(ctx)
+	if err != nil {
+		t.Fatalf("Topology: %v", err)
+	}
+	labels := map[string]string{}
+	for _, n := range g.Nodes {
+		labels[n.ID] = n.Label
+	}
+	if got := labels["02:00:00:00:00:aa"]; got != "TP-Link 00:00:aa" {
+		t.Fatalf("подпись с производителем: %q, хочу %q", got, "TP-Link 00:00:aa")
+	}
+	if got := labels["02:00:00:00:00:bb"]; got != "02:00:00:00:00:bb" {
+		t.Fatalf("подпись без производителя: %q, хочу голый MAC", got)
+	}
+}
