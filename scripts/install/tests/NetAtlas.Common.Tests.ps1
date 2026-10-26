@@ -117,6 +117,16 @@ Describe 'Format-NaDeviceRows (разбор ответа /api/devices, NR-030)' 
         $rows[0] | Should -Match '\[ping\]'
     }
 
+    It 'устройство без vendor и hostname (omitempty на сервере) не роняет таблицу при StrictMode' {
+        $d = [pscustomobject]@{
+            id = '02:00:00:00:00:09'; mac = '02:00:00:00:00:09'; ips = @('10.0.0.9')
+            class = 'unknown'; names = @(); observations = @()
+        }
+        $rows = @(Format-NaDeviceRows -Devices $d)
+        $rows.Count | Should -Be 1
+        $rows[0] | Should -Match '10\.0\.0\.9'
+    }
+
     It 'пустой и нулевой списки дают пустой результат' {
         @(Format-NaDeviceRows -Devices @()) | Should -HaveCount 0
         @(Format-NaDeviceRows -Devices $null) | Should -HaveCount 0
