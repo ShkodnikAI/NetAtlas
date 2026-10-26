@@ -83,13 +83,23 @@ try {
     if ($c.leases -gt 0 -or $c.leases_skipped -gt 0) {
         Write-Host ("DHCP-аренд: {0} (пропущено {1})" -f $c.leases, $c.leases_skipped)
     }
-    # Хосты без MAC: из списка устройств после скана.
+    # Таблица найденных устройств (NR-030): MAC, IP, вендор, имена,
+    # источники. Ответ /api/devices обёрнут: поле .devices. Хосты без
+    # MAC — записи с id «ip:адрес» (класса host в модели нет).
     try {
-        $devs = Invoke-NaApi -Uri 'http://127.0.0.1:8484/api/devices' -Token $token
-        $noMac = @($devs | Where-Object { $_.class -eq 'host' -and -not $_.mac })
+        $resp = Invoke-NaApi -Uri 'http://127.0.0.1:8484/api/devices' -Token $token
+        $list = @($resp.devices | Where-Object { $_ })
+        $noMac = @($list | Where-Object { $_.id -like 'ip:*' })
         Write-Host ("Хостов без MAC: {0}" -f $noMac.Count)
+        if ($list.Count -gt 0) {
+            Write-Host ''
+            Write-Host 'Найденные устройства (MAC | IP | вендор | имена | источники):'
+            foreach ($line in Format-NaDeviceRows -Devices $list) {
+                Write-Host ("  " + $line)
+            }
+        }
     } catch {
-        Write-Info '  (список устройств недоступен: хосты без MAC не посчитаны)'
+        Write-Info '  (список устройств недоступен: таблица и хосты без MAC не показаны)'
     }
     if ($state.stages) {
         Write-Host ("Этапы: {0}" -f ($state.stages -join ' → '))

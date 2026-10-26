@@ -44,6 +44,15 @@ type Deps struct {
 	NewNameConn func() (net.PacketConn, error)
 	// NewWalker — фабрика SNMP-walker.
 	NewWalker WalkerFactory
+	// DNSResolver — обратный DNS для адресов без имён (NR-030).
+	// nil — net.DefaultResolver.
+	DNSResolver DNSResolver
+	// ReadLocalIfaces — локальные интерфейсы этой машины (NR-030).
+	// nil — net.Interfaces (только активные не-loopback).
+	ReadLocalIfaces func() ([]LocalIface, error)
+	// Hostname — имя этой машины для источника «local» (NR-030).
+	// nil — os.Hostname.
+	Hostname func() (string, error)
 }
 
 // Config — параметры одного сканирования: границы, методы, SNMP,
@@ -66,6 +75,9 @@ type Config struct {
 	// SkipSSDPForIPs — адреса гостей и «известных без агента» (NR-023):
 	// ответы SSDP от них не сохраняются, присутствие не трогается.
 	SkipSSDPForIPs map[string]bool
+	// NoDNS отключает обратный DNS (NR-030): адресам без имён из
+	// других источников net.LookupAddr не отправляется.
+	NoDNS bool
 	// OnStage — прогресс: вызывается по завершении каждого этапа
 	// ("arp", "ping", "names", "leases", "snmp", "topology").
 	OnStage func(stage string)
@@ -119,7 +131,8 @@ func Run(ctx context.Context, cfg Config, deps Deps) (Result, error) {
 		return Result{}, fmt.Errorf("pipeline: arp: %w", err)
 	}
 
-	opt := scanner.Options{Now: nowOf(ctx)}
+	now := nowOf(ctx)
+	opt := scanner.Options{Now: now}
 	if cfg.Ping {
 		if deps.NewProber == nil {
 			return Result{}, fmt.Errorf("pipeline: ping включён, но пробер не задан")
@@ -161,6 +174,25 @@ func Run(ctx context.Context, cfg Config, deps Deps) (Result, error) {
 		stage(cfg, "names")
 	}
 
+	// Свежая ARP-таблица после обхода (NR-030): за время ping и имён
+	// кэш пополнился — живой адрес получает MAC, если запись появилась,
+	// и хост без MAC становится устройством. Ошибка повторного чтения
+	// не отбрасывает собранный результат.
+	if cfg.Ping {
+		if again, aerr := deps.ReadARP(ctx); aerr == nil {
+			res.Devices, res.Hosts = mergeDevices(res.Devices, res.Hosts,
+				scanner.FromARP(again, cfg.Scope, now), now)
+		}
+	}
+
+	// Локальные интерфейсы (NR-030): эта машина присутствует на карте
+	// как устройство с MAC, наблюдением «local» и именем из hostname.
+	// Запись ip:<адрес> под тем же адресом заменяется при сохранении
+	// (логика SaveScan, NR-023).
+	if local, lerr := localDevices(cfg.Scope, deps, now); lerr == nil && len(local) > 0 {
+		res.Devices, res.Hosts = mergeDevices(res.Devices, res.Hosts, local, now)
+	}
+
 	// Аренды вливаются до SNMP и топологии: арендные устройства
 	// попадают в граф.
 	leases, skipped := 0, 0
@@ -170,6 +202,14 @@ func Run(ctx context.Context, cfg Config, deps Deps) (Result, error) {
 		leases, skipped = len(cfg.Leases.Leases), cfg.Leases.Skipped
 	}
 	res.Devices = scanner.FillVendors(res.Devices)
+
+	// Обратный DNS (NR-030): адресам без имён — по одному LookupAddr
+	// внутри границ, под лимитером. Отключается cfg.NoDNS.
+	if !cfg.NoDNS {
+		if err := reverseDNS(ctx, res.Devices, res.Hosts, cfg.Scope, cfg.Limiter, deps.DNSResolver, now); err != nil {
+			return Result{}, err
+		}
+	}
 
 	out := Result{
 		Devices:  res.Devices,

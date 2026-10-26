@@ -8,7 +8,7 @@ import (
 
 func TestNewNameValid(t *testing.T) {
 	seen := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
-	for _, src := range []string{NameSourceNetBIOS, NameSourceMDNS, NameSourceSSDP} {
+	for _, src := range []string{NameSourceNetBIOS, NameSourceMDNS, NameSourceSSDP, NameSourceDHCP, NameSourceDNS, NameSourceLocal} {
 		n, err := NewName(src, " pc-admin ", seen)
 		if err != nil {
 			t.Fatalf("NewName(%q): неожиданная ошибка: %v", src, err)
@@ -33,7 +33,7 @@ func TestNewNameInvalid(t *testing.T) {
 	}{
 		{"пустое имя", NameSourceNetBIOS, ""},
 		{"имя из пробелов", NameSourceMDNS, "   "},
-		{"неизвестный источник", "dns", "pc-admin"},
+		{"неизвестный источник", "ntp", "pc-admin"},
 		{"пустой источник", "", "pc-admin"},
 		{"длиннее 255", NameSourceSSDP, strings.Repeat("a", 256)},
 		{"управляющий символ", NameSourceNetBIOS, "pc\x01admin"},
