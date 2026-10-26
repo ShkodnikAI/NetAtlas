@@ -24,6 +24,10 @@ export const ICONS: Record<string, string> = {
   device: 'M9 20h6M12 16v4 M3 4h18v12H3z',
   laptop: 'M2.5 19h19 M5 5h14v10H5z',
   printer: 'M7 9V4h10v5 M7 14h10v6H7z M4 9h16v8H4z',
+  // NR-032 п.5: смартфон, чип IoT и телевизор.
+  phone: 'M8 2.5h8A1.5 1.5 0 0 1 17.5 4v16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 20V4A1.5 1.5 0 0 1 8 2.5z M10.5 18.5h3',
+  iot: 'M7 7h10v10H7z M10 10h4v4h-4z M12 3.5V7 M12 17v3.5 M3.5 12H7 M17 12h3.5 M8 3.5V7 M16 3.5V7 M8 17v3.5 M16 17v3.5 M3.5 8H7 M3.5 16H7 M17 8h3.5 M17 16h3.5',
+  tv: 'M3 5h18v12H3z M8.5 21h7 M12 17v4',
   cloud: 'M9 12h6 M5 5h14v14H5z',
   unknown: 'M9 12h6 M5 5h14v14H5z',
   host: 'M12 7v.01M12 10v5 M4 4h16v16H4z',
@@ -39,6 +43,10 @@ export const KIND_LABELS: Record<string, string> = {
   device: 'компьютер',
   laptop: 'ноутбук',
   printer: 'принтер',
+  // NR-032 п.5: новые типы классификатора.
+  phone: 'телефон',
+  iot: 'IoT-устройство',
+  tv: 'телевизор',
   cloud: 'неуправляемый коммутатор',
   unknown: 'неизвестное устройство',
   host: 'хост без MAC',
@@ -54,6 +62,10 @@ const SHAPES: Record<string, string> = {
   device: 'round-rectangle',
   laptop: 'rhomboid',
   printer: 'concave-hexagon',
+  // NR-032 п.5: форма нового типа отличима на карте.
+  phone: 'barrel',
+  iot: 'diamond',
+  tv: 'round-rectangle',
   cloud: 'tag',
   unknown: 'ellipse',
   host: 'round-rectangle',
@@ -76,12 +88,19 @@ export function svgIcon(kind: string, color = '#C5CEDA'): string {
 export function nodeStyle(n: NodeInfo): NodeStyle {
   const known = Object.prototype.hasOwnProperty.call(SHAPES, n.kind);
   const kind = known ? n.kind : 'unknown';
+  // Телевизор шире прочих узлов — форма экрана (NR-032 п.5).
+  const size =
+    kind === 'cloud' || kind === 'unknown'
+      ? { w: 44, h: 34 }
+      : kind === 'tv'
+        ? { w: 48, h: 34 }
+        : { w: 40, h: 32 };
   return {
     shape: SHAPES[kind] ?? 'ellipse',
     icon: svgIcon(kind),
     kindLabel: KIND_LABELS[kind] ?? KIND_LABELS['unknown'] ?? 'неизвестное устройство',
-    width: kind === 'cloud' || kind === 'unknown' ? 44 : 40,
-    height: kind === 'cloud' || kind === 'unknown' ? 34 : 32,
+    width: size.w,
+    height: size.h,
   };
 }
 

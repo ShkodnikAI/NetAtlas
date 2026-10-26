@@ -34,6 +34,7 @@
       </div>
       <div class="actions" aria-label="Действия с картой">
         <button id="btn-add">Добавить элемент</button>
+        <button id="btn-arrange">Выстроить сеткой</button>
         <button id="btn-connect" disabled>Соединить два узла</button>
         <button id="btn-disconnect" disabled>Разорвать связь</button>
         <button id="btn-reload">Обновить</button>
@@ -163,6 +164,8 @@
       <section class="canvas-wrap" aria-label="Граф сети">
         <div id="graph" role="application" aria-label="Карта сети"></div>
         <div id="graph-tooltip" hidden></div>
+        <div id="map-legend" class="legend" aria-label="Легенда карты" hidden></div>
+        <ul id="map-a11y" class="visually-hidden" aria-label="Список узлов карты"></ul>
         <div class="hint">Сплошные линии — LLDP и таблицы MAC; пунктир — вывод построителя и ручные связи</div>
       </section>
 

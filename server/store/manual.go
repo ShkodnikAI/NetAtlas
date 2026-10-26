@@ -36,6 +36,9 @@ var manualKinds = map[string]bool{
 	model.NodeKindServer:   true,
 	model.NodeKindLaptop:   true,
 	model.NodeKindPrinter:  true,
+	model.NodeKindPhone:    true,
+	model.NodeKindIot:      true,
+	model.NodeKindTV:       true,
 }
 
 // AddManualDevice добавляет ручной элемент (id = manual:<uuid>):
@@ -77,9 +80,13 @@ func (s *Store) AddManualDevice(ctx context.Context, kind, label, actor string) 
 }
 
 // Update — правка устройства: поля-указатели, nil — не менять.
+// Kind — ручной выбор типа владельцем (NR-032 п.1): запись
+// помечается kind_manual = 1 и перекрывает автоматический вывод
+// классификатора при последующих сканах.
 type Update struct {
 	Name     *string
 	Class    *model.Class
+	Kind     *string
 	Verified *bool
 }
 
@@ -119,6 +126,16 @@ func (s *Store) UpdateDevice(ctx context.Context, id string, upd Update, actor s
 		// Смена класса закрывает открытые оповещения устройства.
 		if _, err := closeAlerts(ctx, tx, id, time.Now()); err != nil {
 			return err
+		}
+	}
+	if upd.Kind != nil {
+		kind := strings.TrimSpace(*upd.Kind)
+		if !manualKinds[kind] {
+			return fmt.Errorf("store: недопустимый тип устройства %q", kind)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE devices SET kind = ?, kind_manual = 1 WHERE id = ?`, kind, id); err != nil {
+			return fmt.Errorf("store: тип устройства %s: %w", id, err)
 		}
 	}
 	if upd.Verified != nil {

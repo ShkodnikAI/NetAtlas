@@ -7,6 +7,9 @@ import type { DeviceInfo, Graph, LinkInfo } from './api';
 export interface PanelHandlers {
   onRename: (id: string, name: string) => void;
   onClass: (id: string, klass: string) => void;
+  // onKind — ручной выбор типа узла (NR-032 п.1): перекрывает
+  // автоматический вывод классификатора.
+  onKind: (id: string, kind: string) => void;
   onVerify: (id: string) => void;
   onDelete: (id: string) => void;
 }
@@ -27,9 +30,29 @@ export const KIND_LABELS: Record<string, string> = {
   device: 'компьютер',
   laptop: 'ноутбук',
   printer: 'принтер',
+  phone: 'телефон',
+  iot: 'IoT-устройство',
+  tv: 'телевизор',
   cloud: 'неуправляемый коммутатор',
   unknown: 'неизвестное устройство',
 };
+
+// KIND_OPTIONS — типы узла, доступные владельцу для ручного выбора.
+export const KIND_OPTIONS: [string, string][] = [
+  ['device', 'компьютер'],
+  ['laptop', 'ноутбук'],
+  ['server', 'сервер'],
+  ['router', 'роутер'],
+  ['switch', 'коммутатор'],
+  ['ap', 'точка доступа'],
+  ['printer', 'принтер'],
+  ['phone', 'телефон'],
+  ['iot', 'IoT-устройство'],
+  ['tv', 'телевизор'],
+  ['internet', 'интернет'],
+  ['cloud', 'неуправляемый коммутатор'],
+  ['unknown', 'неизвестное'],
+];
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -43,8 +66,15 @@ function text(parent: HTMLElement, value: string): void {
 }
 
 // fillOverview — вкладка «Обзор»: тип, имя, IP, MAC, производитель,
-// класс, SSID; метки «вручную» и «не проверен».
-export function fillOverview(page: HTMLElement, info: DeviceInfo, kind: string): void {
+// класс, SSID; метки «вручную» и «не проверен». Тип, выведенный
+// классификатором, помечается «определён автоматически, изменить»
+// (NR-032 п.1); ручной — «указан вручную».
+export function fillOverview(
+  page: HTMLElement,
+  info: DeviceInfo,
+  kind: string,
+  onChangeKind: () => void = () => undefined,
+): void {
   page.textContent = '';
   const dl = el('dl', 'kv');
   const row = (dt: string, dd: string): void => {
@@ -54,7 +84,27 @@ export function fillOverview(page: HTMLElement, info: DeviceInfo, kind: string):
     text(d, dd);
     dl.append(t, d);
   };
-  row('Тип', KIND_LABELS[kind] ?? 'неизвестное устройство');
+  // Тип: автоматический вывод помечается и даёт «изменить»; ручной
+  // выбор владельца сильнее классификатора.
+  const typeRow = el('div', 'kv-row');
+  const dt = el('dt');
+  text(dt, 'Тип');
+  const dd = el('dd');
+  text(dd, KIND_LABELS[kind] ?? 'неизвестное устройство');
+  if (info.kindManual) {
+    const b = el('span', 'badge manual');
+    text(b, 'указан вручную');
+    dd.append(document.createTextNode(' '), b);
+  } else if (info.kindAuto !== '' && info.kindAuto === kind) {
+    dd.append(document.createTextNode(' (определён автоматически, '));
+    const change = el('button', 'link') as HTMLButtonElement;
+    change.type = 'button';
+    text(change, 'изменить');
+    change.addEventListener('click', onChangeKind);
+    dd.append(change, document.createTextNode(')'));
+  }
+  typeRow.append(dt, dd);
+  dl.append(typeRow);
   row('ID', info.id);
   if (info.hostname !== '') row('Имя', info.hostname);
   row('IP', info.ips.length > 0 ? info.ips.join(', ') : '—');
@@ -178,6 +228,23 @@ export function fillEdit(
   text(apply, 'Сменить класс');
   apply.addEventListener('click', () => handlers.onClass(info.id, select.value));
 
+  // Тип узла (NR-032 п.1): ручной выбор перекрывает автоматический.
+  const kindLabel = el('label');
+  kindLabel.setAttribute('for', 'edit-kind');
+  text(kindLabel, 'Тип устройства');
+  const kindSelect = el('select') as HTMLSelectElement;
+  kindSelect.id = 'edit-kind';
+  for (const [value, label] of KIND_OPTIONS) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    text(opt, label);
+    if (value === info.kind) opt.selected = true;
+    kindSelect.append(opt);
+  }
+  const kindApply = el('button');
+  text(kindApply, 'Сменить тип');
+  kindApply.addEventListener('click', () => handlers.onKind(info.id, kindSelect.value));
+
   const verdict = el('div', 'verdict');
 
   const check = el('button');
@@ -189,16 +256,18 @@ export function fillEdit(
   const row2 = el('div', 'row');
   row2.append(apply);
   const row3 = el('div', 'row');
-  row3.append(check);
+  row3.append(kindApply);
+  const row4 = el('div', 'row');
+  row4.append(check);
 
-  page.append(nameLabel, name, row1, classLabel, select, row2, verdict, row3);
+  page.append(nameLabel, name, row1, classLabel, select, row2, kindLabel, kindSelect, row3, verdict, row4);
 
   if (info.manual) {
     const del = el('button');
     text(del, 'Удалить ручной элемент');
     del.addEventListener('click', () => handlers.onDelete(info.id));
-    const row4 = el('div', 'row');
-    row4.append(del);
-    page.append(row4);
+    const row5 = el('div', 'row');
+    row5.append(del);
+    page.append(row5);
   }
 }

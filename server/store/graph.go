@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -10,14 +11,20 @@ import (
 	"time"
 
 	"github.com/ShkodnikAI/NetAtlas/internal/model"
+	"github.com/ShkodnikAI/NetAtlas/scanner/topology"
 )
 
 // NodeInfo — узел графа с признаками ручного элемента и проверки.
 type NodeInfo struct {
 	model.Node
-	Class    string `json:"class,omitempty"`
-	Manual   bool   `json:"manual"`
-	Verified bool   `json:"verified"`
+	// KindAuto — тип, выведенный классификатором по метаданным
+	// (NR-032 п.1); пуст — вывода нет. KindManual — тип задан
+	// владельцем и перекрывает автоматический вывод.
+	KindAuto   string `json:"kind_auto,omitempty"`
+	KindManual bool   `json:"kind_manual,omitempty"`
+	Class      string `json:"class,omitempty"`
+	Manual     bool   `json:"manual"`
+	Verified   bool   `json:"verified"`
 }
 
 // LinkInfo — связь графа с признаками ручной связи и проверки.
@@ -40,7 +47,7 @@ type Graph struct {
 func (s *Store) Topology(ctx context.Context) (Graph, error) {
 	g := Graph{Nodes: []NodeInfo{}, Links: []LinkInfo{}}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, class, label, hostname, vendor, manual, verified,
+	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, kind_auto, kind_manual, class, label, hostname, vendor, manual, verified,
                 (SELECT name FROM device_names WHERE device_id = devices.id ORDER BY seen ASC LIMIT 1)
                 FROM devices ORDER BY id`)
 	if err != nil {
@@ -48,19 +55,21 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 	}
 	known := map[string]bool{}
 	for rows.Next() {
-		var id, kind, class, label, hostname, vendor string
-		var manual, verified bool
+		var id, kind, kindAuto, class, label, hostname, vendor string
+		var kindManual, manual, verified bool
 		var name sql.NullString
-		if err := rows.Scan(&id, &kind, &class, &label, &hostname, &vendor, &manual, &verified, &name); err != nil {
+		if err := rows.Scan(&id, &kind, &kindAuto, &kindManual, &class, &label, &hostname, &vendor, &manual, &verified, &name); err != nil {
 			rows.Close()
 			return g, fmt.Errorf("store: устройство: %w", err)
 		}
 		known[id] = true
 		g.Nodes = append(g.Nodes, NodeInfo{
-			Node:     model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String, vendor)},
-			Class:    class,
-			Manual:   manual,
-			Verified: verified,
+			Node:       model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String, vendor)},
+			KindAuto:   kindAuto,
+			KindManual: kindManual,
+			Class:      class,
+			Manual:     manual,
+			Verified:   verified,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -98,9 +107,89 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 		return g, fmt.Errorf("store: связи: %w", err)
 	}
 
+	// Предполагаемые связи (NR-032 п.3): пока данных о коммутации нет,
+	// звезда «устройство — шлюз» рисуется при отдаче карты и в базу
+	// не пишется. Появились связи LLDP/FDB — предполагаемых нет.
+	g.assumeLinks(ctx, s)
+
 	sortNodes(g.Nodes)
 	sortLinks(g.Links)
 	return g, nil
+}
+
+// assumeLinks добавляет предполагаемые связи «устройство — шлюз»
+// (NR-032 п.3): условие — ни одной связи lldp/fdb/inferred; шлюзы —
+// из последнего скана (scans.gateways). Узел шлюза, у которого нет
+// своего устройства, создаётся как «ip:адрес» с kind router (п.2).
+func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
+	for _, l := range g.Links {
+		switch l.Source {
+		case model.LinkSourceLLDP, model.LinkSourceFDB, model.LinkSourceInferred:
+			return
+		}
+	}
+	gateways := s.latestGateways(ctx)
+	if len(gateways) == 0 {
+		return
+	}
+	// Узел шлюза: устройство с этим адресом или новый ip:-узел.
+	nodeIDs := make(map[string]bool, len(g.Nodes))
+	for _, n := range g.Nodes {
+		nodeIDs[n.ID] = true
+	}
+	gatewayIDs := make([]string, 0, len(gateways))
+	for _, gw := range gateways {
+		var devID string
+		err := s.db.QueryRowContext(ctx,
+			`SELECT device_id FROM device_ips WHERE ip = ? ORDER BY device_id LIMIT 1`,
+			gw.String()).Scan(&devID)
+		if err != nil || devID == "" {
+			id := "ip:" + gw.String()
+			if !nodeIDs[id] {
+				nodeIDs[id] = true
+				g.Nodes = append(g.Nodes, NodeInfo{
+					Node: model.Node{ID: id, Kind: model.NodeKindRouter, Label: "Шлюз (" + gw.String() + ")"},
+				})
+			}
+			devID = id
+		}
+		gatewayIDs = append(gatewayIDs, devID)
+	}
+	// Устройства-сканеры — узлы с MAC-идентификатором.
+	deviceIDs := make([]string, 0, len(g.Nodes))
+	for _, n := range g.Nodes {
+		if _, err := model.NormalizeMAC(n.ID); err == nil {
+			deviceIDs = append(deviceIDs, n.ID)
+		}
+	}
+	base := make([]model.Link, 0, len(g.Links))
+	for _, l := range g.Links {
+		base = append(base, l.Link)
+	}
+	for _, l := range topology.AssumedLinks(deviceIDs, gatewayIDs, base) {
+		g.Links = append(g.Links, LinkInfo{Link: l})
+	}
+}
+
+// latestGateways — шлюзы по умолчанию последнего скана (NR-032 п.2).
+func (s *Store) latestGateways(ctx context.Context) []netip.Addr {
+	var raw string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT gateways FROM scans ORDER BY id DESC LIMIT 1`).Scan(&raw)
+	if err != nil || raw == "" {
+		return nil
+	}
+	var addrs []netip.Addr
+	if err := json.Unmarshal([]byte(raw), &addrs); err != nil {
+		return nil
+	}
+	out := make([]netip.Addr, 0, len(addrs))
+	for _, a := range addrs {
+		if a.IsValid() {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // nodeLabel — подпись устройства (NR-031 п.4): ручное имя, hostname,
@@ -206,23 +295,30 @@ func (s *Store) ListDevicesByClass(ctx context.Context, class model.Class) ([]De
 }
 
 // DeviceInfo — карточка устройства с признаками ручного элемента и
-// проверки.
+// проверки; KindAuto — тип по метаданным (NR-032 п.1), KindManual —
+// тип задан владельцем.
 type DeviceInfo struct {
 	model.Device
-	Manual   bool `json:"manual"`
-	Verified bool `json:"verified"`
+	// Kind — тип узла на карте (kind из devices); KindAuto — вывод
+	// классификатора (NR-032 п.1); KindManual — тип задан владельцем.
+	Kind       string `json:"kind,omitempty"`
+	KindAuto   string `json:"kind_auto,omitempty"`
+	KindManual bool   `json:"kind_manual,omitempty"`
+	Manual     bool   `json:"manual"`
+	Verified   bool   `json:"verified"`
 }
 
 // Device возвращает карточку устройства: имена, IP, производитель,
 // SSID, класс, наблюдения.
 func (s *Store) Device(ctx context.Context, id string) (DeviceInfo, error) {
 	var info DeviceInfo
-	var class, kind string
+	var class, kind, kindAuto string
+	var kindManual bool
 	var seen, lastSeen string
 	var vendor, ssid, label, hostname string
-	err := s.db.QueryRowContext(ctx, `SELECT id, kind, class, label, hostname, vendor, ssid,
+	err := s.db.QueryRowContext(ctx, `SELECT id, kind, kind_auto, kind_manual, class, label, hostname, vendor, ssid,
                 manual, verified, first_seen, last_seen FROM devices WHERE id = ?`, id).
-		Scan(&info.ID, &kind, &class, &label, &hostname, &vendor, &ssid, &info.Manual, &info.Verified, &seen, &lastSeen)
+		Scan(&info.ID, &kind, &kindAuto, &kindManual, &class, &label, &hostname, &vendor, &ssid, &info.Manual, &info.Verified, &seen, &lastSeen)
 	if errors.Is(err, sql.ErrNoRows) {
 		return DeviceInfo{}, ErrNotFound
 	}
@@ -230,6 +326,9 @@ func (s *Store) Device(ctx context.Context, id string) (DeviceInfo, error) {
 		return DeviceInfo{}, fmt.Errorf("store: устройство %s: %w", id, err)
 	}
 	info.MAC = info.ID
+	info.Kind = kind
+	info.KindAuto = kindAuto
+	info.KindManual = kindManual
 	info.Class = model.Class(class)
 	if hostname != "" {
 		info.Hostname = hostname

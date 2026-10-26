@@ -45,6 +45,10 @@ type Store interface {
 	DeleteManualDevice(ctx context.Context, id, actor string) error
 	AddManualLink(ctx context.Context, a, aPort, b, bPort, actor string) (string, error)
 	DeleteManualLink(ctx context.Context, id, actor string) error
+	// Позиции узлов карты (NR-032 п.4).
+	Positions(ctx context.Context) ([]store.NodePosition, error)
+	SavePosition(ctx context.Context, id string, x, y float64, actor string) error
+	ClearPositions(ctx context.Context, actor string) error
 	RecordVerification(ctx context.Context, id, actor string, alive bool, detail string) error
 	ListDevices(ctx context.Context) ([]store.DeviceInfo, error)
 	ListDevicesByClass(ctx context.Context, class model.Class) ([]store.DeviceInfo, error)
@@ -154,6 +158,9 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("DELETE /api/devices/{id}", a.handleDeleteDevice)
 	mux.HandleFunc("POST /api/links", a.handleAddLink)
 	mux.HandleFunc("DELETE /api/links/{id}", a.handleDeleteLink)
+	mux.HandleFunc("GET /api/positions", a.handlePositionsList)
+	mux.HandleFunc("PUT /api/positions/{id}", a.handlePositionSave)
+	mux.HandleFunc("DELETE /api/positions", a.handlePositionsClear)
 	mux.HandleFunc("POST /api/devices/{id}/verify", a.handleVerify)
 	mux.HandleFunc("GET /api/audit", a.handleAudit)
 	mux.HandleFunc("GET /api/audit/verify", a.handleAuditVerify)
@@ -364,6 +371,7 @@ func isBadRequest(err error) bool {
 type updateDeviceBody struct {
 	Name     *string      `json:"name,omitempty"`
 	Class    *model.Class `json:"class,omitempty"`
+	Kind     *string      `json:"kind,omitempty"`
 	Verified *bool        `json:"verified,omitempty"`
 }
 
@@ -382,6 +390,11 @@ func (a *API) handleUpdateDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		upd.Class = &class
+	}
+	// Тип узла (NR-032 п.1): ручной выбор владельца перекрывает
+	// автоматический вывод классификатора.
+	if body.Kind != nil {
+		upd.Kind = body.Kind
 	}
 	id := r.PathValue("id")
 	if err := a.store.UpdateDevice(r.Context(), id, upd, ActorOwner); err != nil {
@@ -619,4 +632,47 @@ func (a *API) handleAgentInventory(w http.ResponseWriter, r *http.Request) {
 		"collected_at": row.CollectedAt,
 		"report":       report,
 	})
+}
+
+// positionBody — тело PUT /api/positions/{id}.
+type positionBody struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// handlePositionsList — GET /api/positions: позиции узлов, сдвинутых
+// владельцем (NR-032 п.4).
+func (a *API) handlePositionsList(w http.ResponseWriter, r *http.Request) {
+	positions, err := a.store.Positions(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"positions": positions})
+}
+
+// handlePositionSave — PUT /api/positions/{id}: запомнить позицию
+// узла после перетаскивания.
+func (a *API) handlePositionSave(w http.ResponseWriter, r *http.Request) {
+	var body positionBody
+	if err := decodeJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		return
+	}
+	id := r.PathValue("id")
+	if err := a.store.SavePosition(r.Context(), id, body.X, body.Y, ActorOwner); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handlePositionsClear — DELETE /api/positions: «Выстроить сеткой» —
+// детерминированная раскладка заново.
+func (a *API) handlePositionsClear(w http.ResponseWriter, r *http.Request) {
+	if err := a.store.ClearPositions(r.Context(), ActorOwner); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

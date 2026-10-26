@@ -6,6 +6,10 @@ export interface NodeInfo {
   kind: string;
   label: string;
   class?: string;
+  // kind_auto — тип, определённый классификатором (NR-032 п.1);
+  // kind_manual — тип задан владельцем вручную.
+  kindAuto?: string;
+  kindManual?: boolean;
   manual: boolean;
   verified: boolean;
 }
@@ -29,6 +33,11 @@ export interface DeviceInfo {
   id: string;
   hostname: string;
   class: string;
+  // kind — тип узла на карте; kindAuto — вывод классификатора;
+  // kindManual — тип задан владельцем (NR-032 п.1).
+  kind?: string;
+  kindAuto?: string;
+  kindManual?: boolean;
   ips: string[];
   names: { source: string; name: string; seen: string }[];
   observations: { source: string; seen: string }[];
@@ -279,9 +288,21 @@ export class NetatlasApi {
 
   updateDevice(
     id: string,
-    patch: { name?: string; class?: string; verified?: boolean },
+    patch: { name?: string; class?: string; kind?: string; verified?: boolean },
   ): Promise<DeviceInfo> {
     return this.req('PATCH', `/api/devices/${encodeURIComponent(id)}`, patch);
+  }
+
+  positions(): Promise<{ positions: { id: string; x: number; y: number }[] }> {
+    return this.req('GET', '/api/positions');
+  }
+
+  savePosition(id: string, x: number, y: number): Promise<{ ok: boolean }> {
+    return this.req('PUT', `/api/positions/${encodeURIComponent(id)}`, { x, y });
+  }
+
+  clearPositions(): Promise<{ ok: boolean }> {
+    return this.req('DELETE', '/api/positions');
   }
 
   deleteDevice(id: string): Promise<{ ok: boolean }> {
