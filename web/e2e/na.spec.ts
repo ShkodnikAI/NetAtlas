@@ -187,7 +187,7 @@ test('значки узлов различаются по типам (data-kind,
   );
   expect(kinds).toHaveLength(12);
   expect(new Set(kinds)).toEqual(
-    new Set(['router', 'server', 'device', 'printer', 'phone', 'iot']),
+    new Set(['router', 'server', 'device', 'printer', 'phone', 'iot', 'unknown']),
   );
   await shot(page, 'map-kinds');
 });
