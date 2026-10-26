@@ -21,7 +21,7 @@ import { renderSecurity } from './security';
 import { createGraph, setGraph, type GraphCallbacks } from './graph';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import {
-  deviceRow,
+  renderDevicesTable,
   expectedStages,
   renderAlerts,
   renderProgress,
@@ -269,22 +269,32 @@ function selectTab(tabId: string): void {
 
 // --- диалоги ---------------------------------------------------------------
 
+// Была ли уже попытка входа с токеном: фоновые 401 при старте
+// открывают диалог, но сообщение об ошибке в нём показываем только
+// после реальной неудачной попытки (NR-031 п.6: сообщение — только
+// когда оно есть).
+let tokenAttempted = false;
+
 function setupTokenDialog(): void {
   const dialog = $('token-dialog') as HTMLDialogElement;
   dialog.showModal();
   $('token-form').addEventListener('submit', (ev) => {
     ev.preventDefault();
+    tokenAttempted = true;
     const input = $('token-input') as HTMLInputElement;
     api.setToken(input.value);
     input.value = '';
     $('token-help').hidden = true;
     dialog.close();
     void reload();
+    // NR-031 п.2: после успешного входа подсети мастера и плашка
+    // аудита обновляются без повторного захода на экран.
+    void loadScanConfig();
   });
 }
 
 function askToken(): void {
-  $('token-help').hidden = false;
+  $('token-help').hidden = !tokenAttempted;
   ($('token-dialog') as HTMLDialogElement).showModal();
 }
 
@@ -755,20 +765,65 @@ const scanEls = {
   badge: $('alerts-badge'),
 };
 
-let scanCfg: { subnets: string[]; snmp: boolean; audit_ok: boolean } = {
-  subnets: [], snmp: false, audit_ok: true,
+const scanCfgEls = {
+  cfgError: $('scan-config-error'),
+  retry: $('scan-retry') as HTMLButtonElement,
+  runHint: $('scan-run-hint'),
 };
 
-async function initScanScreen(): Promise<void> {
+let scanCfg: { subnets: string[]; snmp: boolean; audit_ok: boolean } | null = null;
+
+// updateRunState — кнопка «Запустить сканирование» отключена, пока
+// нет подсетей, с подсказкой почему (NR-031 п.2).
+function updateRunState(): void {
+  const boxes = scanEls.subnets.querySelectorAll('input[type="checkbox"]');
+  const checked = scanEls.subnets.querySelectorAll('input[type="checkbox"]:checked');
+  let disabled = true;
+  let hint = '';
+  if (scanCfg === null) {
+    hint = 'Настройки сервера не загружены — сканирование недоступно.';
+  } else if (boxes.length === 0) {
+    hint = 'На сервере не заданы подсети (--subnets): сканировать нечего.';
+  } else if (checked.length === 0) {
+    hint = 'Выберите хотя бы одну подсеть.';
+  } else {
+    disabled = false;
+  }
+  scanEls.run.disabled = disabled;
+  scanCfgEls.runHint.textContent = hint;
+}
+
+// loadScanConfig — подсети грузятся после успешного входа и при
+// каждом открытии мастера; при ошибке — видимое сообщение и
+// «Повторить» (NR-031 п.2). 401 не показываем: диалог токена
+// открывается сам.
+async function loadScanConfig(): Promise<void> {
   try {
-    scanCfg = await api.config();
-    setAuditBadge($('audit-badge'), scanCfg.audit_ok);
-    setupScanScreen(scanCfg, scanEls);
+    const cfg = await api.config();
+    scanCfg = cfg;
+    setAuditBadge($('audit-badge'), cfg.audit_ok);
+    scanCfgEls.cfgError.hidden = true;
+    scanCfgEls.retry.hidden = true;
+    await setupScanScreen(cfg, scanEls);
+    updateRunState();
   } catch (err) {
-    scanEls.error.hidden = false;
-    scanEls.error.textContent = errMessage(err);
+    if (err instanceof ApiError && err.status === 401) return;
+    scanCfg = null;
+    scanEls.subnets.textContent = '';
+    scanCfgEls.cfgError.hidden = false;
+    scanCfgEls.cfgError.textContent =
+      'Не удалось загрузить настройки сервера: ' + errMessage(err);
+    scanCfgEls.retry.hidden = false;
+    updateRunState();
   }
 }
+
+async function initScanScreen(): Promise<void> {
+  await loadScanConfig();
+}
+
+scanEls.subnets.addEventListener('change', () => updateRunState());
+scanCfgEls.retry.addEventListener('click', () => void loadScanConfig());
 
 scanEls.run.addEventListener('click', async () => {
   scanEls.error.hidden = true;
@@ -794,16 +849,26 @@ scanEls.run.addEventListener('click', async () => {
         if (view.status !== 'running') {
           window.clearInterval(poll);
           scanEls.run.disabled = false;
+          updateRunState();
+          // NR-031 п.8: после завершения скана таблица и карта
+          // обновляются сами.
+          if (view.status === 'done') {
+            void reload();
+            void initDevicesScreen();
+            void refreshAlertBadge();
+          }
         }
       } catch {
         window.clearInterval(poll);
         scanEls.run.disabled = false;
+        updateRunState();
       }
     }, 1000);
   } catch (err) {
     scanEls.error.hidden = false;
     scanEls.error.textContent = errMessage(err);
     scanEls.run.disabled = false;
+    updateRunState();
   }
 });
 
@@ -812,17 +877,14 @@ scanEls.run.addEventListener('click', async () => {
 async function initDevicesScreen(): Promise<void> {
   try {
     const [devs, alerts] = await Promise.all([api.devices(), api.alerts()]);
-    scanEls.tableBody.textContent = '';
-    for (const d of devs.devices) {
-      scanEls.tableBody.append(deviceRow(d, async (id, klass) => {
-        try {
-          await api.updateDevice(id, { class: klass });
-          await initDevicesScreen();
-        } catch (err) {
-          showNotice(errMessage(err), true);
-        }
-      }));
-    }
+    renderDevicesTable(scanEls.tableBody, devs.devices, async (id, klass) => {
+      try {
+        await api.updateDevice(id, { class: klass });
+        await initDevicesScreen();
+      } catch (err) {
+        showNotice(errMessage(err), true);
+      }
+    });
     renderAlerts(scanEls, alerts.alerts, async (id) => {
       try {
         await api.ackAlert(id);
@@ -919,3 +981,8 @@ setupTokenDialog();
 setupAddDialog();
 void refreshAlertBadge();
 void refreshAuditBadge();
+
+// Доступ к инстансу cytoscape для сквозных тестов интерфейса
+// (Playwright, NR-031): данные уже отрисованы на странице, хук даёт
+// только доступ к API карты для проверки раскладки.
+(window as unknown as { __netatlas?: { cy: unknown } }).__netatlas = { cy };

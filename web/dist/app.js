@@ -31788,11 +31788,93 @@
       height: kind === "cloud" || kind === "unknown" ? 34 : 32
     };
   }
-  function badges(n) {
-    const out = [];
-    if (n.manual) out.push("\u0432\u0440\u0443\u0447\u043D\u0443\u044E");
-    if (!n.verified) out.push("\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
+
+  // src/layout.ts
+  var NODE_SIZE = { width: 44, height: 34 };
+  var LABEL_MAX_WIDTH = 140;
+  var LABEL_LINE_HEIGHT = 14;
+  var CHAR_WIDTH = 6.4;
+  var LABEL_GAP = 6;
+  var NODE_GAP = 18;
+  var GRID_STEP_X = LABEL_MAX_WIDTH + 60;
+  var GRID_STEP_Y = NODE_SIZE.height + LABEL_GAP + LABEL_LINE_HEIGHT + 66;
+  var GRID_COLUMNS = 5;
+  function measureLabel(text2) {
+    const lines = text2.split("\n");
+    let linesCount = 0;
+    let widest = 0;
+    for (const line of lines) {
+      const width2 = Math.min(LABEL_MAX_WIDTH, line.length * CHAR_WIDTH + 4);
+      widest = Math.max(widest, width2);
+      linesCount += Math.max(1, Math.ceil((line.length * CHAR_WIDTH + 4) / LABEL_MAX_WIDTH));
+    }
+    if (linesCount === 0) linesCount = 1;
+    return { width: widest, height: linesCount * LABEL_LINE_HEIGHT };
+  }
+  function boxOf(x2, y2, label) {
+    const labelH = label.height + LABEL_GAP;
+    const halfW = Math.max(NODE_SIZE.width, label.width) / 2;
+    return {
+      x1: x2 - halfW,
+      y1: y2 - NODE_SIZE.height / 2,
+      x2: x2 + halfW,
+      y2: y2 + NODE_SIZE.height / 2 + labelH
+    };
+  }
+  function expanded(b, gap) {
+    return { x1: b.x1 - gap, y1: b.y1 - gap, x2: b.x2 + gap, y2: b.y2 + gap };
+  }
+  function gridPlacement(connected) {
+    if (connected === null) {
+      return { originX: 0, originY: 0, stepX: GRID_STEP_X, stepY: GRID_STEP_Y };
+    }
+    return {
+      originX: connected.x2 + 160,
+      originY: connected.y1,
+      stepX: GRID_STEP_X,
+      stepY: GRID_STEP_Y
+    };
+  }
+  function gridPositions(ids, placement) {
+    const out = /* @__PURE__ */ new Map();
+    for (let i2 = 0; i2 < ids.length; i2++) {
+      const id2 = ids[i2] ?? "";
+      const col = i2 % GRID_COLUMNS;
+      const row = Math.floor(i2 / GRID_COLUMNS);
+      out.set(id2, {
+        x: placement.originX + col * placement.stepX,
+        y: placement.originY + row * placement.stepY
+      });
+    }
     return out;
+  }
+  function deoverlap(nodes3) {
+    const MAX_ROUNDS = 120;
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      let moved = false;
+      for (let i2 = 0; i2 < nodes3.length; i2++) {
+        for (let j = i2 + 1; j < nodes3.length; j++) {
+          const a = nodes3[i2];
+          const b = nodes3[j];
+          const ba = expanded(boxOf(a.x, a.y, a.label), NODE_GAP);
+          const bb = expanded(boxOf(b.x, b.y, b.label), NODE_GAP);
+          const ox = Math.min(ba.x2, bb.x2) - Math.max(ba.x1, bb.x1);
+          const oy = Math.min(ba.y2, bb.y2) - Math.max(ba.y1, bb.y1);
+          if (ox <= 0 || oy <= 0) continue;
+          if (ox <= oy) {
+            const dir = a.x <= b.x ? -1 : 1;
+            a.x += dir * ox / 2;
+            b.x -= dir * ox / 2;
+          } else {
+            const dir = a.y <= b.y ? -1 : 1;
+            a.y += dir * oy / 2;
+            b.y -= dir * oy / 2;
+          }
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
   }
 
   // src/graph.ts
@@ -31802,6 +31884,11 @@
     inferred: "#8FB8E8",
     manual: "#F5B83D"
   };
+  var LABEL_MAX_CHARS = 28;
+  function truncateLabel(text2, max5 = LABEL_MAX_CHARS) {
+    if (text2.length <= max5) return text2;
+    return text2.slice(0, Math.max(1, max5 - 1)) + "\u2026";
+  }
   function createGraph(container2, cb) {
     const cy2 = cytoscape({
       container: container2,
@@ -31833,8 +31920,15 @@
           style: { "border-color": "#F5B83D" }
         },
         {
+          // NR-031 п.4: «не проверен» — жёлтый ореол вокруг узла, а не
+          // строка в подписи.
           selector: "node.unverified",
-          style: { "border-style": "dashed" }
+          style: {
+            "border-style": "dashed",
+            "overlay-color": "#F5B83D",
+            "overlay-opacity": 0.55,
+            "overlay-padding": 3
+          }
         },
         {
           selector: "edge",
@@ -31878,13 +31972,42 @@
         cb.onLinkSelect(null, null);
       }
     });
+    setupTooltip(cy2, container2);
     return cy2;
+  }
+  function setupTooltip(cy2, container2) {
+    const tip = document.getElementById("graph-tooltip");
+    if (tip === null) return;
+    const show2 = (n) => {
+      if (n === null) {
+        tip.hidden = true;
+        tip.textContent = "";
+        return;
+      }
+      const full = String(n.data("fullLabel") ?? n.data("label") ?? "");
+      const kind = String(n.data("kindLabel") ?? "");
+      const marks = String(n.data("marks") ?? "");
+      tip.textContent = marks === "" ? `${full}
+${kind}` : `${full}
+${kind}
+${marks}`;
+      tip.hidden = false;
+      const rect = container2.getBoundingClientRect();
+      const pos = n.renderedPosition();
+      const x2 = pos.x + 14;
+      const y2 = pos.y + 14;
+      tip.style.left = `${Math.min(x2, Math.max(0, rect.width - 330))}px`;
+      tip.style.top = `${Math.min(y2, Math.max(0, rect.height - 80))}px`;
+    };
+    cy2.on("mouseover", "node", (ev) => show2(ev.target));
+    cy2.on("mouseout", "node", () => show2(null));
+    cy2.on("drag", "node", () => show2(null));
   }
   function nodeInfoOf(n) {
     return {
       id: String(n.data("id") ?? ""),
       kind: String(n.data("kind") ?? "unknown"),
-      label: String(n.data("label") ?? ""),
+      label: String(n.data("fullLabel") ?? n.data("label") ?? ""),
       manual: Boolean(n.data("manual")),
       verified: Boolean(n.data("verified"))
     };
@@ -31902,6 +32025,7 @@
   }
   function setGraph(cy2, g) {
     const positions2 = /* @__PURE__ */ new Map();
+    const fresh = [];
     cy2.nodes().forEach((n) => {
       positions2.set(n.id(), n.position());
     });
@@ -31911,12 +32035,15 @@
     for (const n of g.nodes) {
       const st = nodeStyle(n);
       hasGuests = hasGuests || n.class === "guest";
+      if (!positions2.has(n.id)) fresh.push(n.id);
       elements.push({
         group: "nodes",
         data: {
           id: n.id,
           kind: n.kind,
           label: nodeLabel(n),
+          fullLabel: n.label || n.id,
+          marks: nodeMarks(n).join(", "),
           icon: st.icon,
           manual: n.manual,
           verified: n.verified,
@@ -31927,7 +32054,7 @@
         },
         position: positions2.get(n.id) ?? { x: 0, y: 0 },
         style: { shape: st.shape, width: String(st.width), height: String(st.height) },
-        classes: n.manual && !n.verified ? "unverified" : ""
+        classes: [n.manual ? "manual" : "", n.verified ? "" : "unverified"].filter(Boolean).join(" ")
       });
     }
     if (hasGuests) {
@@ -31969,14 +32096,67 @@
     }
     cy2.add(elements);
     void cy2.layout({ name: "cose", animate: false, randomize: positions2.size === 0 }).run();
+    arrangeFresh(cy2, fresh);
+  }
+  function arrangeFresh(cy2, fresh) {
+    const linked = /* @__PURE__ */ new Set();
+    cy2.edges().forEach((e) => {
+      linked.add(e.source().id());
+      linked.add(e.target().id());
+    });
+    const isolated = fresh.filter((id2) => !linked.has(id2));
+    const nodeEls = [];
+    cy2.nodes().forEach((n) => {
+      if (!n.isParent()) nodeEls.push(n);
+    });
+    const all = nodeEls.map((n) => ({
+      id: n.id(),
+      x: n.position("x"),
+      y: n.position("y"),
+      label: measureLabel(String(n.data("label") ?? ""))
+    }));
+    if (isolated.length > 0) {
+      let connectedBox = null;
+      for (const p2 of all) {
+        if (linked.has(p2.id)) {
+          const b = boxOf(p2.x, p2.y, p2.label);
+          connectedBox = connectedBox === null ? b : {
+            x1: Math.min(connectedBox.x1, b.x1),
+            y1: Math.min(connectedBox.y1, b.y1),
+            x2: Math.max(connectedBox.x2, b.x2),
+            y2: Math.max(connectedBox.y2, b.y2)
+          };
+        }
+      }
+      const grid = gridPositions(isolated, gridPlacement(connectedBox));
+      for (const p2 of all) {
+        const g = grid.get(p2.id);
+        if (g !== void 0) {
+          p2.x = g.x;
+          p2.y = g.y;
+        }
+      }
+    }
+    deoverlap(all);
+    for (const p2 of all) {
+      const n = cy2.$id(p2.id);
+      const first2 = n.first();
+      if (first2 !== void 0 && !first2.isParent()) n.position({ x: p2.x, y: p2.y });
+    }
   }
   function nodeLabel(n) {
-    let label = n.label || n.id;
-    const marks = badges(n);
-    if (n.class === "known_no_agent") marks.push("\u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430");
-    if (marks.length > 0) label += `
+    const base = truncateLabel(n.label || n.id);
+    const marks = nodeMarks(n).filter((m) => m !== "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
+    if (marks.length > 0) return `${base}
 (${marks.join(", ")})`;
-    return label;
+    return base;
+  }
+  function nodeMarks(n) {
+    const out = [];
+    if (n.manual) out.push("\u0432\u0440\u0443\u0447\u043D\u0443\u044E");
+    if (!n.verified) out.push("\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
+    if (n.class === "known_no_agent") out.push("\u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430");
+    return out;
   }
   function edgeLabel(l) {
     if (l.manual) return "\u0432\u0440\u0443\u0447\u043D\u0443\u044E";
@@ -32154,18 +32334,24 @@
   }
 
   // src/scan.ts
-  var CLASS_BUTTONS = [
+  var CLASS_OPTIONS = [
     ["managed", "\u041C\u043E\u0451"],
     ["guest", "\u0413\u043E\u0441\u0442\u044C"],
     ["known_no_agent", "\u0411\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430"],
     ["unknown", "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
   ];
-  var CLASS_NAMES = {
-    managed: "\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u043E\u0435 (\u0441 \u0430\u0433\u0435\u043D\u0442\u043E\u043C)",
-    guest: "\u0433\u043E\u0441\u0442\u044C",
-    known_no_agent: "\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0431\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430",
-    unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"
-  };
+  function subnetGateway(cidr) {
+    const [base, prefix] = cidr.split("/");
+    const octets = (base ?? "").split(".");
+    if (octets.length !== 4 || prefix === void 0 || prefix === "") return null;
+    const nums = [];
+    for (const o of octets) {
+      const n = Number(o);
+      if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+      nums.push(n);
+    }
+    return `${nums[0]}.${nums[1]}.${nums[2]}.1`;
+  }
   async function setupScanScreen(cfg, el8) {
     el8.subnets.textContent = "";
     for (const cidr of cfg.subnets) {
@@ -32176,6 +32362,10 @@
       box.checked = true;
       label.append(box, document.createTextNode(` ${cidr}`));
       el8.subnets.append(label);
+    }
+    if (cfg.subnets.length > 0) {
+      const gw = subnetGateway(cfg.subnets[0] ?? "");
+      if (gw !== null) el8.snmp.placeholder = gw;
     }
     if (!cfg.snmp) {
       el8.snmp.disabled = true;
@@ -32224,6 +32414,48 @@
       el8.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
     }
   }
+  function ipSortKey(info) {
+    const first2 = info.ips[0];
+    if (first2 === void 0) return Number.POSITIVE_INFINITY;
+    const octets = first2.split(".");
+    if (octets.length !== 4) return Number.POSITIVE_INFINITY;
+    let key = 0;
+    for (const o of octets) {
+      const n = Number(o);
+      if (!Number.isInteger(n) || n < 0 || n > 255) return Number.POSITIVE_INFINITY;
+      key = key * 256 + n;
+    }
+    return key;
+  }
+  function displayName(info) {
+    if (info.hostname !== "") return info.hostname;
+    const first2 = info.names[0];
+    if (first2 !== void 0 && first2.name !== "") return first2.name;
+    if (info.vendor !== "") return info.vendor;
+    return info.id;
+  }
+  function lastSeenOf(info) {
+    let latest = null;
+    for (const o of info.observations) {
+      const t = new Date(o.seen);
+      if (Number.isNaN(t.getTime())) continue;
+      if (latest === null || t.getTime() > latest.getTime()) latest = t;
+    }
+    return latest;
+  }
+  function sourcesOf(info) {
+    const set2 = /* @__PURE__ */ new Set();
+    for (const o of info.observations) set2.add(o.source);
+    return [...set2].sort().join(", ");
+  }
+  function sortDevicesByIP(devices) {
+    return [...devices].sort((a, b) => {
+      const ka = ipSortKey(a);
+      const kb = ipSortKey(b);
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  }
   function deviceRow(info, onClass) {
     const tr = document.createElement("tr");
     const cell = (value) => {
@@ -32231,27 +32463,43 @@
       td.textContent = value;
       return td;
     };
-    const name = info.hostname !== "" ? info.hostname : info.id;
     tr.append(
-      cell(name),
+      cell(displayName(info)),
       cell(info.ips.join(", ")),
       cell(info.id),
       cell(info.vendor)
     );
-    const actions = document.createElement("td");
-    for (const [value, label] of CLASS_BUTTONS) {
-      const b = document.createElement("button");
-      b.textContent = label;
-      if (info.class === value) b.setAttribute("aria-pressed", "true");
-      b.addEventListener("click", () => onClass(info.id, value));
-      actions.append(b);
+    const classCell = document.createElement("td");
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `\u041A\u043B\u0430\u0441\u0441 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 ${info.id}`);
+    for (const [value, label] of CLASS_OPTIONS) {
+      const opt = new Option(label, value);
+      if (info.class === value) opt.selected = true;
+      select.append(opt);
     }
-    const cur = document.createElement("span");
-    cur.className = "badge";
-    cur.textContent = CLASS_NAMES[info.class] ?? info.class;
-    actions.append(document.createTextNode(" "), cur);
-    tr.append(actions);
+    select.addEventListener("change", () => onClass(info.id, select.value));
+    classCell.append(select);
+    tr.append(classCell);
+    const seen = lastSeenOf(info);
+    tr.append(cell(seen === null ? "\u2014" : seen.toLocaleString()));
+    tr.append(cell(sourcesOf(info)));
     return tr;
+  }
+  function renderDevicesTable(tbody, devices, onClass) {
+    tbody.textContent = "";
+    if (devices.length === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.className = "empty";
+      td.colSpan = 7;
+      td.textContent = "\u0423\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435.";
+      tr.append(td);
+      tbody.append(tr);
+      return;
+    }
+    for (const d of sortDevicesByIP(devices)) {
+      tbody.append(deviceRow(d, onClass));
+    }
   }
   function renderAlerts(el8, alerts, onAck) {
     el8.alertsList.textContent = "";
@@ -32469,21 +32717,24 @@
       $2(page).classList.toggle("active", isSel);
     }
   }
+  var tokenAttempted = false;
   function setupTokenDialog() {
     const dialog = $2("token-dialog");
     dialog.showModal();
     $2("token-form").addEventListener("submit", (ev) => {
       ev.preventDefault();
+      tokenAttempted = true;
       const input = $2("token-input");
       api2.setToken(input.value);
       input.value = "";
       $2("token-help").hidden = true;
       dialog.close();
       void reload();
+      void loadScanConfig();
     });
   }
   function askToken() {
-    $2("token-help").hidden = false;
+    $2("token-help").hidden = !tokenAttempted;
     $2("token-dialog").showModal();
   }
   function setupAddDialog() {
@@ -32912,21 +33163,53 @@
     tableBody: document.querySelector("#devices-table tbody"),
     badge: $2("alerts-badge")
   };
-  var scanCfg = {
-    subnets: [],
-    snmp: false,
-    audit_ok: true
+  var scanCfgEls = {
+    cfgError: $2("scan-config-error"),
+    retry: $2("scan-retry"),
+    runHint: $2("scan-run-hint")
   };
-  async function initScanScreen() {
+  var scanCfg = null;
+  function updateRunState() {
+    const boxes = scanEls.subnets.querySelectorAll('input[type="checkbox"]');
+    const checked = scanEls.subnets.querySelectorAll('input[type="checkbox"]:checked');
+    let disabled = true;
+    let hint = "";
+    if (scanCfg === null) {
+      hint = "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u044B \u2014 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E.";
+    } else if (boxes.length === 0) {
+      hint = "\u041D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B \u043F\u043E\u0434\u0441\u0435\u0442\u0438 (--subnets): \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0435\u0447\u0435\u0433\u043E.";
+    } else if (checked.length === 0) {
+      hint = "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u043D\u0443 \u043F\u043E\u0434\u0441\u0435\u0442\u044C.";
+    } else {
+      disabled = false;
+    }
+    scanEls.run.disabled = disabled;
+    scanCfgEls.runHint.textContent = hint;
+  }
+  async function loadScanConfig() {
     try {
-      scanCfg = await api2.config();
-      setAuditBadge($2("audit-badge"), scanCfg.audit_ok);
-      setupScanScreen(scanCfg, scanEls);
+      const cfg = await api2.config();
+      scanCfg = cfg;
+      setAuditBadge($2("audit-badge"), cfg.audit_ok);
+      scanCfgEls.cfgError.hidden = true;
+      scanCfgEls.retry.hidden = true;
+      await setupScanScreen(cfg, scanEls);
+      updateRunState();
     } catch (err) {
-      scanEls.error.hidden = false;
-      scanEls.error.textContent = errMessage(err);
+      if (err instanceof ApiError && err.status === 401) return;
+      scanCfg = null;
+      scanEls.subnets.textContent = "";
+      scanCfgEls.cfgError.hidden = false;
+      scanCfgEls.cfgError.textContent = "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u0430: " + errMessage(err);
+      scanCfgEls.retry.hidden = false;
+      updateRunState();
     }
   }
+  async function initScanScreen() {
+    await loadScanConfig();
+  }
+  scanEls.subnets.addEventListener("change", () => updateRunState());
+  scanCfgEls.retry.addEventListener("click", () => void loadScanConfig());
   scanEls.run.addEventListener("click", async () => {
     scanEls.error.hidden = true;
     const body = startScan(scanEls);
@@ -32951,32 +33234,37 @@
           if (view.status !== "running") {
             window.clearInterval(poll);
             scanEls.run.disabled = false;
+            updateRunState();
+            if (view.status === "done") {
+              void reload();
+              void initDevicesScreen();
+              void refreshAlertBadge();
+            }
           }
         } catch {
           window.clearInterval(poll);
           scanEls.run.disabled = false;
+          updateRunState();
         }
       }, 1e3);
     } catch (err) {
       scanEls.error.hidden = false;
       scanEls.error.textContent = errMessage(err);
       scanEls.run.disabled = false;
+      updateRunState();
     }
   });
   async function initDevicesScreen() {
     try {
       const [devs, alerts] = await Promise.all([api2.devices(), api2.alerts()]);
-      scanEls.tableBody.textContent = "";
-      for (const d of devs.devices) {
-        scanEls.tableBody.append(deviceRow(d, async (id2, klass) => {
-          try {
-            await api2.updateDevice(id2, { class: klass });
-            await initDevicesScreen();
-          } catch (err) {
-            showNotice(errMessage(err), true);
-          }
-        }));
-      }
+      renderDevicesTable(scanEls.tableBody, devs.devices, async (id2, klass) => {
+        try {
+          await api2.updateDevice(id2, { class: klass });
+          await initDevicesScreen();
+        } catch (err) {
+          showNotice(errMessage(err), true);
+        }
+      });
       renderAlerts(scanEls, alerts.alerts, async (id2) => {
         try {
           await api2.ackAlert(id2);
@@ -33058,4 +33346,5 @@
   setupAddDialog();
   void refreshAlertBadge();
   void refreshAuditBadge();
+  window.__netatlas = { cy };
 })();

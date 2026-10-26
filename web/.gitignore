@@ -1,2 +1,4 @@
 node_modules/
 coverage/
+# Результаты сквозных тестов Playwright (NR-031): скриншоты идут артефактом CI
+e2e-results/

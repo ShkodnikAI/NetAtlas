@@ -40,7 +40,7 @@ type Graph struct {
 func (s *Store) Topology(ctx context.Context) (Graph, error) {
 	g := Graph{Nodes: []NodeInfo{}, Links: []LinkInfo{}}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, class, label, hostname, manual, verified,
+	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, class, label, hostname, vendor, manual, verified,
                 (SELECT name FROM device_names WHERE device_id = devices.id ORDER BY seen ASC LIMIT 1)
                 FROM devices ORDER BY id`)
 	if err != nil {
@@ -48,16 +48,16 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 	}
 	known := map[string]bool{}
 	for rows.Next() {
-		var id, kind, class, label, hostname string
+		var id, kind, class, label, hostname, vendor string
 		var manual, verified bool
 		var name sql.NullString
-		if err := rows.Scan(&id, &kind, &class, &label, &hostname, &manual, &verified, &name); err != nil {
+		if err := rows.Scan(&id, &kind, &class, &label, &hostname, &vendor, &manual, &verified, &name); err != nil {
 			rows.Close()
 			return g, fmt.Errorf("store: устройство: %w", err)
 		}
 		known[id] = true
 		g.Nodes = append(g.Nodes, NodeInfo{
-			Node:     model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String)},
+			Node:     model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String, vendor)},
 			Class:    class,
 			Manual:   manual,
 			Verified: verified,
@@ -103,9 +103,11 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 	return g, nil
 }
 
-// nodeLabel — подпись устройства: ручное имя, hostname, первое имя,
-// иначе идентификатор.
-func nodeLabel(id, label, hostname, firstName string) string {
+// nodeLabel — подпись устройства (NR-031 п.4): ручное имя, hostname,
+// первое имя, затем «производитель + последние 3 байта MAC» и только
+// после этого голый идентификатор (MAC). Длинный MAC в подписи —
+// последний вариант, а не первый.
+func nodeLabel(id, label, hostname, firstName, vendor string) string {
 	switch {
 	case label != "":
 		return label
@@ -113,8 +115,27 @@ func nodeLabel(id, label, hostname, firstName string) string {
 		return hostname
 	case firstName != "":
 		return firstName
+	case vendor != "":
+		if tail := macTail(id); tail != "" {
+			return vendor + " " + tail
+		}
 	}
 	return id
+}
+
+// macTail — последние 3 байта MAC через двоеточия («dd:ee:ff»);
+// для не-MAC идентификаторов (ip:, cloud:) — пустая строка.
+func macTail(id string) string {
+	parts := strings.Split(id, ":")
+	if len(parts) != 6 {
+		return ""
+	}
+	for _, p := range parts[3:] {
+		if len(p) != 2 {
+			return ""
+		}
+	}
+	return strings.Join(parts[3:], ":")
 }
 
 // extraNode — узел для конца связи, которого нет среди устройств:

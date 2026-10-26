@@ -1,23 +1,18 @@
 // Экраны «Мастер сканирования» и «Найденные устройства» (NR-005):
 // запуск сканирования по явному подтверждению, прогресс по стадиям,
 // классификация найденного, оповещения о новых неизвестных.
+// NR-031: подсети с подсказкой из конфигурации сервера, таблица
+// устройств с временем и источниками, сортировка по IP.
 
 import type { DeviceInfo, ScanView } from './api';
 import type { storeAlert } from './types';
 
-const CLASS_BUTTONS: [string, string][] = [
+const CLASS_OPTIONS: [string, string][] = [
   ['managed', 'Моё'],
   ['guest', 'Гость'],
   ['known_no_agent', 'Без агента'],
   ['unknown', 'Неизвестное'],
 ];
-
-const CLASS_NAMES: Record<string, string> = {
-  managed: 'управляемое (с агентом)',
-  guest: 'гость',
-  known_no_agent: 'известное без агента',
-  unknown: 'неизвестное',
-};
 
 export interface ScreenElems {
   subnets: HTMLElement;
@@ -37,7 +32,25 @@ export interface ScreenElems {
   badge: HTMLElement;
 }
 
-// setupScanScreen — заполняет список подсетей из /api/config.
+// subnetGateway — первый хост подсети («192.168.100.0/24» →
+// «192.168.100.1»): нейтральная подсказка для целей SNMP вместо
+// чужих примеров. Не IPv4 или мусор — null.
+export function subnetGateway(cidr: string): string | null {
+  const [base, prefix] = cidr.split('/');
+  const octets = (base ?? '').split('.');
+  if (octets.length !== 4 || prefix === undefined || prefix === '') return null;
+  const nums: number[] = [];
+  for (const o of octets) {
+    const n = Number(o);
+    if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+    nums.push(n);
+  }
+  return `${nums[0]}.${nums[1]}.${nums[2]}.1`;
+}
+
+// setupScanScreen — заполняет список подсетей из /api/config:
+// все подсети сервера отмечены по умолчанию (NR-031 п.7), подсказка
+// SNMP берётся из первой подсети.
 export async function setupScanScreen(
   cfg: { subnets: string[]; snmp: boolean },
   el: ScreenElems,
@@ -51,6 +64,10 @@ export async function setupScanScreen(
     box.checked = true;
     label.append(box, document.createTextNode(` ${cidr}`));
     el.subnets.append(label);
+  }
+  if (cfg.subnets.length > 0) {
+    const gw = subnetGateway(cfg.subnets[0] ?? '');
+    if (gw !== null) el.snmp.placeholder = gw;
   }
   if (!cfg.snmp) {
     el.snmp.disabled = true;
@@ -119,8 +136,64 @@ export function renderProgress(el: ScreenElems, view: ScanView, expected: number
   }
 }
 
-// deviceRow — строка таблицы найденных устройств: имя, IP, MAC,
-// производитель и выбор класса.
+// ipSortKey — числовой ключ первого IPv4-адреса (чем меньше адрес,
+// тем выше строка); без адреса или не IPv4 — в конец списка.
+export function ipSortKey(info: DeviceInfo): number {
+  const first = info.ips[0];
+  if (first === undefined) return Number.POSITIVE_INFINITY;
+  const octets = first.split('.');
+  if (octets.length !== 4) return Number.POSITIVE_INFINITY;
+  let key = 0;
+  for (const o of octets) {
+    const n = Number(o);
+    if (!Number.isInteger(n) || n < 0 || n > 255) return Number.POSITIVE_INFINITY;
+    key = key * 256 + n;
+  }
+  return key;
+}
+
+// displayName — имя или производитель (NR-031 п.3): hostname, первое
+// имя, производитель, идентификатор (MAC).
+export function displayName(info: DeviceInfo): string {
+  if (info.hostname !== '') return info.hostname;
+  const first = info.names[0];
+  if (first !== undefined && first.name !== '') return first.name;
+  if (info.vendor !== '') return info.vendor;
+  return info.id;
+}
+
+// lastSeenOf — время последнего обнаружения: максимум по наблюдениям.
+export function lastSeenOf(info: DeviceInfo): Date | null {
+  let latest: Date | null = null;
+  for (const o of info.observations) {
+    const t = new Date(o.seen);
+    if (Number.isNaN(t.getTime())) continue;
+    if (latest === null || t.getTime() > latest.getTime()) latest = t;
+  }
+  return latest;
+}
+
+// sourcesOf — уникальные источники наблюдений по алфавиту.
+export function sourcesOf(info: DeviceInfo): string {
+  const set = new Set<string>();
+  for (const o of info.observations) set.add(o.source);
+  return [...set].sort().join(', ');
+}
+
+// sortDevicesByIP — сортировка по IP по умолчанию (NR-031 п.3),
+// устройства без адреса — в конец, между собой по MAC.
+export function sortDevicesByIP(devices: DeviceInfo[]): DeviceInfo[] {
+  return [...devices].sort((a, b) => {
+    const ka = ipSortKey(a);
+    const kb = ipSortKey(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+// deviceRow — строка таблицы найденных устройств: имя или
+// производитель, IP, MAC, класс с выбором, время последнего
+// обнаружения и источники (NR-031 п.3).
 export function deviceRow(
   info: DeviceInfo,
   onClass: (id: string, klass: string) => void,
@@ -131,27 +204,51 @@ export function deviceRow(
     td.textContent = value;
     return td;
   };
-  const name = info.hostname !== '' ? info.hostname : info.id;
   tr.append(
-    cell(name),
+    cell(displayName(info)),
     cell(info.ips.join(', ')),
     cell(info.id),
     cell(info.vendor),
   );
-  const actions = document.createElement('td');
-  for (const [value, label] of CLASS_BUTTONS) {
-    const b = document.createElement('button');
-    b.textContent = label;
-    if (info.class === value) b.setAttribute('aria-pressed', 'true');
-    b.addEventListener('click', () => onClass(info.id, value));
-    actions.append(b);
+  const classCell = document.createElement('td');
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', `Класс устройства ${info.id}`);
+  for (const [value, label] of CLASS_OPTIONS) {
+    const opt = new Option(label, value);
+    if (info.class === value) opt.selected = true;
+    select.append(opt);
   }
-  const cur = document.createElement('span');
-  cur.className = 'badge';
-  cur.textContent = CLASS_NAMES[info.class] ?? info.class;
-  actions.append(document.createTextNode(' '), cur);
-  tr.append(actions);
+  select.addEventListener('change', () => onClass(info.id, select.value));
+  classCell.append(select);
+  tr.append(classCell);
+
+  const seen = lastSeenOf(info);
+  tr.append(cell(seen === null ? '—' : seen.toLocaleString()));
+  tr.append(cell(sourcesOf(info)));
   return tr;
+}
+
+// renderDevicesTable — таблица устройств: сортировка по IP и явное
+// пустое состояние (NR-031 п.3).
+export function renderDevicesTable(
+  tbody: HTMLElement,
+  devices: DeviceInfo[],
+  onClass: (id: string, klass: string) => void,
+): void {
+  tbody.textContent = '';
+  if (devices.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.className = 'empty';
+    td.colSpan = 7;
+    td.textContent = 'Устройств пока нет — запустите сканирование.';
+    tr.append(td);
+    tbody.append(tr);
+    return;
+  }
+  for (const d of sortDevicesByIP(devices)) {
+    tbody.append(deviceRow(d, onClass));
+  }
 }
 
 // renderAlerts — список открытых оповещений с разбором.
