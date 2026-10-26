@@ -76,6 +76,53 @@ Describe 'Get-MaskedText (секреты не проходят в отчёт)' {
     }
 }
 
+Describe 'Format-NaDeviceRows (разбор ответа /api/devices, NR-030)' {
+    It 'устройство с MAC: адреса, имена и источники в одной строке' {
+        $d = [pscustomobject]@{
+            mac          = '02:00:00:00:00:02'
+            ips          = @('10.0.0.2', '10.0.0.3')
+            vendor       = 'Acme Corp'
+            names        = @(
+                [pscustomobject]@{ source = 'netbios'; name = 'pc-1'; seen = '2026-10-26T10:00:00Z' }
+                [pscustomobject]@{ source = 'dns'; name = 'pc-1.lan'; seen = '2026-10-26T10:00:01Z' }
+            )
+            observations = @(
+                [pscustomobject]@{ source = 'ping'; seen = 'x' }
+                [pscustomobject]@{ source = 'arp'; seen = 'x' }
+            )
+        }
+        $rows = @(Format-NaDeviceRows -Devices @($d))
+        $rows.Count | Should -Be 1
+        $rows[0] | Should -Match '02:00:00:00:00:02'
+        $rows[0] | Should -Match '10\.0\.0\.2, 10\.0\.0\.3'
+        $rows[0] | Should -Match 'Acme Corp'
+        $rows[0] | Should -Match 'pc-1, pc-1\.lan'
+        $rows[0] | Should -Match '\[arp,ping\]'
+    }
+
+    It 'ip:-хост: MAC пуст; одиночные значения JSON не режутся по символам' {
+        # ConvertFrom-Json для одиночного элемента даёт скаляр, не массив.
+        $d = [pscustomobject]@{
+            mac          = 'ip:10.0.0.5'
+            ips          = '10.0.0.5'
+            vendor       = ''
+            names        = [pscustomobject]@{ source = 'dns'; name = 'srv.lan'; seen = 'x' }
+            observations = [pscustomobject]@{ source = 'ping'; seen = 'x' }
+        }
+        $rows = @(Format-NaDeviceRows -Devices $d)
+        $rows.Count | Should -Be 1
+        $rows[0] | Should -Match '10\.0\.0\.5'
+        $rows[0] | Should -Not -Match 'ip:'
+        $rows[0] | Should -Match 'srv\.lan'
+        $rows[0] | Should -Match '\[ping\]'
+    }
+
+    It 'пустой и нулевой списки дают пустой результат' {
+        @(Format-NaDeviceRows -Devices @()) | Should -HaveCount 0
+        @(Format-NaDeviceRows -Devices $null) | Should -HaveCount 0
+    }
+}
+
 Describe 'Save-OwnerToken (повторный запуск ничего не меняет)' {
     It 'создаёт токен, сохраняет при повторе, заменяет с -Rotate' {
         $dir = Join-Path $TestDrive 'na'

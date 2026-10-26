@@ -13,6 +13,12 @@ const (
 	NameSourceMDNS    = "mdns"
 	NameSourceSSDP    = "ssdp"
 	NameSourceDHCP    = "dhcp"
+	// NameSourceDNS — обратный DNS (NR-030): net.LookupAddr для адресов
+	// внутри границ сканирования, у которых имён из других источников нет.
+	NameSourceDNS = "dns"
+	// NameSourceLocal — имя этой машины (os.Hostname): сервер видит сам
+	// себя как устройство (NR-030, локальные интерфейсы).
+	NameSourceLocal = "local"
 )
 
 // MaxNameLen — максимальная длина имени в символах.
@@ -24,6 +30,8 @@ var nameSources = map[string]bool{
 	NameSourceMDNS:    true,
 	NameSourceSSDP:    true,
 	NameSourceDHCP:    true,
+	NameSourceDNS:     true,
+	NameSourceLocal:   true,
 }
 
 // Name — имя устройства или хоста с указанием источника и времени.
@@ -36,7 +44,7 @@ type Name struct {
 }
 
 // NewName создаёт имя: источник обязан быть одним из допустимых
-// (netbios, mdns, ssdp); имя после обрезки по краям — непустое,
+// (netbios, mdns, ssdp, dhcp, dns, local); имя после обрезки по краям — непустое,
 // не длиннее MaxNameLen символов и без управляющих символов.
 func NewName(source, name string, seen time.Time) (Name, error) {
 	if !nameSources[source] {

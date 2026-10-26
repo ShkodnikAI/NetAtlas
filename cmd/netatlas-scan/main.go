@@ -68,6 +68,7 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 	allowLarge := fs.Bool("allow-large", false, "разрешить подсеть шире /22 (более 1024 адресов)")
 	pingFlag := fs.Bool("ping", false, "активный ping-sweep подсети (ICMP; нужны права на raw-сокет)")
 	namesFlag := fs.Bool("names", false, "разрешение имён (NetBIOS, mDNS, SSDP)")
+	noDNS := fs.Bool("no-dns", false, "не делать обратный DNS-запрос для адресов без имён")
 	snmpTargets := fs.String("snmp-targets", "", "цели SNMP (только чтение) через запятую; каждая обязана быть внутри --subnets")
 	snmpV2C := fs.Bool("snmp-v2c", false, "SNMPv2c вместо SNMPv3 authPriv (SHA/AES)")
 	leasesPath := fs.String("leases", "", "файл DHCP-аренд (isc или csv); читается только локально")
@@ -131,7 +132,7 @@ func runWith(args []string, getenv func(string) string, stdout, stderr io.Writer
 
 	ctx := context.Background()
 
-	cfg := pipeline.Config{Scope: scope, Limiter: limiter, Ping: *pingFlag, Names: *namesFlag}
+	cfg := pipeline.Config{Scope: scope, Limiter: limiter, Ping: *pingFlag, Names: *namesFlag, NoDNS: *noDNS}
 	deps := pipeline.Deps{
 		ReadARP: arp.ReadSystem,
 		NewProber: func() (ping.Prober, func(), error) {

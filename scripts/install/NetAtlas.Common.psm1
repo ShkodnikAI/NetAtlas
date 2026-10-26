@@ -179,6 +179,38 @@ function Read-OwnerToken {
 
 # --- права каталогов --------------------------------------------------------
 
+function Format-NaDeviceRows {
+    <#
+    .SYNOPSIS
+        Строки таблицы найденных устройств из ответа GET /api/devices (NR-030).
+    .DESCRIPTION
+        Принимает массив устройств из поля .devices ответа и возвращает
+        по строке на устройство: MAC, IP, вендор, имена, источники.
+        MAC у хостов без MAC (id «ip:адрес») в ответе сервера содержит
+        сам идентификатор — в таблицу он не попадает. Одиночные значения
+        JSON (ConvertFrom-Json) разворачиваются в массивы, пустые
+        пропускаются. Чистая функция: вывод проверяется Pester-тестом.
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [object[]]$Devices
+    )
+    $rows = @()
+    foreach ($d in @($Devices | Where-Object { $_ })) {
+        $ips = @($d.ips | Where-Object { $_ }) -join ', '
+        $names = @($d.names | Where-Object { $_ } | ForEach-Object { $_.name }) -join ', '
+        $sources = @($d.observations | Where-Object { $_ } | ForEach-Object { $_.source } | Sort-Object -Unique) -join ','
+        $mac = ''
+        if ($d.mac -and -not $d.mac.StartsWith('ip:')) { $mac = [string]$d.mac }
+        $vendor = [string]$d.vendor
+        $row = '{0}  {1}  {2}' -f $mac.PadRight(19), $ips.PadRight(16), $vendor.PadRight(22)
+        if ($names) { $row += "  $names" }
+        if ($sources) { $row += "  [$sources]" }
+        $rows += $row
+    }
+    return $rows
+}
+
 function Protect-NetAtlasDir {
     # Закрывает каталог: только SYSTEM и администраторы, без
     # наследования. SIDs вместо имён: работает на любой локали
@@ -193,6 +225,6 @@ function Protect-NetAtlasDir {
     if ($LASTEXITCODE -ne 0) { throw "icacls /grant не прошёл: $Path" }
 }
 
-Export-ModuleMember -Function Write-Step, Write-Ok, Write-Fail, Write-Info, Write-NaLog,
+Export-ModuleMember -Function Write-Step, Write-Ok, Write-Fail, Write-Info, Write-NaLog, Format-NaDeviceRows,
     Get-MaskedText, ConvertTo-Cidr, Test-VirtualAdapter, Get-LanSubnets,
     Save-OwnerToken, Invoke-NaApi, Read-OwnerToken, Protect-NetAtlasDir

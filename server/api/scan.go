@@ -32,6 +32,9 @@ type ScanRequest struct {
 	Names       bool     `json:"names"`
 	SNMPTargets []string `json:"snmp_targets"`
 	Confirm     bool     `json:"confirm"`
+	// NoDNS отключает обратный DNS (NR-030): адресам без имён из
+	// других источников net.LookupAddr не отправляется.
+	NoDNS bool `json:"no_dns"`
 	// LeasesPath и LeasesFormat (NR-023): файл DHCP-аренд на сервере
 	// и его формат (isc|csv). Только вместе: оба поля или ни одного.
 	LeasesPath   string `json:"leases_path,omitempty"`
@@ -52,6 +55,14 @@ type ScanDeps struct {
 	NewProber   func() (ping.Prober, func(), error)
 	NewNameConn func() (net.PacketConn, error)
 	NewWalker   pipeline.WalkerFactory
+	// DNSResolver — обратный DNS (NR-030); nil — net.DefaultResolver.
+	DNSResolver pipeline.DNSResolver
+	// ReadLocalIfaces — локальные интерфейсы сервера (NR-030);
+	// nil — net.Interfaces.
+	ReadLocalIfaces func() ([]pipeline.LocalIface, error)
+	// Hostname — имя этой машины для источника «local» (NR-030);
+	// nil — os.Hostname.
+	Hostname func() (string, error)
 }
 
 // ScanState — состояние одного сканирования для GET /api/scan/{id}.
@@ -173,6 +184,7 @@ func (a *API) handleScanStart(w http.ResponseWriter, r *http.Request) {
 	detail, _ := json.Marshal(map[string]any{
 		"subnets": body.Subnets, "ping": body.Ping,
 		"names": body.Names, "snmp_targets": len(targets),
+		"no_dns":      body.NoDNS,
 		"leases_path": body.LeasesPath, "leases_format": body.LeasesFormat,
 	})
 	if err := a.store.AppendAudit(r.Context(), ActorOwner, "start_scan", "scan", string(detail)); err != nil {
@@ -272,13 +284,17 @@ func (a *API) runScan(st *ScanState, body ScanRequest, targets []netip.Addr, lea
 		Leases:         leases,
 		SkipDeepMACs:   skip,
 		SkipSSDPForIPs: skipIPs,
+		NoDNS:          body.NoDNS,
 		OnStage:        addStage,
 	}
 	res, err := pipeline.Run(ctx, pcfg, pipeline.Deps{
-		ReadARP:     deps.ReadARP,
-		NewProber:   deps.NewProber,
-		NewNameConn: deps.NewNameConn,
-		NewWalker:   deps.NewWalker,
+		ReadARP:         deps.ReadARP,
+		NewProber:       deps.NewProber,
+		NewNameConn:     deps.NewNameConn,
+		NewWalker:       deps.NewWalker,
+		DNSResolver:     deps.DNSResolver,
+		ReadLocalIfaces: deps.ReadLocalIfaces,
+		Hostname:        deps.Hostname,
 	})
 	if err != nil {
 		a.scanMu.Lock()

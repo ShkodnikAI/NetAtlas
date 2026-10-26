@@ -295,20 +295,23 @@ func (s *Store) Device(ctx context.Context, id string) (DeviceInfo, error) {
 }
 
 // ListDevices возвращает все устройства (для экранов и классификации):
-// карточки без истории имён, но с классом и признаками.
+// карточки с классом, признаками, адресами, именами и наблюдениями.
+// Данные собираются двумя-тремя выборками по всем устройствам и
+// раскладываются в памяти — без запроса на каждое устройство.
 func (s *Store) ListDevices(ctx context.Context) ([]DeviceInfo, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, class, hostname, vendor, ssid,
-                manual, verified, last_seen FROM devices ORDER BY id`)
+		manual, verified, last_seen FROM devices ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("store: список устройств: %w", err)
 	}
-	defer rows.Close()
 	out := []DeviceInfo{}
+	idx := make(map[string]int)
 	for rows.Next() {
 		var info DeviceInfo
 		var class, hostname, vendor, ssid, lastSeen string
 		if err := rows.Scan(&info.ID, &class, &hostname, &vendor, &ssid,
 			&info.Manual, &info.Verified, &lastSeen); err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("store: устройство в списке: %w", err)
 		}
 		info.MAC = info.ID
@@ -327,10 +330,96 @@ func (s *Store) ListDevices(ctx context.Context) ([]DeviceInfo, error) {
 		if ssid != "" {
 			info.SSID = ssid
 		}
+		idx[info.ID] = len(out)
 		out = append(out, info)
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: список устройств: %w", err)
+	}
+
+	// Адреса всех устройств одной выборкой (NR-030), порядок как в
+	// одиночной Device(): по возрастанию адреса.
+	rows, err = s.db.QueryContext(ctx, `SELECT device_id, ip FROM device_ips ORDER BY device_id, ip`)
+	if err != nil {
+		return nil, fmt.Errorf("store: адреса устройств: %w", err)
+	}
+	for rows.Next() {
+		var id, raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: адрес устройства в списке: %w", err)
+		}
+		i, ok := idx[id]
+		if !ok {
+			continue // устройство удалено между выборками; FK не пускает
+		}
+		a, err := netip.ParseAddr(raw)
+		if err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: адрес устройства %s: %q: %w", id, raw, err)
+		}
+		out[i].IPs = append(out[i].IPs, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: адреса устройств: %w", err)
+	}
+
+	// Имена всех устройств одной выборкой, порядок как в Device():
+	// по времени появления.
+	rows, err = s.db.QueryContext(ctx, `SELECT device_id, source, name, seen FROM device_names ORDER BY device_id, seen`)
+	if err != nil {
+		return nil, fmt.Errorf("store: имена устройств: %w", err)
+	}
+	for rows.Next() {
+		var id, source, name, t string
+		if err := rows.Scan(&id, &source, &name, &t); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: имя устройства в списке: %w", err)
+		}
+		i, ok := idx[id]
+		if !ok {
+			continue
+		}
+		seenAt, err := time.Parse(time.RFC3339Nano, t)
+		if err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: время имени устройства %s: %w", id, err)
+		}
+		out[i].Names = append(out[i].Names, model.Name{Source: source, Name: name, Seen: seenAt})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: имена устройств: %w", err)
+	}
+
+	// Наблюдения всех устройств одной выборкой, порядок как в
+	// Device(): по источнику.
+	rows, err = s.db.QueryContext(ctx, `SELECT device_id, source, seen FROM observations ORDER BY device_id, source`)
+	if err != nil {
+		return nil, fmt.Errorf("store: наблюдения устройств: %w", err)
+	}
+	for rows.Next() {
+		var id, source, t string
+		if err := rows.Scan(&id, &source, &t); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: наблюдение устройства в списке: %w", err)
+		}
+		i, ok := idx[id]
+		if !ok {
+			continue
+		}
+		seenAt, err := time.Parse(time.RFC3339Nano, t)
+		if err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("store: время наблюдения устройства %s: %w", id, err)
+		}
+		out[i].Observations = append(out[i].Observations, model.Observation{Source: source, Seen: seenAt})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: наблюдения устройств: %w", err)
 	}
 	return out, nil
 }
