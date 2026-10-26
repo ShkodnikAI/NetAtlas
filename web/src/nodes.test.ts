@@ -10,13 +10,31 @@ function node(kind: string, manual = false, verified = true): NodeInfo {
 }
 
 describe('nodeStyle', () => {
-  it('десять типов получают формы', () => {
+  // NR-033 п.2: единая плашка у всех типов, тип различается
+  // отдельной SVG-иконкой (глифом), а не формой узла.
+  it('десять типов получают отдельные иконки-глифы', () => {
     const kinds = [
       'internet', 'router', 'switch', 'ap', 'server',
       'device', 'laptop', 'printer', 'cloud', 'unknown',
     ];
-    const shapes = new Set(kinds.map((k) => nodeStyle(node(k)).shape));
-    expect(shapes.size).toBe(kinds.length);
+    const icons = new Set(kinds.map((k) => nodeStyle(node(k)).icon));
+    expect(icons.size).toBe(kinds.length);
+  });
+
+  it('маркер статуса различается формой и цветом (NR-033 п.2)', () => {
+    const kinds = ['online', 'attention', 'problem', 'offline', 'unverified'] as const;
+    const icons = kinds.map((s) => nodeStyle(node('router'), s).icon);
+    expect(new Set(icons).size).toBe(kinds.length);
+    // Цвет ободка повторяет статус.
+    const borders = new Set(kinds.map((s) => nodeStyle(node('router'), s).borderColor));
+    expect(borders.size).toBe(kinds.length);
+  });
+
+  it('счётчик решений рисуется на значке и не рисуется при нуле', () => {
+    const withCounter = nodeStyle(node('router'), 'attention', 3).icon;
+    const withoutCounter = nodeStyle(node('router'), 'attention', 0).icon;
+    expect(decodeURIComponent(withCounter)).toContain('>3<');
+    expect(decodeURIComponent(withoutCounter)).not.toContain('>3<');
   });
 
   it('у каждого типа есть иконка и подпись типа', () => {

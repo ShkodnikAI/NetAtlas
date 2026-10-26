@@ -78,13 +78,17 @@ describe('hasAssumedLinks', () => {
 });
 
 describe('renderLegend', () => {
-  it('рисует строки типов и пунктирную строку при assumed-связи', () => {
+  it('рисует строки статусов, типов и пунктирную строку при assumed-связи (NR-033 п.5)', () => {
     const box = document.createElement('div');
     renderLegend(box, graph([{ kind: 'router' }, { kind: 'printer' }], [{ source: 'assumed' }]));
     expect(box.hidden).toBe(false);
     const chips = [...box.querySelectorAll('.legend-item')];
+    // Сначала статусы (fixture-узлы verified → ● в сети), затем типы,
+    // затем пунктирная строка предполагаемой связи.
+    const marks = chips.map((c) => (c as HTMLElement).dataset.status ?? null);
+    expect(marks.filter((x) => x !== null)).toEqual(['online']);
     const kinds = chips.map((c) => (c as HTMLElement).dataset.kind);
-    expect(kinds).toEqual(['router', 'printer', 'assumed']);
+    expect(kinds).toEqual([undefined, 'router', 'printer', 'assumed']);
     // Пунктирная строка с текстом из наряда.
     const assumed = box.querySelector('.legend-assumed');
     expect(assumed?.textContent).toBe(ASSUMED_TEXT);

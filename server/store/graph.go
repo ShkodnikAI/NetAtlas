@@ -306,6 +306,10 @@ type DeviceInfo struct {
 	KindManual bool   `json:"kind_manual,omitempty"`
 	Manual     bool   `json:"manual"`
 	Verified   bool   `json:"verified"`
+	// FirstSeen/LastSeen — первое и последнее обнаружение
+	// (NR-033: полная карточка устройства).
+	FirstSeen time.Time `json:"first_seen,omitempty"`
+	LastSeen  time.Time `json:"last_seen,omitempty"`
 }
 
 // Device возвращает карточку устройства: имена, IP, производитель,
@@ -330,6 +334,12 @@ func (s *Store) Device(ctx context.Context, id string) (DeviceInfo, error) {
 	info.KindAuto = kindAuto
 	info.KindManual = kindManual
 	info.Class = model.Class(class)
+	if t, err := time.Parse(time.RFC3339Nano, seen); err == nil {
+		info.FirstSeen = t
+	}
+	if t, err := time.Parse(time.RFC3339Nano, lastSeen); err == nil {
+		info.LastSeen = t
+	}
 	if hostname != "" {
 		info.Hostname = hostname
 	}

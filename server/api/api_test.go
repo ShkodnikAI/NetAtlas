@@ -34,6 +34,14 @@ type fakeStore struct {
 	agents        []store.Agent
 	positions     map[string][2]float64
 	positionOrder []string
+	// Сигналы внимания (NR-033): подставляемые данные.
+	signalDevices   []store.SignalDeviceRow
+	openAlerts      []store.OpenAlert
+	agentsByMAC     map[string]store.AgentRef
+	snoozes         map[string]time.Time
+	lastSnooze      [3]string // device, kind, actor
+	activityAccount map[string]string
+	auditEntries    []store.HistoryEntry
 	// graph — заглушка для Topology, если задана (тесты NR-032).
 	graph         *store.Graph
 	kindUpdates   []store.Update
@@ -47,13 +55,16 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		security:      map[string]string{},
-		devices:       map[string]store.DeviceInfo{},
-		notManual:     map[string]bool{},
-		agentExists:   map[string]bool{},
-		metrics:       map[string][]store.MetricAgg{},
-		inventory:     map[string]store.InventoryRow{},
-		revokedAgents: map[string]bool{},
+		security:        map[string]string{},
+		devices:         map[string]store.DeviceInfo{},
+		notManual:       map[string]bool{},
+		agentExists:     map[string]bool{},
+		metrics:         map[string][]store.MetricAgg{},
+		inventory:       map[string]store.InventoryRow{},
+		revokedAgents:   map[string]bool{},
+		agentsByMAC:     map[string]store.AgentRef{},
+		snoozes:         map[string]time.Time{},
+		activityAccount: map[string]string{},
 	}
 }
 
@@ -733,4 +744,56 @@ func (f *fakeStore) SaveAIAnswer(ctx context.Context, id int64, answer string) e
 
 func (f *fakeStore) AIMapping(ctx context.Context, id int64) ([]store.MappingRow, error) {
 	panic("отчёты тестируются на настоящем store")
+}
+
+// --- Сигналы внимания (NR-033 п.4): подставные данные. ---
+
+func (f *fakeStore) SignalDevices(ctx context.Context) ([]store.SignalDeviceRow, error) {
+	return append([]store.SignalDeviceRow(nil), f.signalDevices...), nil
+}
+
+func (f *fakeStore) OpenAlerts(ctx context.Context) ([]store.OpenAlert, error) {
+	return append([]store.OpenAlert(nil), f.openAlerts...), nil
+}
+
+func (f *fakeStore) OpenAlertsByDevice(ctx context.Context, deviceID string) ([]store.OpenAlert, error) {
+	out := []store.OpenAlert{}
+	for _, a := range f.openAlerts {
+		if a.DeviceID == deviceID {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) AgentsByMAC(ctx context.Context) (map[string]store.AgentRef, error) {
+	out := map[string]store.AgentRef{}
+	for mac, ref := range f.agentsByMAC {
+		out[mac] = ref
+	}
+	return out, nil
+}
+
+func (f *fakeStore) ActiveSnoozes(ctx context.Context, now time.Time) (map[string]bool, error) {
+	out := map[string]bool{}
+	for key, until := range f.snoozes {
+		if until.After(now) {
+			out[key] = true
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) SnoozeSignal(ctx context.Context, deviceID, kind string, until time.Time, actor string, now time.Time) error {
+	f.lastSnooze = [3]string{deviceID, kind, actor}
+	f.snoozes[deviceID+"\x00"+kind] = until
+	return nil
+}
+
+func (f *fakeStore) LastActivityAccount(ctx context.Context, agentID string) (string, error) {
+	return f.activityAccount[agentID], nil
+}
+
+func (f *fakeStore) AuditForTarget(ctx context.Context, target string, limit int) ([]store.HistoryEntry, error) {
+	return append([]store.HistoryEntry(nil), f.auditEntries...), nil
 }

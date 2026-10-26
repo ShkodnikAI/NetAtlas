@@ -9,8 +9,8 @@
     status;
   };
   function humanize(status, body) {
-    const text2 = parseErrorBody(body);
-    if (text2 !== "") return text2;
+    const text3 = parseErrorBody(body);
+    if (text3 !== "") return text3;
     switch (status) {
       case 400:
         return "\u0421\u0435\u0440\u0432\u0435\u0440 \u043D\u0435 \u043F\u0440\u0438\u043D\u044F\u043B \u0437\u0430\u043F\u0440\u043E\u0441 (400).";
@@ -67,6 +67,14 @@
     }
     topology() {
       return this.req("GET", "/api/topology");
+    }
+    // Сигналы внимания (NR-033 п.4): статусы узлов и список сигналов.
+    signals() {
+      return this.req("GET", "/api/signals");
+    }
+    // Игнорировать сигнал на N дней (NR-033 п.4).
+    snoozeSignal(deviceID, kind, days) {
+      return this.req("POST", "/api/signals/snooze", { device_id: deviceID, kind, days });
     }
     config() {
       return this.req("GET", "/api/config");
@@ -210,8 +218,8 @@
     report(id2) {
       return this.req("GET", `/api/reports/${id2}`);
     }
-    reportAnswer(id2, text2) {
-      return this.req("POST", `/api/reports/${id2}/answer`, { text: text2 });
+    reportAnswer(id2, text3) {
+      return this.req("POST", `/api/reports/${id2}/answer`, { text: text3 });
     }
     reportAskAI(id2) {
       return this.req("POST", `/api/reports/${id2}/answer`, { use_ai: true });
@@ -225,17 +233,17 @@
   };
 
   // src/audit.ts
-  function setAuditBadge(el8, ok) {
-    el8.classList.add("audit-badge");
-    el8.hidden = ok;
-    if (!ok) el8.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
+  function setAuditBadge(el9, ok) {
+    el9.classList.add("audit-badge");
+    el9.hidden = ok;
+    if (!ok) el9.textContent = "\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430 \u043D\u0430\u0440\u0443\u0448\u0435\u043D";
   }
 
   // src/computers.ts
-  function el(tag, cls, text2) {
+  function el(tag, cls, text3) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
-    if (text2 !== void 0) e.textContent = text2;
+    if (text3 !== void 0) e.textContent = text3;
     return e;
   }
   var severityNames = {
@@ -444,10 +452,10 @@
   function topNamed(names, limit2) {
     return [...names].sort((a, b) => b.value - a.value).slice(0, limit2);
   }
-  function el2(tag, cls = "", text2) {
+  function el2(tag, cls = "", text3) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
-    if (text2 !== void 0) e.textContent = text2;
+    if (text3 !== void 0) e.textContent = text3;
     return e;
   }
   function renderActivity(refs, summary, computers, handlers) {
@@ -559,9 +567,9 @@
     }
   }
   var MaxAnswerBytes = 32 * 1024;
-  function validateAnswerText(text2) {
-    if (text2.trim() === "") return "\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043E\u0442\u0432\u0435\u0442 \u0418\u0418 \u043A\u0430\u043A \u0442\u0435\u043A\u0441\u0442.";
-    if (text2.length > MaxAnswerBytes) return `\u041E\u0442\u0432\u0435\u0442 \u0434\u043B\u0438\u043D\u043D\u0435\u0435 ${Math.floor(MaxAnswerBytes / 1024)} \u041A\u0411 \u2014 \u0441\u043E\u043A\u0440\u0430\u0442\u0438\u0442\u0435.`;
+  function validateAnswerText(text3) {
+    if (text3.trim() === "") return "\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043E\u0442\u0432\u0435\u0442 \u0418\u0418 \u043A\u0430\u043A \u0442\u0435\u043A\u0441\u0442.";
+    if (text3.length > MaxAnswerBytes) return `\u041E\u0442\u0432\u0435\u0442 \u0434\u043B\u0438\u043D\u043D\u0435\u0435 ${Math.floor(MaxAnswerBytes / 1024)} \u041A\u0411 \u2014 \u0441\u043E\u043A\u0440\u0430\u0442\u0438\u0442\u0435.`;
     return "";
   }
   function validateDraftInput(name, fragment) {
@@ -612,10 +620,10 @@
         return kind;
     }
   }
-  function el3(tag, cls = "", text2) {
+  function el3(tag, cls = "", text3) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
-    if (text2 !== void 0) e.textContent = text2;
+    if (text3 !== void 0) e.textContent = text3;
     return e;
   }
   function renderReports(refs, list, current2, mapping, handlers) {
@@ -798,10 +806,10 @@
   function filterScriptAudit(entries) {
     return entries.filter((e) => scriptActions.has(e.action));
   }
-  function el4(tag, cls = "", text2) {
+  function el4(tag, cls = "", text3) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
-    if (text2 !== void 0) e.textContent = text2;
+    if (text3 !== void 0) e.textContent = text3;
     return e;
   }
   function renderStages(root, stages) {
@@ -975,15 +983,15 @@
     tpl.addEventListener("change", fillParams);
     root.append(row);
     root.append(params);
-    const text2 = el4("textarea");
-    text2.placeholder = "\u0422\u0435\u043A\u0441\u0442 PowerShell-\u0441\u043A\u0440\u0438\u043F\u0442\u0430 (\u0434\u043B\u044F \u0440\u0435\u0436\u0438\u043C\u0430 \xAB\u0438\u0437 \u0442\u0435\u043A\u0441\u0442\u0430\xBB)";
-    text2.hidden = true;
-    root.append(text2);
+    const text3 = el4("textarea");
+    text3.placeholder = "\u0422\u0435\u043A\u0441\u0442 PowerShell-\u0441\u043A\u0440\u0438\u043F\u0442\u0430 (\u0434\u043B\u044F \u0440\u0435\u0436\u0438\u043C\u0430 \xAB\u0438\u0437 \u0442\u0435\u043A\u0441\u0442\u0430\xBB)";
+    text3.hidden = true;
+    root.append(text3);
     mode.addEventListener("change", () => {
       const isCatalog = mode.value === "catalog";
       tpl.hidden = !isCatalog;
       params.hidden = !isCatalog;
-      text2.hidden = isCatalog;
+      text3.hidden = isCatalog;
     });
     const create2 = el4("button", "primary", "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A");
     create2.addEventListener("click", () => {
@@ -1001,7 +1009,7 @@
         }
         body.params = map2;
       } else {
-        body.content = text2.value;
+        body.content = text3.value;
       }
       void handlers.onCreateDraft(body);
     });
@@ -1070,10 +1078,10 @@
   }
 
   // src/quality.ts
-  function el5(tag, cls, text2) {
+  function el5(tag, cls, text3) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
-    if (text2 !== void 0) e.textContent = text2;
+    if (text3 !== void 0) e.textContent = text3;
     return e;
   }
   var worstNames = {
@@ -1166,10 +1174,10 @@
   }
 
   // src/security.ts
-  function el6(tag, cls, text2) {
+  function el6(tag, cls, text3) {
     const e = document.createElement(tag);
     if (cls !== "") e.className = cls;
-    if (text2 !== void 0) e.textContent = text2;
+    if (text3 !== void 0) e.textContent = text3;
     return e;
   }
   var sevNames = {
@@ -2525,8 +2533,8 @@
   };
   var push = function push2(arr, otherArr) {
     for (var i2 = 0; i2 < otherArr.length; i2++) {
-      var el8 = otherArr[i2];
-      arr.push(el8);
+      var el9 = otherArr[i2];
+      arr.push(el9);
     }
   };
   var getPrefixedProperty = function getPrefixedProperty2(obj, propName, prefix) {
@@ -3714,8 +3722,8 @@
                 }
                 cycle = cycle.slice(smallestIndex).concat(cycle.slice(0, smallestIndex));
                 cycle.push(cycle[0]);
-                var cycleId = cycle.map(function(el8) {
-                  return el8.id();
+                var cycleId = cycle.map(function(el9) {
+                  return el9.id();
                 }).join(",");
                 if (negativeWeightCycleIds.indexOf(cycleId) === -1) {
                   negativeWeightCycles.push(eles.spawn(cycle));
@@ -18589,8 +18597,8 @@
     };
     var adjustMaximally = function adjustMaximally2(ele2, shifted2) {
       var eInfo = getInfo(ele2);
-      var incomers = ele2.incomers().filter(function(el8) {
-        return el8.isNode() && eles.has(el8);
+      var incomers = ele2.incomers().filter(function(el9) {
+        return el9.isNode() && eles.has(el9);
       });
       var maxDepth = -1;
       var id3 = ele2.id();
@@ -18626,8 +18634,8 @@
         var _ele3 = dequeue();
         var didShift = adjustMaximally(_ele3, shifted);
         if (didShift) {
-          _ele3.outgoers().filter(function(el8) {
-            return el8.isNode() && eles.has(el8);
+          _ele3.outgoers().filter(function(el9) {
+            return el9.isNode() && eles.has(el9);
           }).forEach(enqueue);
         } else if (didShift === null) {
           warn("Detected double maximal shift for node `" + _ele3.id() + "`.  Bailing maximal adjustment due to cycle.  Use `options.maximal: true` only on DAGs.");
@@ -20643,9 +20651,9 @@
       }
       ele2.boundingBox();
       var bb = _p.labelBounds[prefix || "main"];
-      var text2 = ele2.pstyle(prefixDash + "label").value;
+      var text3 = ele2.pstyle(prefixDash + "label").value;
       var eventsEnabled = ele2.pstyle("text-events").strValue === "yes";
-      if (!eventsEnabled || !text2) {
+      if (!eventsEnabled || !text3) {
         return;
       }
       var lx = preprop(_p.rscratch, "labelX", prefix);
@@ -22504,13 +22512,13 @@
   };
   BRp$9.applyPrefixedLabelDimensions = function(ele, prefix) {
     var _p = ele._private;
-    var text2 = this.getLabelText(ele, prefix);
-    var cacheKey = hashString(text2, ele._private.labelDimsKey);
+    var text3 = this.getLabelText(ele, prefix);
+    var cacheKey = hashString(text3, ele._private.labelDimsKey);
     if (getPrefixedProperty(_p.rscratch, "prefixedLabelDimsKey", prefix) === cacheKey) {
       return;
     }
     setPrefixedProperty(_p.rscratch, "prefixedLabelDimsKey", prefix, cacheKey);
-    var labelDims = this.calculateLabelDimensions(ele, text2);
+    var labelDims = this.calculateLabelDimensions(ele, text3);
     var lineHeight = ele.pstyle("line-height").pfValue;
     var size3 = ele.pstyle("font-size").pfValue;
     var textWrap = ele.pstyle("text-wrap").strValue;
@@ -22529,7 +22537,7 @@
   BRp$9.getLabelText = function(ele, prefix) {
     var _p = ele._private;
     var pfd = prefix ? prefix + "-" : "";
-    var text2 = ele.pstyle(pfd + "label").strValue;
+    var text3 = ele.pstyle(pfd + "label").strValue;
     var textTransform = ele.pstyle("text-transform").value;
     var rscratch = function rscratch2(propName, value) {
       if (value) {
@@ -22539,14 +22547,14 @@
         return getPrefixedProperty(_p.rscratch, propName, prefix);
       }
     };
-    if (!text2) {
+    if (!text3) {
       return "";
     }
     if (textTransform == "none") ;
     else if (textTransform == "uppercase") {
-      text2 = text2.toUpperCase();
+      text3 = text3.toUpperCase();
     } else if (textTransform == "lowercase") {
-      text2 = text2.toLowerCase();
+      text3 = text3.toLowerCase();
     }
     var wrapStyle = ele.pstyle("text-wrap").value;
     if (wrapStyle === "wrap") {
@@ -22555,7 +22563,7 @@
         return rscratch("labelWrapCachedText");
       }
       var zwsp = "\u200B";
-      var lines = text2.split("\n");
+      var lines = text3.split("\n");
       var maxW = ele.pstyle("text-max-width").pfValue;
       var overflow = ele.pstyle("text-overflow-wrap").value;
       var overflowAny = overflow === "anywhere";
@@ -22605,23 +22613,23 @@
         }
       }
       rscratch("labelWrapCachedLines", wrappedLines);
-      text2 = rscratch("labelWrapCachedText", wrappedLines.join("\n"));
+      text3 = rscratch("labelWrapCachedText", wrappedLines.join("\n"));
       rscratch("labelWrapKey", labelKey);
     } else if (wrapStyle === "ellipsis") {
       var _maxW = ele.pstyle("text-max-width").pfValue;
       var ellipsized = "";
       var ellipsis = "\u2026";
       var incLastCh = false;
-      if (this.calculateLabelDimensions(ele, text2).width < _maxW) {
-        return text2;
+      if (this.calculateLabelDimensions(ele, text3).width < _maxW) {
+        return text3;
       }
-      for (var i2 = 0; i2 < text2.length; i2++) {
-        var widthWithNextCh = this.calculateLabelDimensions(ele, ellipsized + text2[i2] + ellipsis).width;
+      for (var i2 = 0; i2 < text3.length; i2++) {
+        var widthWithNextCh = this.calculateLabelDimensions(ele, ellipsized + text3[i2] + ellipsis).width;
         if (widthWithNextCh > _maxW) {
           break;
         }
-        ellipsized += text2[i2];
-        if (i2 === text2.length - 1) {
+        ellipsized += text3[i2];
+        if (i2 === text3.length - 1) {
           incLastCh = true;
         }
       }
@@ -22630,7 +22638,7 @@
       }
       return ellipsized;
     }
-    return text2;
+    return text3;
   };
   BRp$9.getLabelJustification = function(ele) {
     var justification = ele.pstyle("text-justification").strValue;
@@ -22645,7 +22653,7 @@
       return justification;
     }
   };
-  BRp$9.calculateLabelDimensions = function(ele, text2) {
+  BRp$9.calculateLabelDimensions = function(ele, text3) {
     var r = this;
     var containerWindow = r.cy.window();
     var document2 = containerWindow.document;
@@ -22671,7 +22679,7 @@
     c2d.font = "".concat(fStyle, " ").concat(weight8, " ").concat(size3, "px ").concat(family);
     var width2 = 0;
     var height2 = 0;
-    var lines = text2.split("\n");
+    var lines = text3.split("\n");
     var lineCount = lines.length;
     var labelActualDescent = 0;
     var labelActualAscent = 0;
@@ -27259,8 +27267,8 @@
     var textX = getPrefixedProperty(rscratch, "labelX", prefix);
     var textY = getPrefixedProperty(rscratch, "labelY", prefix);
     var orgTextX, orgTextY;
-    var text2 = this.getLabelText(ele, prefix);
-    if (text2 != null && text2 !== "" && !isNaN(textX) && !isNaN(textY)) {
+    var text3 = this.getLabelText(ele, prefix);
+    if (text3 != null && text3 !== "" && !isNaN(textX) && !isNaN(textY)) {
       this.setupTextStyle(context, ele, useEleOpacity);
       var pdash = prefix ? prefix + "-" : "";
       var textW = getPrefixedProperty(rscratch, "labelWidth", prefix);
@@ -27432,9 +27440,9 @@
         }
       } else {
         if (lineWidth > 0) {
-          context.strokeText(text2, textX, textY);
+          context.strokeText(text3, textX, textY);
         }
-        context.fillText(text2, textX, textY);
+        context.fillText(text3, textX, textY);
       }
       if (theta !== 0) {
         context.rotate(-theta);
@@ -28535,16 +28543,16 @@
       if (r.showFps && timeToRender) {
         timeToRender = Math.round(timeToRender);
         var fps = Math.round(1e3 / timeToRender);
-        var text2 = "1 frame = " + timeToRender + " ms = " + fps + " fps";
+        var text3 = "1 frame = " + timeToRender + " ms = " + fps + " fps";
         context.setTransform(1, 0, 0, 1, 0, 0);
         context.fillStyle = "rgba(255, 0, 0, 0.75)";
         context.strokeStyle = "rgba(255, 0, 0, 0.75)";
         context.font = "30px Arial";
         if (!fpsHeight) {
-          var dims = context.measureText(text2);
+          var dims = context.measureText(text3);
           fpsHeight = dims.actualBoundingBoxAscent;
         }
-        context.fillText(text2, 0, fpsHeight);
+        context.fillText(text3, 0, fpsHeight);
         var maxFps = 60;
         context.strokeRect(0, fpsHeight + 10, 250, 20);
         context.fillRect(0, fpsHeight + 10, 250 * Math.min(fps / maxFps, 1), 20);
@@ -31742,22 +31750,46 @@
   cytoscape.stylesheet = cytoscape.Stylesheet = _Stylesheet;
 
   // src/nodes.ts
+  var STATUS_STYLES = {
+    online: { color: "#5FD38D", glyph: "\u25CF", label: "\u0432 \u0441\u0435\u0442\u0438" },
+    attention: { color: "#F5B83D", glyph: "\u25B2", label: "\u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435" },
+    problem: { color: "#FF7A7A", glyph: "\u25A0", label: "\u043F\u0440\u043E\u0431\u043B\u0435\u043C\u0430" },
+    offline: { color: "#9AA6B5", glyph: "\u25CB", label: "\u043D\u0435 \u0432 \u0441\u0435\u0442\u0438" },
+    unverified: { color: "#B48FE8", glyph: "\u25C7", label: "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D" }
+  };
   var ICONS = {
-    internet: "M6.5 18h11a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.2 4.4 4.4 0 0 0 6.5 18z",
-    router: "M7 16.5h.01M11 16.5h.01M8 13V8M16 13V8 M3 13h18v7H3z",
-    switch: "M6 12h.01M10 12h.01M14 12h.01M18 12h.01 M2.5 8h19v8h-19z",
-    ap: "M3 9a13 13 0 0 1 18 0M6 12.5a8.5 8.5 0 0 1 12 0M9 16a4 4 0 0 1 6 0M12 19.5h.01",
-    server: "M7 7h.01M7 17h.01 M3.5 4h17v6h-17z M3.5 14h17v6h-17z",
-    device: "M9 20h6M12 16v4 M3 4h18v12H3z",
-    laptop: "M2.5 19h19 M5 5h14v10H5z",
-    printer: "M7 9V4h10v5 M7 14h10v6H7z M4 9h16v8H4z",
-    // NR-032 п.5: смартфон, чип IoT и телевизор.
+    // Глобус: меридиан, параллели.
+    internet: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z M3.5 12h17 M12 3.5c-2.6 2.2-4 5.1-4 8.5s1.4 6.3 4 8.5c2.6-2.2 4-5.1 4-8.5s-1.4-6.3-4-8.5z",
+    // Роутер: корпус, две антенны, индикаторы.
+    router: "M4 11.5h16v6H4z M8 11.5V5 M16 11.5V5 M7 14.5h.01 M10.5 14.5h.01 M14 14.5h.01",
+    // Коммутатор: корпус, порты, обмен стрелками.
+    switch: "M3.5 8.5h17v8h-17z M6.5 16.5h.01 M9.5 16.5h.01 M14.5 16.5h.01 M17.5 16.5h.01 M9.5 13.8V9.9 M8.2 11.2l1.3-1.3 1.3 1.3 M14.5 10.2v3.9 M13.2 12.8l1.3 1.3 1.3-1.3",
+    // Точка доступа: волны и точка.
+    ap: "M3 9a13 13 0 0 1 18 0 M6 12.5a8.5 8.5 0 0 1 12 0 M9 16a4 4 0 0 1 6 0 M12 19.5h.01",
+    // Сервер: две стойки с индикаторами.
+    server: "M3.5 4.5h17v6h-17z M3.5 13.5h17v6h-17z M6.5 7.5h.01 M6.5 16.5h.01 M17 7.5h.5 M17 16.5h.5",
+    // Компьютер: монитор и стойка.
+    device: "M3.5 4.5h17v11h-17z M9.5 20h5 M12 15.5V20",
+    // Ноутбук: экран и база.
+    laptop: "M5 5.5h14v9.5H5z M2.5 19h19 M8.5 19a3.5 1.6 0 0 1 7 0",
+    // Принтер: лоток, корпус, лист.
+    printer: "M7 9V4.5h10V9 M7 15.5h10v4H7z M4 9h16v6.5H4z M16.5 11.5h.01",
+    // Смартфон.
     phone: "M8 2.5h8A1.5 1.5 0 0 1 17.5 4v16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 20V4A1.5 1.5 0 0 1 8 2.5z M10.5 18.5h3",
-    iot: "M7 7h10v10H7z M10 10h4v4h-4z M12 3.5V7 M12 17v3.5 M3.5 12H7 M17 12h3.5 M8 3.5V7 M16 3.5V7 M8 17v3.5 M16 17v3.5 M3.5 8H7 M3.5 16H7 M17 8h3.5 M17 16h3.5",
-    tv: "M3 5h18v12H3z M8.5 21h7 M12 17v4",
-    cloud: "M9 12h6 M5 5h14v14H5z",
-    unknown: "M9 12h6 M5 5h14v14H5z",
-    host: "M12 7v.01M12 10v5 M4 4h16v16H4z"
+    // IoT: чип с ядром и ножками.
+    iot: "M7 7h10v10H7z M10.5 10.5h3v3h-3z M12 3.5V7 M12 17v3.5 M3.5 12H7 M17 12h3.5 M8 3.5V7 M16 3.5V7 M8 17v3.5 M16 17v3.5 M3.5 8.5H7 M3.5 15.5H7 M17 8.5h3.5 M17 15.5h3.5",
+    // Телевизор: экран на подставке.
+    tv: "M3 5h18v11.5H3z M8.5 20.5h7 M12 16.5v4",
+    // Камера (видеонаблюдение): корпус и объектив.
+    camera: "M3 7.5h11.5v9H3z M6 7.5V6a2 2 0 0 1 2-2h1.5 M14.5 10.5l6-2.5v8l-6-2.5 M6.5 16.5v2 M11.5 16.5v2",
+    // NAS: башня с дисками и индикаторами.
+    nas: "M5.5 3.5h13v17h-13z M9 7.5h6 M9 11h6 M9 14.5h6 M9 18h.01 M12 18h.01 M15 18h.01",
+    // Неуправляемый коммутатор: коробка без управления.
+    cloud: "M4 8h16v9H4z M7 14.5h.01 M10 14.5h.01 M13 14.5h.01 M16 14.5h.01 M12 8v-2.5",
+    // Хост без MAC.
+    host: "M4 4.5h16v15H4z M12 8v.01 M12 11v4.5 M9.5 18h5",
+    // Неизвестное: вопросительный знак.
+    unknown: "M9 9.3a3 3 0 1 1 4.6 2.5c-1 .7-1.6 1.3-1.6 2.7 M12 17.8h.01"
   };
   var KIND_LABELS = {
     internet: "\u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442",
@@ -31772,40 +31804,76 @@
     phone: "\u0442\u0435\u043B\u0435\u0444\u043E\u043D",
     iot: "IoT-\u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
     tv: "\u0442\u0435\u043B\u0435\u0432\u0438\u0437\u043E\u0440",
+    camera: "\u043A\u0430\u043C\u0435\u0440\u0430",
+    nas: "NAS",
     cloud: "\u043D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440",
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
     host: "\u0445\u043E\u0441\u0442 \u0431\u0435\u0437 MAC"
   };
   var SHAPES = {
-    internet: "octagon",
-    router: "hexagon",
-    switch: "cut-rectangle",
-    ap: "round-tag",
-    server: "bottom-round-rectangle",
+    internet: "ellipse",
+    router: "round-rectangle",
+    switch: "round-rectangle",
+    ap: "round-rectangle",
+    server: "round-rectangle",
     device: "round-rectangle",
-    laptop: "rhomboid",
-    printer: "concave-hexagon",
-    // NR-032 п.5: форма нового типа отличима на карте.
-    phone: "barrel",
-    iot: "diamond",
+    laptop: "round-rectangle",
+    printer: "round-rectangle",
+    phone: "round-rectangle",
+    iot: "round-rectangle",
     tv: "round-rectangle",
-    cloud: "tag",
-    unknown: "ellipse",
+    camera: "round-rectangle",
+    nas: "round-rectangle",
+    cloud: "round-rectangle",
+    unknown: "round-rectangle",
     host: "round-rectangle"
   };
-  function svgIcon(kind, color = "#C5CEDA") {
+  function svgIcon(kind, status, decisions = 0) {
     const path = ICONS[kind] ?? ICONS["unknown"] ?? "";
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+    const stroke = status === void 0 ? "#C5CEDA" : glyphColor(status);
+    let extra = "";
+    if (status !== void 0) {
+      extra = statusMarker(status);
+      if (decisions > 0) extra += decisionBadge(decisions);
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/>${extra}</svg>`;
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   }
-  function nodeStyle(n) {
+  function glyphColor(status) {
+    return STATUS_STYLES[status]?.color ?? "#C5CEDA";
+  }
+  function statusMarker(status) {
+    const c = STATUS_STYLES[status].color;
+    const halo = `<circle cx="19.2" cy="4.8" r="3.6" fill="#0E1116" stroke="none"/>`;
+    switch (status) {
+      case "online":
+        return halo + `<circle cx="19.2" cy="4.8" r="2" fill="${c}" stroke="none"/>`;
+      case "attention":
+        return halo + `<path d="M19.2 2.9l2 3.4h-4z" fill="${c}" stroke="none"/>`;
+      case "problem":
+        return halo + `<rect x="17.4" y="3" width="3.6" height="3.6" fill="${c}" stroke="none"/>`;
+      case "offline":
+        return halo + `<circle cx="19.2" cy="4.8" r="2" fill="none" stroke="${c}" stroke-width="1.5"/>`;
+      case "unverified":
+        return halo + `<path d="M19.2 2.8l2 2-2 2-2-2z" fill="none" stroke="${c}" stroke-width="1.5"/>`;
+      default:
+        return "";
+    }
+  }
+  function decisionBadge(count) {
+    const label = count > 9 ? "9+" : String(count);
+    return `<circle cx="4.8" cy="19.2" r="3.6" fill="#F5B83D" stroke="#0E1116" stroke-width="0.8"/><text x="4.8" y="20.9" font-size="5.4" font-family="system-ui, sans-serif" font-weight="700" fill="#0E1116" text-anchor="middle" stroke="none">${label}</text>`;
+  }
+  function nodeStyle(n, status = "online", decisions = 0) {
     const known = Object.prototype.hasOwnProperty.call(SHAPES, n.kind);
     const kind = known ? n.kind : "unknown";
     const size3 = kind === "cloud" || kind === "unknown" ? { w: 44, h: 34 } : kind === "tv" ? { w: 48, h: 34 } : { w: 40, h: 32 };
+    const st = STATUS_STYLES[status] ?? STATUS_STYLES["online"];
     return {
-      shape: SHAPES[kind] ?? "ellipse",
-      icon: svgIcon(kind),
+      shape: SHAPES[kind] ?? "round-rectangle",
+      icon: svgIcon(kind, status, decisions),
       kindLabel: KIND_LABELS[kind] ?? KIND_LABELS["unknown"] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
+      borderColor: st.color,
       width: size3.w,
       height: size3.h
     };
@@ -31820,8 +31888,16 @@
   var NODE_GAP = 18;
   var GRID_STEP_X = LABEL_MAX_WIDTH + 60;
   var GRID_STEP_Y = NODE_SIZE.height + LABEL_GAP + LABEL_LINE_HEIGHT + 66;
-  function measureLabel(text2) {
-    const lines = text2.split("\n");
+  var SNAP_STEP_X = 100;
+  var SNAP_STEP_Y = GRID_STEP_Y;
+  function snapToGrid(x2, y2) {
+    return {
+      x: Math.round(x2 / SNAP_STEP_X) * SNAP_STEP_X,
+      y: Math.round(y2 / SNAP_STEP_Y) * SNAP_STEP_Y
+    };
+  }
+  function measureLabel(text3) {
+    const lines = text3.split("\n");
     let linesCount = 0;
     let widest = 0;
     for (const line of lines) {
@@ -31909,7 +31985,10 @@
     }
     const ranks = [...rows.keys()].sort((a, b) => a - b);
     let y2 = 0;
-    for (const rank of ranks) {
+    let lowerStart = 0;
+    for (let i2 = 0; i2 < ranks.length; i2++) {
+      const rank = ranks[i2];
+      if (rank === void 0) continue;
       const row = rows.get(rank) ?? [];
       let widest = 0;
       for (const n of row) {
@@ -31917,7 +31996,13 @@
       }
       const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
       const totalWidth = (row.length - 1) * stepX;
-      let x2 = rank === ranks[0] ? -totalWidth / 2 : 0;
+      let x2;
+      if (i2 === 0) {
+        x2 = -totalWidth / 2;
+        lowerStart = x2 + SNAP_STEP_X;
+      } else {
+        x2 = lowerStart;
+      }
       for (const n of row) {
         out.set(n.id, { x: x2, y: y2 });
         x2 += stepX;
@@ -31936,9 +32021,9 @@
     manual: "#F5B83D"
   };
   var LABEL_MAX_CHARS = 28;
-  function truncateLabel(text2, max5 = LABEL_MAX_CHARS) {
-    if (text2.length <= max5) return text2;
-    return text2.slice(0, Math.max(1, max5 - 1)) + "\u2026";
+  function truncateLabel(text3, max5 = LABEL_MAX_CHARS) {
+    if (text3.length <= max5) return text3;
+    return text3.slice(0, Math.max(1, max5 - 1)) + "\u2026";
   }
   function createGraph(container2, cb) {
     const cy2 = cytoscape({
@@ -31953,7 +32038,8 @@
             "background-fit": "contain",
             "background-opacity": 1,
             "border-width": 2,
-            "border-color": "#2E3A4C",
+            // Ободок статуса (NR-033 п.2): цвет от сигналов узла.
+            "border-color": "data(border)",
             color: "#E6EAF0",
             "font-size": 11,
             "font-family": "system-ui, sans-serif",
@@ -31971,15 +32057,10 @@
           style: { "border-color": "#F5B83D" }
         },
         {
-          // NR-031 п.4: «не проверен» — жёлтый ореол вокруг узла, а не
-          // строка в подписи.
+          // NR-031 п.4, NR-033 п.2: «не проверен» — пунктирный ободок и
+          // маркер ◇ на значке, а не строка в подписи.
           selector: "node.unverified",
-          style: {
-            "border-style": "dashed",
-            "overlay-color": "#F5B83D",
-            "overlay-opacity": 0.55,
-            "overlay-padding": 3
-          }
+          style: { "border-style": "dashed" }
         },
         {
           selector: "edge",
@@ -31987,7 +32068,15 @@
             width: 1.6,
             "line-color": "data(color)",
             "target-arrow-color": "data(color)",
-            "curve-style": "straight",
+            // Ортогональные связи (NR-033 п.1): ломаная под прямыми
+            // углами. taxi-direction vertical: вертикальный участок у
+            // источника, горизонталь в зазоре между рядами (излом на
+            // полшага ряда — 35px + половина высоты узла от центра),
+            // вертикаль по колонке цели.
+            "curve-style": "taxi",
+            "taxi-direction": "vertical",
+            "taxi-turn": "35px",
+            "taxi-turn-min-distance": 8,
             color: "#9AA6B5",
             "font-size": 10,
             label: "data(label)",
@@ -32008,9 +32097,21 @@
       layout: { name: "cose", animate: false, randomize: false },
       wheelSensitivity: 0.2
     });
+    let lastTapId = "";
+    let lastTapAt = 0;
     cy2.on("tap", "node", (ev) => {
       const n = ev.target;
-      cb.onNodeSelect(nodeInfoOf(n));
+      const info = nodeInfoOf(n);
+      const now = Date.now();
+      if (info.id === lastTapId && now - lastTapAt < 400) {
+        lastTapId = "";
+        lastTapAt = 0;
+        cb.onNodeOpen(info);
+        return;
+      }
+      lastTapId = info.id;
+      lastTapAt = now;
+      cb.onNodeSelect(info);
       cb.onLinkSelect(null, null);
     });
     cy2.on("tap", "edge", (ev) => {
@@ -32074,7 +32175,7 @@ ${marks}`;
       verified: Boolean(e.data("verified"))
     };
   }
-  function setGraph(cy2, g, saved) {
+  function setGraph(cy2, g, saved, statuses) {
     const positions2 = /* @__PURE__ */ new Map();
     cy2.nodes().forEach((n) => {
       positions2.set(n.id(), n.position());
@@ -32083,7 +32184,9 @@ ${marks}`;
     const elements = [];
     let hasGuests = false;
     for (const n of g.nodes) {
-      const st = nodeStyle(n);
+      const nodeStatus = statuses?.status(n.id) ?? { status: "online", decisions: 0 };
+      const status = nodeStatus.status === "online" && !n.verified ? "unverified" : nodeStatus.status;
+      const st = nodeStyle(n, status, nodeStatus.decisions);
       hasGuests = hasGuests || n.class === "guest";
       elements.push({
         group: "nodes",
@@ -32094,6 +32197,7 @@ ${marks}`;
           fullLabel: n.label || n.id,
           marks: nodeMarks(n).join(", "),
           icon: st.icon,
+          border: st.borderColor,
           manual: n.manual,
           verified: n.verified,
           kindLabel: st.kindLabel,
@@ -32145,7 +32249,14 @@ ${marks}`;
     }
     cy2.add(elements);
     arrangeMap(cy2, g, saved ?? /* @__PURE__ */ new Set());
-    renderA11y(g);
+    fitIfClipped(cy2);
+  }
+  function fitIfClipped(cy2) {
+    if (cy2.elements().length === 0) return;
+    const bb = cy2.elements().boundingBox();
+    const ext = cy2.extent();
+    const inside = bb.x1 >= ext.x1 && bb.x2 <= ext.x2 && bb.y1 >= ext.y1 && bb.y2 <= ext.y2;
+    if (!inside) cy2.fit(cy2.elements(), 90);
   }
   function arrangeMap(cy2, g, saved) {
     const nodeEls = [];
@@ -32191,7 +32302,7 @@ ${marks}`;
       }
     }
   }
-  function renderA11y(g) {
+  function renderA11y(g, statuses) {
     const box = document.getElementById("map-a11y");
     if (box === null) return;
     box.textContent = "";
@@ -32199,8 +32310,12 @@ ${marks}`;
       const li = document.createElement("li");
       li.dataset.kind = n.kind;
       li.dataset.id = n.id;
+      const nodeStatus = statuses?.status(n.id) ?? { status: "online", decisions: 0 };
+      const status = nodeStatus.status === "online" && !n.verified ? "unverified" : nodeStatus.status;
       const st = nodeStyle(n);
-      li.textContent = `${n.label} \u2014 ${st.kindLabel}`;
+      const glyph = STATUS_STYLES[status]?.glyph ?? "";
+      const label = STATUS_STYLES[status]?.label ?? "";
+      li.textContent = `${n.label} \u2014 ${st.kindLabel} \u2014 ${glyph} ${label}`;
       box.append(li);
     }
   }
@@ -32229,6 +32344,24 @@ ${marks}`;
   }
 
   // src/legend.ts
+  function presentStatuses(g, statuses) {
+    const order = ["problem", "attention", "offline", "unverified", "online"];
+    const present = /* @__PURE__ */ new Set();
+    for (const n of g.nodes) {
+      const raw = statuses?.status(n.id).status ?? "online";
+      const status = raw === "online" && !n.verified ? "unverified" : raw;
+      present.add(status);
+    }
+    return order.filter((s) => present.has(s)).map((s) => ({
+      status: s,
+      glyph: STATUS_STYLES[s].glyph,
+      label: STATUS_STYLES[s].label
+    }));
+  }
+  function hasManualLinks(g) {
+    return g.links.some((l) => l.manual);
+  }
+  var MANUAL_TEXT = "\u0440\u0443\u0447\u043D\u0430\u044F \u0441\u0432\u044F\u0437\u044C (\u043F\u0443\u043D\u043A\u0442\u0438\u0440)";
   var KIND_ORDER = [
     "internet",
     "router",
@@ -32268,14 +32401,26 @@ ${marks}`;
   function hasAssumedLinks(g) {
     return g.links.some((l) => l.source === "assumed");
   }
-  function renderLegend(container2, g) {
+  function renderLegend(container2, g, statuses) {
     container2.textContent = "";
     const items = legendItems(g);
-    if (items.length === 0 && !hasAssumedLinks(g)) {
+    const statusItems = presentStatuses(g, statuses);
+    if (items.length === 0 && statusItems.length === 0 && !hasAssumedLinks(g) && !hasManualLinks(g)) {
       container2.hidden = true;
       return;
     }
     container2.hidden = false;
+    for (const s of statusItems) {
+      const chip = document.createElement("span");
+      chip.className = `legend-item legend-status status-${s.status}`;
+      chip.dataset.status = s.status;
+      const mark = document.createElement("span");
+      mark.className = "legend-mark";
+      mark.textContent = s.glyph;
+      mark.setAttribute("aria-hidden", "true");
+      chip.append(mark, document.createTextNode(s.label));
+      container2.append(chip);
+    }
     for (const item of items) {
       const chip = document.createElement("span");
       chip.className = "legend-item";
@@ -32296,6 +32441,16 @@ ${marks}`;
       line.className = "legend-dash";
       line.setAttribute("aria-hidden", "true");
       chip.append(line, document.createTextNode(ASSUMED_TEXT));
+      container2.append(chip);
+    }
+    if (hasManualLinks(g)) {
+      const chip = document.createElement("span");
+      chip.className = "legend-item legend-manual";
+      chip.dataset.kind = "manual";
+      const line = document.createElement("span");
+      line.className = "legend-dash legend-dash-manual";
+      line.setAttribute("aria-hidden", "true");
+      chip.append(line, document.createTextNode(MANUAL_TEXT));
       container2.append(chip);
     }
   }
@@ -32345,7 +32500,7 @@ ${marks}`;
   function text(parent4, value) {
     parent4.textContent = value;
   }
-  function fillOverview(page, info, kind, onChangeKind = () => void 0) {
+  function fillOverview(page, info, kind, onChangeKind = () => void 0, onOpenCard = () => void 0) {
     page.textContent = "";
     const dl = el7("dl", "kv");
     const row = (dt2, dd2) => {
@@ -32393,6 +32548,11 @@ ${marks}`;
       marks.append(b);
     }
     if (marks.childNodes.length > 0) page.append(marks);
+    const open = el7("button", "link");
+    open.type = "button";
+    text(open, "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u043E\u043B\u043D\u0443\u044E \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0443");
+    open.addEventListener("click", onOpenCard);
+    page.append(open);
   }
   function className(klass) {
     for (const [value, label] of CLASSES) {
@@ -32519,6 +32679,555 @@ ${marks}`;
     }
   }
 
+  // src/card.ts
+  var CARD_TABS = [
+    ["card-tab-overview", "card-page-overview"],
+    ["card-tab-agent", "card-page-agent"],
+    ["card-tab-ports", "card-page-ports"],
+    ["card-tab-security", "card-page-security"],
+    ["card-tab-quality", "card-page-quality"],
+    ["card-tab-decisions", "card-page-decisions"],
+    ["card-tab-links", "card-page-links"],
+    ["card-tab-history", "card-page-history"]
+  ];
+  function el8(tag, className2) {
+    const e = document.createElement(tag);
+    if (className2) e.className = className2;
+    return e;
+  }
+  function text2(parent4, value) {
+    parent4.textContent = value;
+  }
+  function kvRow2(dl, term, value) {
+    const dt = el8("dt");
+    text2(dt, term);
+    const dd = el8("dd");
+    text2(dd, value);
+    dl.append(dt, dd);
+  }
+  function fmtTime(iso) {
+    if (!iso) return "\u2014";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString("ru-RU");
+  }
+  function selectCardTab(tabId) {
+    for (const [tab, page] of CARD_TABS) {
+      const tabEl = document.getElementById(tab);
+      const pageEl = document.getElementById(page);
+      if (tabEl === null || pageEl === null) continue;
+      tabEl.setAttribute("aria-selected", tab === tabId ? "true" : "false");
+      pageEl.classList.toggle("active", tab === tabId);
+    }
+  }
+  function fillCard(root, info, graph2, decisions, hasManualLink, handlers) {
+    root.textContent = "";
+    const head = el8("div", "card-head");
+    const title = el8("h2");
+    text2(title, info.hostname ? info.hostname : info.id);
+    const marks = el8("p", "card-marks");
+    const badge = (cls, label) => {
+      const b = el8("span", `badge ${cls}`);
+      text2(b, label);
+      marks.append(b, document.createTextNode(" "));
+    };
+    if (info.manual) badge("manual", "\u0432\u0440\u0443\u0447\u043D\u0443\u044E");
+    if (!info.verified) badge("unverified", "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
+    if (info.alerts && info.alerts.length > 0) badge("manual", "\u043D\u043E\u0432\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E");
+    head.append(title, marks);
+    const back = el8("button", "card-back");
+    back.type = "button";
+    text2(back, "\u2190 \u041D\u0430 \u043A\u0430\u0440\u0442\u0443");
+    back.addEventListener("click", handlers.onClose);
+    head.append(back);
+    root.append(head);
+    const actions = el8("div", "card-actions");
+    const classSel = el8("select");
+    classSel.id = "card-class";
+    for (const [value, label] of CLASSES) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      text2(opt, label);
+      if (value === info.class) opt.selected = true;
+      classSel.append(opt);
+    }
+    const classApply = el8("button");
+    classApply.type = "button";
+    text2(classApply, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u043A\u043B\u0430\u0441\u0441");
+    classApply.addEventListener("click", () => handlers.onClass(info.id, classSel.value));
+    actions.append(classSel, classApply);
+    const kindSel = el8("select");
+    kindSel.id = "card-kind";
+    for (const [value, label] of KIND_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      text2(opt, label);
+      if (value === (info.kind ?? "")) opt.selected = true;
+      kindSel.append(opt);
+    }
+    const kindApply = el8("button");
+    kindApply.type = "button";
+    text2(kindApply, "\u0421\u043C\u0435\u043D\u0438\u0442\u044C \u0442\u0438\u043F");
+    kindApply.addEventListener("click", () => handlers.onKind(info.id, kindSel.value));
+    actions.append(kindSel, kindApply);
+    const verify = el8("button");
+    verify.type = "button";
+    text2(verify, "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (ping)");
+    verify.addEventListener("click", () => handlers.onVerify(info.id));
+    const connect = el8("button");
+    connect.type = "button";
+    text2(connect, "\u0421\u043E\u0435\u0434\u0438\u043D\u0438\u0442\u044C");
+    connect.addEventListener("click", () => handlers.onConnect(info.id));
+    const disconnect = el8("button");
+    disconnect.type = "button";
+    text2(disconnect, "\u0420\u0430\u0437\u043E\u0440\u0432\u0430\u0442\u044C \u0441\u0432\u044F\u0437\u044C");
+    disconnect.disabled = !hasManualLink;
+    disconnect.title = hasManualLink ? "\u0420\u0430\u0437\u0440\u044B\u0432\u0430\u0435\u0442 \u0440\u0443\u0447\u043D\u0443\u044E \u0441\u0432\u044F\u0437\u044C \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430" : "\u0420\u0443\u0447\u043D\u044B\u0445 \u0441\u0432\u044F\u0437\u0435\u0439 \u0443 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 \u043D\u0435\u0442 \u2014 \u0440\u0430\u0437\u0440\u044B\u0432\u0430\u0442\u044C \u043D\u0435\u0447\u0435\u0433\u043E";
+    disconnect.addEventListener("click", () => handlers.onDisconnect(info.id));
+    actions.append(verify, connect, disconnect);
+    if (info.manual) {
+      const del = el8("button");
+      del.type = "button";
+      text2(del, "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0440\u0443\u0447\u043D\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442");
+      del.addEventListener("click", () => handlers.onDelete(info.id));
+      actions.append(del);
+    }
+    const report = el8("button");
+    report.type = "button";
+    text2(report, "\u0421\u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0442\u0447\u0451\u0442 \u0434\u043B\u044F \u0418\u0418");
+    report.addEventListener("click", () => handlers.onReport(info.id, info.agent?.id ?? "", info.hostname || info.id));
+    actions.append(report);
+    root.append(actions);
+    const verdict = el8("div", "verdict");
+    verdict.id = "card-verdict";
+    root.append(verdict);
+    const tabs2 = el8("div", "tabs");
+    tabs2.setAttribute("role", "tablist");
+    tabs2.setAttribute("aria-label", "\u0412\u043A\u043B\u0430\u0434\u043A\u0438 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438");
+    const tabLabels = {
+      "card-tab-overview": "\u041E\u0431\u0437\u043E\u0440",
+      "card-tab-agent": "\u0410\u0433\u0435\u043D\u0442",
+      "card-tab-ports": "\u041F\u043E\u0440\u0442\u044B",
+      "card-tab-security": "\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C",
+      "card-tab-quality": "\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E",
+      "card-tab-decisions": "\u0420\u0435\u0448\u0435\u043D\u0438\u044F",
+      "card-tab-links": "\u0421\u0432\u044F\u0437\u0438",
+      "card-tab-history": "\u0418\u0441\u0442\u043E\u0440\u0438\u044F"
+    };
+    for (const [tab, label] of Object.entries(tabLabels)) {
+      const b = el8("button");
+      b.type = "button";
+      b.id = tab;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", tab === "card-tab-overview" ? "true" : "false");
+      b.setAttribute("aria-controls", CARD_TABS.find(([t]) => t === tab)?.[1] ?? "");
+      text2(b, label);
+      b.addEventListener("click", () => selectCardTab(tab));
+      tabs2.append(b);
+    }
+    root.append(tabs2);
+    fillOverview2(info);
+    fillAgent(info);
+    fillPorts(info);
+    fillSecurity(info);
+    fillQuality(info);
+    fillDecisions(info, decisions, handlers);
+    fillLinks(info, graph2, handlers);
+    fillHistory(info);
+    selectCardTab("card-tab-overview");
+  }
+  function emptyNote(page, message) {
+    const p2 = el8("p", "muted");
+    text2(p2, message);
+    page.append(p2);
+  }
+  function fillOverview2(info) {
+    const page = document.getElementById("card-page-overview");
+    if (page === null) return;
+    page.textContent = "";
+    const dl = el8("dl", "kv");
+    kvRow2(dl, "ID (MAC)", info.id);
+    if (info.hostname) kvRow2(dl, "\u0418\u043C\u044F", info.hostname);
+    kvRow2(dl, "IP", info.ips.length > 0 ? info.ips.join(", ") : "\u2014");
+    if (info.vendor !== "") kvRow2(dl, "\u041F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C", info.vendor);
+    const kindLabel2 = KIND_LABELS[info.kind ?? ""] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E";
+    let typeValue = kindLabel2;
+    if (info.kindManual) typeValue += " (\u0443\u043A\u0430\u0437\u0430\u043D \u0432\u0440\u0443\u0447\u043D\u0443\u044E)";
+    else if (info.kindAuto !== "" && info.kindAuto === info.kind) typeValue += " (\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0451\u043D \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438)";
+    kvRow2(dl, "\u0422\u0438\u043F", typeValue);
+    kvRow2(dl, "\u041A\u043B\u0430\u0441\u0441", className(info.class));
+    if (info.ssid !== "") kvRow2(dl, "SSID", info.ssid);
+    kvRow2(dl, "\u041F\u0435\u0440\u0432\u043E\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u0438\u0435", fmtTime(info.first_seen));
+    kvRow2(dl, "\u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u0438\u0435", fmtTime(info.last_seen));
+    if (info.user !== void 0 && info.user !== "") kvRow2(dl, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C", info.user);
+    page.append(dl);
+    if (info.names.length > 0) {
+      const h = el8("h3");
+      text2(h, "\u0418\u043C\u0435\u043D\u0430 \u0438 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438");
+      const ul = el8("ul");
+      for (const nm of info.names) {
+        const li = el8("li");
+        text2(li, `${nm.name} (${nm.source}) \u2014 ${fmtTime(nm.seen)}`);
+        ul.append(li);
+      }
+      page.append(h, ul);
+    }
+    const h2 = el8("h3");
+    text2(h2, "\u041D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u044F \u043F\u043E \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430\u043C");
+    const ul2 = el8("ul");
+    for (const o of info.observations) {
+      const li = el8("li");
+      text2(li, `${o.source} \u2014 ${fmtTime(o.seen)}`);
+      ul2.append(li);
+    }
+    if (ul2.childNodes.length === 0) {
+      const li = el8("li");
+      text2(li, "\u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0439");
+      ul2.append(li);
+    }
+    page.append(h2, ul2);
+  }
+  function fillAgent(info) {
+    const page = document.getElementById("card-page-agent");
+    if (page === null) return;
+    page.textContent = "";
+    if (info.agent === void 0) {
+      emptyNote(page, "\u0410\u0433\u0435\u043D\u0442 \u043D\u0435 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D: \u0434\u0430\u043D\u043D\u044B\u0445 \u043E \u0441\u0438\u0441\u0442\u0435\u043C\u0435 \u043D\u0435\u0442. \u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 \u0430\u0433\u0435\u043D\u0442 \u043D\u0430 \u044D\u0442\u043E\u0442 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440.");
+      return;
+    }
+    const dl = el8("dl", "kv");
+    kvRow2(dl, "\u0410\u0433\u0435\u043D\u0442", info.agent.hostname !== void 0 && info.agent.hostname !== "" ? info.agent.hostname : info.agent.id);
+    kvRow2(dl, "\u0418\u043D\u0432\u0435\u043D\u0442\u0430\u0440\u0438\u0437\u0430\u0446\u0438\u044F", fmtTime(info.inventory_at));
+    page.append(dl);
+    const inv = info.agent_inventory;
+    if (inv === void 0) {
+      emptyNote(page, "\u0418\u043D\u0432\u0435\u043D\u0442\u0430\u0440\u0438\u0437\u0430\u0446\u0438\u044F \u0435\u0449\u0451 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0430\u0441\u044C.");
+      return;
+    }
+    if (inv.os !== void 0) {
+      const h = el8("h3");
+      text2(h, "\u041E\u043F\u0435\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0441\u0438\u0441\u0442\u0435\u043C\u0430");
+      const dlOs = el8("dl", "kv");
+      kvRow2(dlOs, "\u0421\u0438\u0441\u0442\u0435\u043C\u0430", inv.os.caption ?? "\u2014");
+      const verParts = [inv.os.version, inv.os.build_number].filter((x2) => x2 !== void 0 && x2 !== "");
+      kvRow2(dlOs, "\u0412\u0435\u0440\u0441\u0438\u044F", verParts.length > 1 ? `${verParts[0]} (${verParts.slice(1).join(", ")})` : verParts[0] ?? "\u2014");
+      kvRow2(dlOs, "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u0430", inv.os.architecture ?? "\u2014");
+      kvRow2(dlOs, "\u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435", inv.os.latest_hotfix ?? "\u2014");
+      page.append(h, dlOs);
+      if (inv.os.hotfixes !== void 0 && inv.os.hotfixes.length > 0) {
+        const p2 = el8("p", "muted");
+        text2(p2, `\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0439 \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u0438: ${inv.os.hotfixes.length}`);
+        page.append(p2);
+      }
+    }
+    if (inv.hardware !== void 0) {
+      const h = el8("h3");
+      text2(h, "\u0416\u0435\u043B\u0435\u0437\u043E");
+      const dlHw = el8("dl", "kv");
+      const cpus = inv.hardware.cpus ?? [];
+      kvRow2(dlHw, "\u041F\u0440\u043E\u0446\u0435\u0441\u0441\u043E\u0440", cpus.map((c) => c.name ?? "").filter(Boolean).join(", ") || "\u2014");
+      kvRow2(dlHw, "\u041F\u0430\u043C\u044F\u0442\u044C", inv.hardware.total_physical_memory ?? "\u2014");
+      if (inv.hardware.base_board !== void 0) {
+        kvRow2(dlHw, "\u041F\u043B\u0430\u0442\u0430", [inv.hardware.base_board.manufacturer, inv.hardware.base_board.product].filter(Boolean).join(" "));
+      }
+      page.append(h, dlHw);
+    }
+    if (inv.disks !== void 0) {
+      const h = el8("h3");
+      text2(h, "\u0414\u0438\u0441\u043A\u0438");
+      const ul = el8("ul");
+      for (const d of inv.disks.disks ?? []) {
+        const li = el8("li");
+        text2(li, [d.friendly_name, d.media_type, d.size, d.health].filter(Boolean).join(", "));
+        ul.append(li);
+      }
+      for (const v of inv.disks.volumes ?? []) {
+        const li = el8("li");
+        text2(li, `\u0422\u043E\u043C ${v.drive_letter ?? ""} ${v.file_system ?? ""}: \u0437\u0430\u043D\u044F\u0442\u043E ${v.size_remaining ? "" : ""}${v.size ?? ""}`.trim());
+        ul.append(li);
+      }
+      page.append(h, ul);
+    }
+    if (inv.programs !== void 0 && inv.programs.length > 0) {
+      const h = el8("h3");
+      text2(h, `\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043D\u043E\u0435 \u041F\u041E (${inv.programs.length})`);
+      const ul = el8("ul");
+      for (const p2 of inv.programs.slice(0, 20)) {
+        const li = el8("li");
+        text2(li, [p2.name, p2.version, p2.publisher].filter(Boolean).join(", "));
+        ul.append(li);
+      }
+      if (inv.programs.length > 20) {
+        const li = el8("li");
+        text2(li, `\u2026\u0438 \u0435\u0449\u0451 ${inv.programs.length - 20}`);
+        ul.append(li);
+      }
+      page.append(h, ul);
+    }
+    if (inv.collector_errors !== void 0 && inv.collector_errors.length > 0) {
+      const h = el8("h3");
+      text2(h, "\u041E\u0448\u0438\u0431\u043A\u0438 \u0441\u0431\u043E\u0440\u0449\u0438\u043A\u0430");
+      const ul = el8("ul");
+      for (const e of inv.collector_errors) {
+        const li = el8("li");
+        text2(li, e);
+        ul.append(li);
+      }
+      page.append(h, ul);
+    }
+  }
+  function fillPorts(info) {
+    const page = document.getElementById("card-page-ports");
+    if (page === null) return;
+    page.textContent = "";
+    if (info.agent === void 0) {
+      emptyNote(page, "\u041F\u043E\u0440\u0442\u044B \u0432\u0438\u0434\u043D\u044B \u0442\u043E\u043B\u044C\u043A\u043E \u0441 \u0430\u0433\u0435\u043D\u0442\u043E\u043C: \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043F\u043E\u0440\u0442\u043E\u0432 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442\u0441\u044F \u0432\u043D\u0443\u0442\u0440\u0438 \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u0430.");
+      return;
+    }
+    if (info.ports === void 0 || info.ports.length === 0) {
+      emptyNote(page, "\u0421\u043B\u0443\u0448\u0430\u044E\u0449\u0438\u0445 \u043F\u043E\u0440\u0442\u043E\u0432 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0438\u043B\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0435\u0449\u0451 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0430\u0441\u044C.");
+      return;
+    }
+    const ul = el8("ul");
+    for (const p2 of info.ports) {
+      const li = el8("li");
+      text2(li, `${p2.local_address}:${p2.local_port}${p2.process ? ` \u2014 ${p2.process}` : ""}`);
+      ul.append(li);
+    }
+    page.append(ul);
+  }
+  function fillSecurity(info) {
+    const page = document.getElementById("card-page-security");
+    if (page === null) return;
+    page.textContent = "";
+    const h = el8("h3");
+    text2(h, "\u041D\u0430\u0439\u0434\u0435\u043D\u043E \u043F\u0440\u0430\u0432\u0438\u043B\u0430\u043C\u0438");
+    page.append(h);
+    if (info.security === void 0 || info.security.length === 0) {
+      emptyNote(page, "\u041D\u0430\u0445\u043E\u0434\u043E\u043A \u043D\u0435\u0442 \u0438\u043B\u0438 \u0430\u0433\u0435\u043D\u0442 \u043D\u0435 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D.");
+      return;
+    }
+    const ul = el8("ul", "findings");
+    for (const f of info.security) {
+      const li = el8("li", `finding severity-${f.severity}`);
+      const head = el8("span", "finding-head");
+      text2(head, `[${f.severity}] ${f.fact}`);
+      const advice = el8("span", "finding-advice");
+      text2(advice, f.advice);
+      li.append(head, advice);
+      if (f.basis !== "") {
+        const basis = el8("span", "finding-basis");
+        text2(basis, `\u041E\u0441\u043D\u043E\u0432\u0430\u043D\u0438\u0435: ${f.basis}`);
+        li.append(basis);
+      }
+      ul.append(li);
+    }
+    page.append(ul);
+  }
+  function fillQuality(info) {
+    const page = document.getElementById("card-page-quality");
+    if (page === null) return;
+    page.textContent = "";
+    if (info.quality === void 0 || info.quality.length === 0) {
+      emptyNote(page, "\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043F\u043E \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0443 \u0441\u0435\u0442\u0438 \u043D\u0435\u0442 \u0438\u043B\u0438 \u043C\u0435\u0442\u0440\u0438\u043A \u0435\u0449\u0451 \u043D\u0435\u0442.");
+      return;
+    }
+    const ul = el8("ul", "findings");
+    for (const f of info.quality) {
+      const li = el8("li", `finding severity-${f.severity}`);
+      const head = el8("span", "finding-head");
+      text2(head, `[${f.severity}] ${f.fact}`);
+      const advice = el8("span", "finding-advice");
+      text2(advice, f.advice);
+      li.append(head, advice);
+      ul.append(li);
+    }
+    page.append(ul);
+  }
+  function fillDecisions(info, decisions, handlers) {
+    const page = document.getElementById("card-page-decisions");
+    if (page === null) return;
+    page.textContent = "";
+    const h = el8("h3");
+    text2(h, "\u0422\u0440\u0435\u0431\u0443\u044E\u0442 \u0440\u0435\u0448\u0435\u043D\u0438\u044F");
+    page.append(h);
+    if (decisions.length === 0) {
+      emptyNote(page, "\u041E\u0442\u043A\u0440\u044B\u0442\u044B\u0445 \u0440\u0435\u0448\u0435\u043D\u0438\u0439 \u043D\u0435\u0442: \u0441\u0438\u0433\u043D\u0430\u043B\u043E\u0432, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u0430\u0448\u0435\u0433\u043E \u0432\u044B\u0431\u043E\u0440\u0430, \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \u043D\u0435 \u0438\u043C\u0435\u0435\u0442.");
+      return;
+    }
+    for (const s of decisions) {
+      const box = el8("div", "decision-box");
+      const p2 = el8("p");
+      text2(p2, s.text);
+      box.append(p2);
+      const row = el8("div", "row");
+      const accept = (klass, label) => {
+        const b = el8("button");
+        b.type = "button";
+        text2(b, label);
+        b.addEventListener("click", () => handlers.onAccept(info.id, klass));
+        row.append(b);
+      };
+      accept("managed", "\u041F\u0440\u0438\u043D\u044F\u0442\u044C: \u043C\u043E\u0451 (\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u043E\u0435)");
+      accept("known_no_agent", "\u041F\u0440\u0438\u043D\u044F\u0442\u044C: \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435");
+      accept("guest", "\u041F\u0440\u0438\u043D\u044F\u0442\u044C: \u0433\u043E\u0441\u0442\u044C");
+      box.append(row);
+      const row2 = el8("div", "row");
+      const days = el8("select");
+      days.id = `snooze-days-${s.kind}`;
+      for (const d of [1, 7, 30]) {
+        const opt = document.createElement("option");
+        opt.value = String(d);
+        text2(opt, `${d} \u0434\u043D.`);
+        days.append(opt);
+      }
+      row2.append(days);
+      const ignore = el8("button");
+      ignore.type = "button";
+      text2(ignore, "\u0418\u0433\u043D\u043E\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0441\u0440\u043E\u043A");
+      ignore.addEventListener("click", () => {
+        const selected = Number(days.value || "7");
+        handlers.onSnooze(info.id, s.kind, Number.isFinite(selected) ? selected : 7);
+      });
+      row2.append(ignore);
+      const later = el8("button");
+      later.type = "button";
+      text2(later, "\u041E\u0442\u043B\u043E\u0436\u0438\u0442\u044C");
+      later.title = "\u0421\u0438\u0433\u043D\u0430\u043B \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u0432 \u043F\u0430\u043D\u0435\u043B\u0438 \xAB\u0422\u0440\u0435\u0431\u0443\u044E\u0442 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F\xBB, \u0440\u0435\u0448\u0435\u043D\u0438\u0435 \u043C\u043E\u0436\u043D\u043E \u043F\u0440\u0438\u043D\u044F\u0442\u044C \u043F\u043E\u0437\u0436\u0435";
+      later.addEventListener("click", handlers.onClose);
+      row2.append(later);
+      box.append(row2);
+      page.append(box);
+    }
+  }
+  function fillLinks(info, graph2, handlers) {
+    const page = document.getElementById("card-page-links");
+    if (page === null) return;
+    page.textContent = "";
+    const links = graph2.links.filter((l) => l.a === info.id || l.b === info.id);
+    if (links.length === 0) {
+      emptyNote(page, "\u0421\u0432\u044F\u0437\u0435\u0439 \u043D\u0435\u0442: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \u043D\u0438 \u043A \u0447\u0435\u043C\u0443 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u043E.");
+      return;
+    }
+    const ul = el8("ul");
+    for (const l of links) {
+      const li = el8("li");
+      const other = l.a === info.id ? l.b : l.a;
+      const port = l.a === info.id ? l.aPort : l.bPort;
+      const source = linkSource2(l.source, l.manual);
+      text2(li, `${other}${port !== "" ? ` (${port})` : ""} \u2014 ${source}`);
+      if (l.manual) {
+        const b = el8("button");
+        b.type = "button";
+        text2(b, "\u0420\u0430\u0437\u043E\u0440\u0432\u0430\u0442\u044C");
+        b.addEventListener("click", () => handlers.onDisconnect(info.id));
+        li.append(document.createTextNode(" "), b);
+      }
+      ul.append(li);
+    }
+    page.append(ul);
+  }
+  function linkSource2(source, manual) {
+    if (manual) return "\u0432\u0440\u0443\u0447\u043D\u0443\u044E";
+    switch (source) {
+      case "lldp":
+        return "LLDP";
+      case "fdb":
+        return "\u0442\u0430\u0431\u043B\u0438\u0446\u0430 MAC";
+      case "inferred":
+        return "\u0432\u044B\u0432\u043E\u0434 \u043F\u043E\u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044F";
+      case "assumed":
+        return "\u043F\u0440\u0435\u0434\u043F\u043E\u043B\u0430\u0433\u0430\u0435\u043C\u0430\u044F \u0441\u0432\u044F\u0437\u044C";
+      default:
+        return source;
+    }
+  }
+  function fillHistory(info) {
+    const page = document.getElementById("card-page-history");
+    if (page === null) return;
+    page.textContent = "";
+    if (info.history === void 0 || info.history.length === 0) {
+      emptyNote(page, "\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u043D\u0435 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u043E.");
+      return;
+    }
+    const ul = el8("ul");
+    for (const h of info.history) {
+      const li = el8("li");
+      text2(li, `${fmtTime(h.at)} \u2014 ${h.actor}: ${h.action}${h.detail ? ` \u2014 ${h.detail}` : ""}`);
+      ul.append(li);
+    }
+    page.append(ul);
+  }
+
+  // src/signals.ts
+  var SIGNAL_RANK = { problem: 0, attention: 1, offline: 2 };
+  function sortSignals(signals) {
+    return [...signals].sort((a, b) => {
+      const da = a.decision ? 0 : 1;
+      const db = b.decision ? 0 : 1;
+      const ra = SIGNAL_RANK[a.status] ?? 3;
+      const rb = SIGNAL_RANK[b.status] ?? 3;
+      if (ra !== rb) return ra - rb;
+      if (da !== db) return da - db;
+      return a.text.localeCompare(b.text, "ru");
+    });
+  }
+  function statusesOf(view) {
+    const out = /* @__PURE__ */ new Map();
+    for (const st of view.statuses) {
+      out.set(st.id, { status: st.status, decisions: st.decisions });
+    }
+    return out;
+  }
+  function deviceLabel(id2, nodes3) {
+    const n = nodes3.find((x2) => x2.id === id2);
+    return n ? n.label || n.id : id2;
+  }
+  var SIGNAL_HEAD = {
+    unknown_new: "\u041D\u043E\u0432\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
+    no_response: "\u041D\u0435 \u0432 \u0441\u0435\u0442\u0438",
+    security: "\u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0441\u0442\u044C",
+    quality: "\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u0441\u0435\u0442\u0438",
+    eol: "\u041F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0430 \u041E\u0421",
+    ip_conflict: "\u041F\u043E\u0432\u0442\u043E\u0440 \u0430\u0434\u0440\u0435\u0441\u0430",
+    audit_gap: "\u0416\u0443\u0440\u043D\u0430\u043B \u0430\u0443\u0434\u0438\u0442\u0430"
+  };
+  function renderAttentionPanel(container2, signals, nodes3, handlers) {
+    container2.textContent = "";
+    const sorted = sortSignals(signals);
+    if (sorted.length === 0) {
+      container2.hidden = true;
+      return;
+    }
+    container2.hidden = false;
+    for (const s of sorted) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = `attention-row status-${s.status}`;
+      row.dataset.deviceId = s.device_id;
+      row.dataset.kind = s.kind;
+      if (s.device_id === "") row.disabled = true;
+      const mark = document.createElement("span");
+      mark.className = "attention-mark";
+      mark.textContent = STATUS_STYLES[s.status]?.glyph ?? "\u25CF";
+      mark.setAttribute("aria-hidden", "true");
+      const body = document.createElement("span");
+      body.className = "attention-body";
+      const head = document.createElement("span");
+      head.className = "attention-head";
+      head.textContent = (SIGNAL_HEAD[s.kind] ?? s.kind) + (s.device_id !== "" ? `: ${deviceLabel(s.device_id, nodes3)}` : "");
+      const text3 = document.createElement("span");
+      text3.className = "attention-text";
+      text3.textContent = s.text;
+      body.append(head, text3);
+      row.append(mark, body);
+      if (s.device_id !== "") {
+        row.addEventListener("click", () => handlers.onFocus(s.device_id));
+      }
+      container2.append(row);
+    }
+  }
+
   // src/scan.ts
   var CLASS_OPTIONS = [
     ["managed", "\u041C\u043E\u0451"],
@@ -32538,8 +33247,8 @@ ${marks}`;
     }
     return `${nums[0]}.${nums[1]}.${nums[2]}.1`;
   }
-  async function setupScanScreen(cfg, el8) {
-    el8.subnets.textContent = "";
+  async function setupScanScreen(cfg, el9) {
+    el9.subnets.textContent = "";
     for (const cidr of cfg.subnets) {
       const label = document.createElement("label");
       const box = document.createElement("input");
@@ -32547,34 +33256,34 @@ ${marks}`;
       box.value = cidr;
       box.checked = true;
       label.append(box, document.createTextNode(` ${cidr}`));
-      el8.subnets.append(label);
+      el9.subnets.append(label);
     }
     if (cfg.subnets.length > 0) {
       const gw = subnetGateway(cfg.subnets[0] ?? "");
-      if (gw !== null) el8.snmp.placeholder = gw;
+      if (gw !== null) el9.snmp.placeholder = gw;
     }
     if (!cfg.snmp) {
-      el8.snmp.disabled = true;
-      el8.snmp.value = "";
-      el8.snmpNote.hidden = false;
+      el9.snmp.disabled = true;
+      el9.snmp.value = "";
+      el9.snmpNote.hidden = false;
     }
   }
-  function startScan(el8) {
-    const subnets = [...el8.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
+  function startScan(el9) {
+    const subnets = [...el9.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
       (b) => b.value
     );
-    const snmpTargets = el8.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    const snmpTargets = el9.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
     const out = {
       subnets,
-      ping: el8.ping.checked,
-      names: el8.names.checked,
+      ping: el9.ping.checked,
+      names: el9.names.checked,
       snmp_targets: snmpTargets,
       confirm: true
     };
-    const path = el8.leasesPath.value.trim();
+    const path = el9.leasesPath.value.trim();
     if (path !== "") {
       out.leases_path = path;
-      out.leases_format = el8.leasesFormat.value;
+      out.leases_format = el9.leasesFormat.value;
     }
     return out;
   }
@@ -32586,18 +33295,18 @@ ${marks}`;
     if (snmp) n += 2;
     return n;
   }
-  function renderProgress(el8, view, expected) {
-    el8.progressWrap.hidden = false;
+  function renderProgress(el9, view, expected) {
+    el9.progressWrap.hidden = false;
     const done = view.stages.length;
     if (view.status === "done") {
-      el8.progress.style.width = "100%";
-      el8.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
+      el9.progress.style.width = "100%";
+      el9.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
     } else if (view.status === "failed") {
-      el8.progress.style.width = "0";
-      el8.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
+      el9.progress.style.width = "0";
+      el9.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
     } else {
-      el8.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
-      el8.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
+      el9.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
+      el9.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
     }
   }
   function ipSortKey(info) {
@@ -32687,20 +33396,20 @@ ${marks}`;
       tbody.append(deviceRow(d, onClass));
     }
   }
-  function renderAlerts(el8, alerts, onAck) {
-    el8.alertsList.textContent = "";
-    el8.badge.hidden = alerts.length === 0;
-    el8.badge.textContent = String(alerts.length);
+  function renderAlerts(el9, alerts, onAck) {
+    el9.alertsList.textContent = "";
+    el9.badge.hidden = alerts.length === 0;
+    el9.badge.textContent = String(alerts.length);
     for (const a of alerts) {
       const item = document.createElement("div");
       item.className = "alert-item";
-      const text2 = document.createElement("span");
-      text2.textContent = `\u041D\u043E\u0432\u043E\u0435 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E: ${a.device_id}`;
+      const text3 = document.createElement("span");
+      text3.textContent = `\u041D\u043E\u0432\u043E\u0435 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E: ${a.device_id}`;
       const ack = document.createElement("button");
       ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
       ack.addEventListener("click", () => onAck(a.id));
-      item.append(text2, ack);
-      el8.alertsList.append(item);
+      item.append(text3, ack);
+      el9.alertsList.append(item);
     }
   }
 
@@ -32718,6 +33427,9 @@ ${marks}`;
   var currentLink = null;
   var selectedIds = [];
   var connectMode = false;
+  var signalsView = { signals: [], statuses: [] };
+  var attentionOpen = false;
+  var openCardId = null;
   var savedPositions = /* @__PURE__ */ new Set();
   var addKinds = [
     ["internet", "\u0418\u043D\u0442\u0435\u0440\u043D\u0435\u0442"],
@@ -32751,8 +33463,15 @@ ${marks}`;
         savedPositions = new Set(positions2.map((p2) => p2.id));
       } catch {
       }
-      setGraph(cy, graph, savedPositions);
-      renderLegend($2("map-legend"), graph);
+      try {
+        signalsView = await api2.signals();
+      } catch {
+        signalsView = { signals: [], statuses: [] };
+      }
+      setGraph(cy, graph, savedPositions, statusProvider());
+      renderA11y(graph, statusProvider());
+      renderLegend($2("map-legend"), graph, statusProvider());
+      refreshAttention();
       hideNotice();
       if (current !== null) {
         current = graph.nodes.find((n) => n.id === current?.id) ?? null;
@@ -32764,6 +33483,38 @@ ${marks}`;
         showNotice(err instanceof Error ? err.message : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u043A\u0430\u0440\u0442\u0443", true);
       }
     }
+  }
+  function statusProvider() {
+    const map2 = statusesOf(signalsView);
+    return {
+      status: (id2) => map2.get(id2) ?? { status: "online", decisions: 0 }
+    };
+  }
+  function refreshAttention() {
+    const panel = $2("attention-panel");
+    renderAttentionPanel(panel, signalsView.signals, graph.nodes, {
+      onFocus: (deviceId) => focusNode(deviceId)
+    });
+    panel.hidden = !attentionOpen || signalsView.signals.length === 0;
+    const count = $2("attention-count");
+    count.textContent = String(signalsView.signals.length);
+    count.hidden = signalsView.signals.length === 0;
+  }
+  function focusNode(deviceId) {
+    const node = graph.nodes.find((n) => n.id === deviceId);
+    if (node === void 0) return;
+    if (document.querySelector(".workspace")?.hidden === true) {
+      showScreen("map");
+    }
+    current = node;
+    currentLink = null;
+    cy.$(":selected").unselect();
+    const target = cy.$id(deviceId);
+    if (target.nonempty()) {
+      target.select();
+      cy.animate({ center: { eles: target } }, { duration: 200 });
+    }
+    void openPanel(deviceId);
   }
   var currentLinkId = null;
   var callbacks = {
@@ -32779,6 +33530,11 @@ ${marks}`;
       btn("btn-disconnect").disabled = true;
       void openPanel(node.id);
     },
+    // Двойной клик по узлу открывает полную карточку (NR-033 п.3).
+    onNodeOpen: (node) => {
+      if (connectMode) return;
+      void openCard(node.id);
+    },
     onLinkSelect: (link, edgeId2) => {
       if (link === null || edgeId2 === null) return;
       currentLink = link;
@@ -32792,6 +33548,11 @@ ${marks}`;
   cy.on("dragfree", "node", (ev) => {
     const n = ev.target;
     savedPositions.add(n.id());
+    const snap = $2("snap-grid");
+    if (snap.checked) {
+      const snapped = snapToGrid(n.position("x"), n.position("y"));
+      n.position(snapped);
+    }
     void api2.savePosition(n.id(), n.position("x"), n.position("y")).catch(() => {
     });
   });
@@ -32801,8 +33562,9 @@ ${marks}`;
     } catch {
     }
     savedPositions = /* @__PURE__ */ new Set();
-    setGraph(cy, graph, savedPositions);
-    renderLegend($2("map-legend"), graph);
+    setGraph(cy, graph, savedPositions, statusProvider());
+    renderA11y(graph, statusProvider());
+    renderLegend($2("map-legend"), graph, statusProvider());
   });
   function pushSelection(id2) {
     if (!selectedIds.includes(id2)) selectedIds.push(id2);
@@ -32855,7 +33617,7 @@ ${marks}`;
       panel.classList.add("open");
       const title = $2("panel-title");
       title.textContent = info.hostname !== "" ? info.hostname : info.id;
-      fillOverview($2("page-overview"), info, kind, () => selectTab("tab-edit"));
+      fillOverview($2("page-overview"), info, kind, () => selectTab("tab-edit"), () => void openCard(info.id));
       const handlers = {
         onRename: async (nid, name) => {
           try {
@@ -32921,6 +33683,132 @@ ${marks}`;
   }
   function errMessage(err) {
     return err instanceof Error ? err.message : "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430";
+  }
+  async function openCard(id2) {
+    try {
+      const info = await api2.device(id2);
+      openCardId = id2;
+      const decisions = signalsView.signals.filter((s) => s.device_id === id2 && s.decision);
+      const manualLink = graph.links.find((l) => l.manual && (l.a === id2 || l.b === id2));
+      const handlers = {
+        onClose: () => {
+          openCardId = null;
+          showScreen("map");
+        },
+        onClass: async (nid, klass) => {
+          try {
+            await api2.updateDevice(nid, { class: klass });
+            showNotice("\u041A\u043B\u0430\u0441\u0441 \u0438\u0437\u043C\u0435\u043D\u0451\u043D.", false);
+            await refreshAfterCardAction(nid);
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        onKind: async (nid, kind) => {
+          try {
+            await api2.updateDevice(nid, { kind });
+            showNotice("\u0422\u0438\u043F \u0438\u0437\u043C\u0435\u043D\u0451\u043D.", false);
+            await refreshAfterCardAction(nid);
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        onVerify: async (nid) => {
+          const verdict = document.getElementById("card-verdict");
+          try {
+            const rep = await api2.verify(nid);
+            const alive = rep.results.filter((r) => r.alive).length;
+            if (verdict !== null) {
+              verdict.className = `verdict ${rep.verified ? "ok" : "bad"}`;
+              verdict.textContent = rep.verified ? `\u0416\u0438\u0432\u044B\u0445 \u0430\u0434\u0440\u0435\u0441\u043E\u0432: ${alive} \u0438\u0437 ${rep.results.length} \u2014 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E` : `\u041E\u0442\u0432\u0435\u0442\u043E\u0432 \u043D\u0435\u0442: 0 \u0438\u0437 ${rep.results.length}`;
+            }
+            await refreshAfterCardAction(nid);
+          } catch (err) {
+            if (verdict !== null) {
+              verdict.className = "verdict bad";
+              verdict.textContent = errMessage(err);
+            }
+          }
+        },
+        onConnect: (nid) => {
+          openCardId = null;
+          showScreen("map");
+          connectMode = true;
+          selectedIds = [nid];
+          btn("btn-connect").disabled = true;
+          cy.$id(nid).select();
+          updateConnectHint();
+        },
+        onDisconnect: async (nid) => {
+          const link = graph.links.find((l) => l.manual && (l.a === nid || l.b === nid));
+          if (link === void 0) return;
+          try {
+            await api2.deleteLink(`${link.a}|${link.aPort}|${link.b}|${link.bPort}`);
+            showNotice("\u0421\u0432\u044F\u0437\u044C \u0440\u0430\u0437\u043E\u0440\u0432\u0430\u043D\u0430.", false);
+            await refreshAfterCardAction(nid);
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        onDelete: async (nid) => {
+          try {
+            await api2.deleteDevice(nid);
+            openCardId = null;
+            showScreen("map");
+            await reload();
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        onAccept: async (nid, klass) => {
+          try {
+            await api2.updateDevice(nid, { class: klass });
+            showNotice("\u0420\u0435\u0448\u0435\u043D\u0438\u0435 \u043F\u0440\u0438\u043D\u044F\u0442\u043E: \u043A\u043B\u0430\u0441\u0441 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 \u0438\u0437\u043C\u0435\u043D\u0451\u043D.", false);
+            await refreshAfterCardAction(nid);
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        onSnooze: async (nid, kind, days) => {
+          try {
+            await api2.snoozeSignal(nid, kind, days);
+            showNotice(`\u0421\u0438\u0433\u043D\u0430\u043B \u0441\u043A\u0440\u044B\u0442 \u043D\u0430 ${days} \u0434\u043D.`, false);
+            await refreshAfterCardAction(nid);
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        },
+        onReport: async (_nid, agentID, label) => {
+          try {
+            const res = await api2.createReport(
+              "custom",
+              agentID,
+              `\u0423\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \xAB${label}\xBB: \u0447\u0442\u043E \u043E \u043D\u0451\u043C \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E \u0438 \u0447\u0442\u043E \u0441\u0442\u043E\u0438\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C.`
+            );
+            showNotice(
+              res.warnings.length > 0 ? `\u041E\u0442\u0447\u0451\u0442 \u2116${res.id} \u0441\u043E\u0437\u0434\u0430\u043D. \u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435: ${res.warnings.join("; ")}` : `\u041E\u0442\u0447\u0451\u0442 \u2116${res.id} \u0441\u043E\u0437\u0434\u0430\u043D: \u0442\u0435\u043A\u0441\u0442 \u043E\u0447\u0438\u0449\u0435\u043D, \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u0435\u0440\u0435\u0434 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u043E\u0439.`,
+              res.warnings.length > 0
+            );
+            openCardId = null;
+            showScreen("reports");
+          } catch (err) {
+            showNotice(errMessage(err), true);
+          }
+        }
+      };
+      fillCard($2("card-root"), info, graph, decisions, manualLink !== void 0, handlers);
+      showScreen("card");
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 401)) {
+        showNotice(errMessage(err), true);
+      }
+    }
+  }
+  async function refreshAfterCardAction(id2) {
+    await reload();
+    if (openCardId === id2) {
+      await openCard(id2);
+    }
   }
   var tabs = [
     ["tab-overview", "page-overview"],
@@ -32998,6 +33886,7 @@ ${marks}`;
     $2("screen-scripts").hidden = name !== "scripts";
     $2("screen-activity").hidden = name !== "activity";
     $2("screen-reports").hidden = name !== "reports";
+    $2("screen-card").hidden = name !== "card";
     document.querySelector(".workspace").hidden = name !== "map";
     document.querySelectorAll("nav .item[data-page]").forEach((item) => {
       const on3 = item.dataset.page === name;
@@ -33304,17 +34193,17 @@ ${marks}`;
           showNotice(errMessage(err), true);
         }
       },
-      onCopy: (text2) => {
-        void navigator.clipboard.writeText(text2).then(() => showNotice("\u041E\u0447\u0438\u0449\u0435\u043D\u043D\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D: \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0435\u0433\u043E \u0432 \u0434\u0438\u0430\u043B\u043E\u0433 \u0441 \u0418\u0418 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.", false)).catch(() => showNotice("\u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043D\u0435 \u0434\u0430\u043B \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0431\u0443\u0444\u0435\u0440\u0443 \u043E\u0431\u043C\u0435\u043D\u0430 \u2014 \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.", true));
+      onCopy: (text3) => {
+        void navigator.clipboard.writeText(text3).then(() => showNotice("\u041E\u0447\u0438\u0449\u0435\u043D\u043D\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D: \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0435\u0433\u043E \u0432 \u0434\u0438\u0430\u043B\u043E\u0433 \u0441 \u0418\u0418 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.", false)).catch(() => showNotice("\u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043D\u0435 \u0434\u0430\u043B \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0431\u0443\u0444\u0435\u0440\u0443 \u043E\u0431\u043C\u0435\u043D\u0430 \u2014 \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.", true));
       },
-      onAnswer: async (id2, text2) => {
-        const problem = validateAnswerText(text2);
+      onAnswer: async (id2, text3) => {
+        const problem = validateAnswerText(text3);
         if (problem !== "") {
           showNotice(problem, true);
           return;
         }
         try {
-          await api2.reportAnswer(id2, text2);
+          await api2.reportAnswer(id2, text3);
           showNotice("\u041E\u0442\u0432\u0435\u0442 \u043F\u0440\u0438\u043D\u044F\u0442 \u043A\u0430\u043A \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0435. \u0418\u0437 \u043D\u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A.", false);
           current2 = await api2.report(id2);
           show2();
@@ -33516,6 +34405,10 @@ ${marks}`;
   }
   $2("panel-close").addEventListener("click", closePanel);
   $2("btn-reload").addEventListener("click", () => void reload());
+  $2("btn-attention").addEventListener("click", () => {
+    attentionOpen = !attentionOpen;
+    refreshAttention();
+  });
   $2("btn-connect").addEventListener("click", () => {
     if (connectMode) {
       exitConnectMode();
@@ -33542,8 +34435,22 @@ ${marks}`;
     if (ev.key === "Escape") {
       if ($2("add-dialog").open) return;
       if ($2("token-dialog").open) return;
+      if (document.getElementById("screen-card")?.hidden === false) {
+        openCardId = null;
+        showScreen("map");
+        return;
+      }
       closePanel();
       if (connectMode) exitConnectMode();
+    }
+    if (ev.key === "Enter" && current !== null) {
+      const tag = ev.target?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ($2("token-dialog").open) return;
+      if ($2("add-dialog").open) return;
+      if (document.getElementById("screen-card")?.hidden === false) return;
+      ev.preventDefault();
+      void openCard(current.id);
     }
   });
   for (let i2 = 0; i2 < tabs.length; i2++) {

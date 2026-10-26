@@ -37,6 +37,10 @@
         <button id="btn-arrange">Выстроить сеткой</button>
         <button id="btn-connect" disabled>Соединить два узла</button>
         <button id="btn-disconnect" disabled>Разорвать связь</button>
+        <button id="btn-attention">Требуют внимания <span id="attention-count" class="soon-badge" hidden>0</span></button>
+        <label class="snap-toggle" for="snap-grid">
+          <input type="checkbox" id="snap-grid" checked> Привязка к сетке
+        </label>
         <button id="btn-reload">Обновить</button>
       </div>
     </header>
@@ -143,6 +147,18 @@
       <div id="reports-root"></div>
     </section>
 
+    <section id="screen-card" hidden aria-label="Карточка устройства">
+      <div id="card-root"></div>
+      <div class="tabpage active" id="card-page-overview" role="tabpanel" aria-labelledby="card-tab-overview"></div>
+      <div class="tabpage" id="card-page-agent" role="tabpanel" aria-labelledby="card-tab-agent"></div>
+      <div class="tabpage" id="card-page-ports" role="tabpanel" aria-labelledby="card-tab-ports"></div>
+      <div class="tabpage" id="card-page-security" role="tabpanel" aria-labelledby="card-tab-security"></div>
+      <div class="tabpage" id="card-page-quality" role="tabpanel" aria-labelledby="card-tab-quality"></div>
+      <div class="tabpage" id="card-page-decisions" role="tabpanel" aria-labelledby="card-tab-decisions"></div>
+      <div class="tabpage" id="card-page-links" role="tabpanel" aria-labelledby="card-tab-links"></div>
+      <div class="tabpage" id="card-page-history" role="tabpanel" aria-labelledby="card-tab-history"></div>
+    </section>
+
     <section id="screen-scripts" hidden aria-label="Скрипты и тесты">
       <h2>Скрипты, тесты и подпись</h2>
       <p class="subtitle">Путь любого действия: черновик, проверка, тест на виртуальной машине, подпись, один компьютер, группа. Скрипт без статуса «протестирован» и вашей подписи не отправляется ни на один агент.</p>
@@ -165,6 +181,7 @@
         <div id="graph" role="application" aria-label="Карта сети"></div>
         <div id="graph-tooltip" hidden></div>
         <div id="map-legend" class="legend" aria-label="Легенда карты" hidden></div>
+        <div id="attention-panel" class="attention-panel" aria-label="Требуют внимания" hidden></div>
         <ul id="map-a11y" class="visually-hidden" aria-label="Список узлов карты"></ul>
         <div class="hint">Сплошные линии — LLDP и таблицы MAC; пунктир — вывод построителя и ручные связи</div>
       </section>

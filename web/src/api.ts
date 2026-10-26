@@ -45,6 +45,52 @@ export interface DeviceInfo {
   ssid: string;
   manual: boolean;
   verified: boolean;
+  // NR-033 п.2a: поля полной карточки GET /api/devices/{id}.
+  // Опциональные: список устройств их не отдаёт.
+  mac?: string;
+  first_seen?: string;
+  last_seen?: string;
+  agent?: { id: string; hostname?: string };
+  agent_inventory?: ComputerCard['inventory'];
+  inventory_at?: string;
+  user?: string;
+  ports?: { local_address: string; local_port: number; process?: string }[];
+  security?: CardSecurityFinding[];
+  quality?: Finding[];
+  alerts?: { id: number; device_id: string; created: string }[];
+  history?: { at: string; actor: string; action: string; detail?: string }[];
+}
+
+// CardSecurityFinding — «Найдено правилами» (безопасность).
+export interface CardSecurityFinding {
+  rule_id: string;
+  severity: string;
+  fact: string;
+  source: string;
+  advice: string;
+  basis: string;
+  basis_url?: string;
+}
+
+// MapSignal — сигнал внимания на карте (NR-033 п.4).
+export interface MapSignal {
+  device_id: string;
+  status: 'problem' | 'attention' | 'offline';
+  kind: string;
+  text: string;
+  decision: boolean;
+}
+
+// NodeStatus — сводный статус узла: ■ > ▲ > ○ > ◇ > ●.
+export interface NodeStatus {
+  id: string;
+  status: 'online' | 'attention' | 'problem' | 'offline' | 'unverified';
+  decisions: number;
+}
+
+export interface SignalsView {
+  signals: MapSignal[];
+  statuses: NodeStatus[];
 }
 
 export interface VerifyReport {
@@ -96,7 +142,7 @@ export interface ComputerCard {
   status: string;
   inventory_at?: string;
   inventory?: {
-    os?: { caption?: string; version?: string; build_number?: string; architecture?: string; last_boot_up_time?: string; latest_hotfix?: string };
+    os?: { caption?: string; version?: string; build_number?: string; architecture?: string; last_boot_up_time?: string; latest_hotfix?: string; hotfixes?: { id?: string; description?: string; installed_on?: string }[] };
     hardware?: { total_physical_memory?: string; cpus?: { name?: string; cores?: number; logical?: number; max_clock_mhz?: number }[]; memory_modules?: { slot?: string; capacity?: string; speed_mhz?: number; manufacturer?: string }[]; base_board?: { manufacturer?: string; product?: string }; bios?: { manufacturer?: string; version?: string; release_date?: string } };
     disks?: { disks?: { friendly_name?: string; serial?: string; media_type?: string; size?: string; health?: string; wear?: number; temperature?: number }[]; volumes?: { drive_letter?: string; label?: string; file_system?: string; size?: string; size_remaining?: string }[] };
     network?: { name?: string; description?: string; mac?: string; link_speed?: string; status?: string; ipv4?: string[] }[];
@@ -245,6 +291,16 @@ export class NetatlasApi {
 
   topology(): Promise<Graph> {
     return this.req<Graph>('GET', '/api/topology');
+  }
+
+  // Сигналы внимания (NR-033 п.4): статусы узлов и список сигналов.
+  signals(): Promise<SignalsView> {
+    return this.req<SignalsView>('GET', '/api/signals');
+  }
+
+  // Игнорировать сигнал на N дней (NR-033 п.4).
+  snoozeSignal(deviceID: string, kind: string, days: number): Promise<{ ok: boolean }> {
+    return this.req('POST', '/api/signals/snooze', { device_id: deviceID, kind, days });
   }
 
   config(): Promise<{ subnets: string[]; snmp: boolean; audit_ok: boolean }> {

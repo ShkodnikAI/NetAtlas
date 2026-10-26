@@ -472,7 +472,9 @@ dialog .error { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-si
 .severity-info { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .finding { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; display: grid; gap: 4px; }
 .finding-fact { font-weight: 600; }
-.kv { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+/* Стиль строк компьютеров: ограничен экраном «Компьютеры», чтобы не
+   перебивать сетку dl.kv карточки и панели (NR-033). */
+#computers-root .kv { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
 .kv-label { color: var(--muted); min-width: 180px; }
 .kv-value { white-space: pre-wrap; overflow-wrap: anywhere; }
 .tabs2 { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; }
@@ -645,3 +647,129 @@ button.link {
   white-space: nowrap;
   border: 0;
 }
+
+/* --- NR-033: сигналы внимания, карточка, привязка к сетке --- */
+
+/* Переключатель привязки к сетке в панели действий. */
+.snap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  user-select: none;
+  cursor: pointer;
+}
+.snap-toggle input { cursor: pointer; }
+
+/* Счётчик сигналов на кнопке «Требуют внимания» — как бейдж меню. */
+#btn-attention #attention-count {
+  background: var(--warn);
+  color: var(--bg);
+}
+
+/* Панель «Требуют внимания» (NR-033 п.4): поверх карты слева,
+   сигналы по убыванию важности, клик фокусирует узел. */
+.attention-panel {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 340px;
+  max-height: 62%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(16, 21, 28, 0.96);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 8px;
+  z-index: 30;
+}
+.attention-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.attention-row:disabled { cursor: default; opacity: 0.9; }
+.attention-row:not(:disabled):hover { border-color: var(--accent); }
+.attention-mark { font-size: 13px; line-height: 1.2; }
+.status-problem .attention-mark { color: var(--bad); }
+.status-attention .attention-mark { color: var(--warn); }
+.status-offline .attention-mark { color: var(--muted); }
+.attention-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.attention-head { font-weight: 600; font-size: 12.5px; }
+.attention-text { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Строки статусов в легенде (NR-033 п.5). */
+.legend-status .legend-mark { font-size: 12px; line-height: 1; }
+.legend-status.status-online .legend-mark { color: var(--ok); }
+.legend-status.status-attention .legend-mark { color: var(--warn); }
+.legend-status.status-problem .legend-mark { color: var(--bad); }
+.legend-status.status-offline .legend-mark { color: var(--muted); }
+.legend-status.status-unverified .legend-mark { color: #B48FE8; }
+/* Ручная связь — жёлтый пунктир (цвет ручных связей на карте). */
+.legend-dash-manual { border-top-color: var(--warn); }
+
+/* Экран «Карточка устройства» (NR-033 п.3). */
+#screen-card { padding: 16px 20px 24px; overflow: auto; }
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.card-head h2 { margin: 0 0 4px; }
+.card-marks { margin: 0; min-height: 20px; }
+.card-back { white-space: nowrap; }
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.card-actions select {
+  min-width: 170px;
+}
+#card-verdict { margin: 4px 0 8px; }
+#screen-card .tabs { margin-bottom: 10px; }
+#screen-card .tabpage { border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: 12px 14px; }
+#screen-card .tabpage:not(.active) { display: none; }
+#screen-card h3 { margin: 14px 0 6px; font-size: 13.5px; color: var(--text); }
+#screen-card h3:first-child { margin-top: 0; }
+#screen-card ul { margin: 4px 0 10px; padding-left: 20px; }
+#screen-card li { margin: 3px 0; overflow-wrap: anywhere; }
+.findings { list-style: none; padding-left: 0; }
+.finding {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.finding-head { font-weight: 600; }
+.finding-advice { color: var(--muted); font-size: 12.5px; }
+.finding-basis { color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
+.finding.severity-critical { border-left-color: var(--bad); }
+.finding.severity-warning { border-left-color: var(--warn); }
+.finding.severity-info { border-left-color: var(--accent); }
+.decision-box {
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  background: rgba(21, 26, 34, 0.6);
+}
+.decision-box p { margin: 0 0 8px; }
+.decision-box .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
