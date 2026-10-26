@@ -177,8 +177,10 @@ var rules = []rule{
 	{"phone", func(in Input) bool {
 		return hasAnySub(vendorOf(in), phoneVendors) && !hasAnySub(nameOf(in), pcNames)
 	}},
-	// Случайно администрируемый MAC без имени ПК — телефон/планшет.
-	{"phone", func(in Input) bool {
+	// Случайный MAC сам по себе не делает устройство телефоном: так же
+	// выглядят виртуальные машины, контейнеры и ретрансляторы (NR-032,
+	// уточнение аудитора). Без имени или производителя телефона — unknown.
+	{"unknown", func(in Input) bool {
 		return randomMAC(in.MAC) && !hasAnySub(nameOf(in), pcNames)
 	}},
 	// Ноутбуки по производителю и имени (notebook, thinkpad,

@@ -44,7 +44,7 @@ func TestClassify(t *testing.T) {
 		// Телефоны: Apple/Samsung/Xiaomi, случайный MAC (наряд:
 		// b2:be:…, имя Android.local).
 		{"случайный MAC Android.local", Input{Names: []string{"Android.local"}, MAC: "b2:be:ad:1f:22:33"}, model.NodeKindPhone},
-		{"случайный MAC без имени", Input{MAC: "b2:be:ad:1f:22:44"}, model.NodeKindPhone},
+		{"случайный MAC без имени", Input{MAC: "b2:be:ad:1f:22:44"}, model.NodeKindUnknown},
 		{"Apple без имени ПК", Input{Vendor: "Apple, Inc.", MAC: "f0:18:98:00:00:01"}, model.NodeKindPhone},
 		{"Samsung", Input{Vendor: "Samsung Electronics", MAC: "f0:18:98:00:00:02"}, model.NodeKindPhone},
 		{"Xiaomi", Input{Vendor: "Xiaomi Communications", MAC: "f0:18:98:00:00:03"}, model.NodeKindPhone},
