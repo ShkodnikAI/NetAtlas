@@ -3,10 +3,23 @@
 // подписи, порядок внутри ряда по id, сохранённые позиции не трогаются.
 
 import { describe, expect, it } from 'vitest';
-import { GRID_STEP_Y, arrangeGrid, rowRank, type GridKindNode } from './layout';
+import {
+  GRID_STEP_Y,
+  NODE_GAP,
+  NODE_SIZE,
+  arrangeGrid,
+  measureLabel,
+  rowRank,
+  type GridKindNode,
+} from './layout';
 
 function n(id: string, kind: string, label = id): GridKindNode {
   return { id, kind, label };
+}
+
+// stepOfLabel — шаг ряда, который arrangeGrid вычислит для подписи.
+function stepOfLabel(label: string): number {
+  return Math.max(NODE_SIZE.width + NODE_GAP, measureLabel(label).width + NODE_GAP * 2);
 }
 
 describe('rowRank', () => {
@@ -101,5 +114,53 @@ describe('arrangeGrid', () => {
     );
     expect((grid.get('s')?.y ?? 0) - (grid.get('r')?.y ?? 0)).toBeCloseTo(GRID_STEP_Y, 6);
     expect((grid.get('d')?.y ?? 0) - (grid.get('s')?.y ?? 0)).toBeCloseTo(GRID_STEP_Y, 6);
+  });
+
+  // NR-034 п.2: 11 узлов одного типа не должны вытягиваться в строку
+  // шириной в экран — ряд переносится после N колонок.
+  it('ряд шире maxWidth переносится на следующую строку того же ряда', () => {
+    const nodes = ['01', '02', '03', '04', '05', '06'].map((id) =>
+      n(id, 'device', `устройство-${id}`),
+    );
+    // Без ограничения — одна строка.
+    const wide = arrangeGrid(nodes, new Set());
+    expect(new Set([...wide.values()].map((p) => p.y)).size).toBe(1);
+    // Ширина ровно на 3 колонки — две строки по 3.
+    const step = stepOfLabel('устройство-01');
+    const wrapped = arrangeGrid(nodes, new Set(), 3 * step);
+    const first = nodes.slice(0, 3).map((x) => wrapped.get(x.id));
+    const second = nodes.slice(3).map((x) => wrapped.get(x.id));
+    for (const p of first) {
+      expect(p?.y).toBe(first[0]?.y);
+    }
+    for (const p of second) {
+      expect(p?.y).toBe((first[0]?.y ?? 0) + GRID_STEP_Y);
+    }
+    // X второй строки совпадает с X первой (колонка шлюза свободна).
+    expect(second[0]?.x).toBe(first[0]?.x);
+  });
+
+  it('перенос отодвигает следующие ряды вниз (пересечений нет)', () => {
+    const step = stepOfLabel('компьютер-01');
+    const grid = arrangeGrid(
+      [
+        n('r', 'router'),
+        ...['01', '02', '03', '04', '05', '06'].map((id) => n(id, 'device', `компьютер-${id}`)),
+        n('p', 'printer'),
+      ],
+      new Set(),
+      3 * step,
+    );
+    // Роутер сверху; после переноса ряда device следующие ряды
+    // начинаются после последней строки device.
+    expect(grid.get('r')?.y ?? 0).toBeLessThan(grid.get('01')?.y ?? 0);
+    // Шесть device в две строки: принтер ниже обеих строк device.
+    expect(grid.get('p')?.y ?? 0).toBeGreaterThan(grid.get('06')?.y ?? 0);
+  });
+
+  it('узкий максимум не даёт пустых колонок (одна колонка минимум)', () => {
+    const grid = arrangeGrid([n('a', 'device'), n('b', 'device')], new Set(), 1);
+    expect(grid.get('a')?.x).toBe(grid.get('b')?.x);
+    expect((grid.get('b')?.y ?? 0) - (grid.get('a')?.y ?? 0)).toBeCloseTo(GRID_STEP_Y, 6);
   });
 });

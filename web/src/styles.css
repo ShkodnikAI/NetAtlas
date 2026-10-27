@@ -53,15 +53,21 @@ nav .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 8px 18px 8px;
+  padding: 0 4px 18px 4px;
+  /* NR-034 п.3: название рядом с логотипом крупнее и не обрезается. */
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
-nav .brand img { width: 51px; height: 42px; }
+/* NR-034 п.3: логотип около 64 px, шрифт названия около 22 px. */
+nav .brand img { width: 64px; height: auto; flex-shrink: 0; }
 
 nav .brand .name {
   font-family: var(--mono);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: 22px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 nav .item {
@@ -249,6 +255,7 @@ aside.panel.open { display: flex; }
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   border-bottom: 1px solid var(--line);
 }
@@ -274,6 +281,12 @@ aside.panel.open { display: flex; }
   grid-template-columns: max-content 1fr;
   gap: 4px 12px;
 }
+
+/* NR-034 п.4: строка «Тип» обёрнута в div — без display: contents
+   div становится grid-элементом, и последующие dt/dd сдвигаются
+   (подписи справа, значения слева). contents возвращает dt/dd в
+   сетку: подпись слева, значение рядом, в одной строке. */
+.kv-row { display: contents; }
 
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }

@@ -14,9 +14,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite" // драйвер «sqlite» без cgo
@@ -39,6 +41,11 @@ var (
 // Store — открытая база с применёнными миграциями.
 type Store struct {
 	db *sql.DB
+	// Кэш чтения шлюзов хоста (NR-034): таблица маршрутов ОС
+	// читается один раз на открытие базы; для резервного сценария
+	// (старая база без шлюзов в последнем скане) этого достаточно.
+	gatewayOnce  sync.Once
+	gatewayCache []netip.Addr
 }
 
 // Open открывает базу, включает WAL и внешние ключи, применяет
@@ -72,6 +79,15 @@ func Open(path string) (*Store, error) {
 	if err := s.migrate(context.Background()); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// Пересчёт автоматических типов при старте (NR-034): база,
+	// записанная версией до NR-032, получает типы и шлюзы без нового
+	// скана; ручные типы и SNMP-факты не трогаются.
+	if false {
+		_, _ = s.RecomputeKinds(context.Background())
+	} else if _, err := s.RecomputeKinds(context.Background()); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: пересчёт типов: %w", err)
 	}
 	return s, nil
 }
