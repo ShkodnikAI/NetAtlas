@@ -304,6 +304,14 @@ aside.panel.open { display: flex; }
 
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+/* Значок роли рядом с подписью типа (NR-036 п.1). */
+.kv dd .kv-icon { vertical-align: -5px; margin-right: 6px; }
+.kv-icon { display: inline-block; }
+/* Таблица устройств: значок роли рядом с именем (NR-036 п.1). */
+.dev-icon { vertical-align: -5px; margin-right: 6px; }
+/* Выбор типа при добавлении элемента (NR-036 п.1). */
+.add-kind-row { display: flex; align-items: center; gap: 10px; }
+.add-kind-row select { flex: 1; }
 
 .badge {
   display: inline-block;
@@ -732,17 +740,14 @@ button.link {
 .status-problem .attention-mark { color: var(--bad); }
 .status-attention .attention-mark { color: var(--warn); }
 .status-offline .attention-mark { color: var(--muted); }
+/* Значок роли устройства в строке сигнала (NR-036 п.1). */
+.attention-icon { display: block; flex-shrink: 0; }
 .attention-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .attention-head { font-weight: 600; font-size: 12.5px; }
 .attention-text { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
-/* Строки статусов в легенде (NR-033 п.5). */
-.legend-status .legend-mark { font-size: 12px; line-height: 1; }
-.legend-status.status-online .legend-mark { color: var(--ok); }
-.legend-status.status-attention .legend-mark { color: var(--warn); }
-.legend-status.status-problem .legend-mark { color: var(--bad); }
-.legend-status.status-offline .legend-mark { color: var(--muted); }
-.legend-status.status-unverified .legend-mark { color: #B48FE8; }
+/* Строки статусов в легенде (NR-036 п.2): образцы колец — SVG,
+   подпись текстом; цветовые правила не нужны (цвет в образце). */
 /* Ручная связь — жёлтый пунктир (цвет ручных связей на карте). */
 .legend-dash-manual { border-top-color: var(--warn); }
 

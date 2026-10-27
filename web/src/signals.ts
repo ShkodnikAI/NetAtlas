@@ -5,7 +5,7 @@
 // сеть интерфейс не расходует.
 
 import type { MapSignal, NodeInfo, SignalsView } from './api';
-import { STATUS_STYLES, type NodeStatusKind } from './nodes';
+import { STATUS_STYLES, svgIcon, type NodeStatusKind } from './nodes';
 
 // Порядок важности статусов сигнала.
 const SIGNAL_RANK: Record<string, number> = { problem: 0, attention: 1, offline: 2 };
@@ -64,9 +64,10 @@ const SIGNAL_HEAD: Record<string, string> = {
 };
 
 // renderAttentionPanel — панель «Требуют внимания»: список сигналов
-// по убыванию важности; строка показывает маркер статуса, шапку,
-// устройство и текст. Сигналы без устройства (журнал аудита) — без
-// фокуса. Повторный вызов перезаливает содержимое.
+// по убыванию важности; строка показывает маркер статуса, значок
+// роли устройства (NR-036 п.1), шапку и текст. Сигналы без
+// устройства (журнал аудита) — без фокуса. Повторный вызов
+// перезаливает содержимое.
 export function renderAttentionPanel(
   container: HTMLElement,
   signals: MapSignal[],
@@ -91,6 +92,19 @@ export function renderAttentionPanel(
     mark.className = 'attention-mark';
     mark.textContent = STATUS_STYLES[s.status as NodeStatusKind]?.glyph ?? '●';
     mark.setAttribute('aria-hidden', 'true');
+    row.append(mark);
+    // NR-036 п.1: значок роли устройства (статическая таблица
+    // типов, не данные API) — рядом с текстом сигнала.
+    const node = nodes.find((x) => x.id === s.device_id);
+    if (node !== undefined) {
+      const icon = document.createElement('img');
+      icon.src = svgIcon(node.kind);
+      icon.alt = '';
+      icon.width = 20;
+      icon.height = 20;
+      icon.className = 'attention-icon';
+      row.append(icon);
+    }
     const body = document.createElement('span');
     body.className = 'attention-body';
     const head = document.createElement('span');

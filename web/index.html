@@ -237,7 +237,11 @@
   <form id="add-form" method="dialog">
     <h2 id="add-title">Добавить элемент на карту</h2>
     <label for="add-kind">Тип</label>
-    <select id="add-kind" name="kind"></select>
+    <div class="add-kind-row">
+      <select id="add-kind" name="kind"></select>
+      <!-- NR-036 п.1: значок роли выбранного типа; src ставит main.ts -->
+      <img id="add-kind-preview" alt="" width="28" height="28">
+    </div>
     <label for="add-name">Название</label>
     <input type="text" id="add-name" name="name" required maxlength="255">
     <div id="add-error" class="error" hidden></div>

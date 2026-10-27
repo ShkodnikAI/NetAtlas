@@ -6,6 +6,7 @@
 
 import type { DeviceInfo, ScanView } from './api';
 import type { storeAlert } from './types';
+import { svgIcon } from './nodes';
 
 const CLASS_OPTIONS: [string, string][] = [
   ['managed', 'Моё'],
@@ -191,21 +192,32 @@ export function sortDevicesByIP(devices: DeviceInfo[]): DeviceInfo[] {
   });
 }
 
-// deviceRow — строка таблицы найденных устройств: имя или
-// производитель, IP, MAC, класс с выбором, время последнего
-// обнаружения и источники (NR-031 п.3).
+// deviceRow — строка таблицы найденных устройств: значок роли и
+// имя/производитель, IP, MAC, класс с выбором, время последнего
+// обнаружения и источники (NR-031 п.3, NR-036 п.1 — значок 20 px
+// рядом с именем).
 export function deviceRow(
   info: DeviceInfo,
   onClass: (id: string, klass: string) => void,
 ): HTMLTableRowElement {
   const tr = document.createElement('tr');
+  // Имя: значок роли из статической таблицы типов (не данные API) и
+  // имя текстом (textContent) — HTML в имени не исполняется.
+  const nameCell = document.createElement('td');
+  const icon = document.createElement('img');
+  icon.src = svgIcon(info.kind ?? 'unknown');
+  icon.alt = '';
+  icon.width = 20;
+  icon.height = 20;
+  icon.className = 'dev-icon';
+  nameCell.append(icon, document.createTextNode(displayName(info)));
   const cell = (value: string): HTMLTableCellElement => {
     const td = document.createElement('td');
     td.textContent = value;
     return td;
   };
   tr.append(
-    cell(displayName(info)),
+    nameCell,
     cell(info.ips.join(', ')),
     cell(info.id),
     cell(info.vendor),

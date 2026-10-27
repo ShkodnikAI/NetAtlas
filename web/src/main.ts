@@ -31,6 +31,7 @@ import {
 } from './graph';
 import { renderLegend } from './legend';
 import { setupGridLayer } from './mapgrid';
+import { svgIcon } from './nodes';
 import { SNAP_STEP_X, SNAP_STEP_Y, snapToGrid } from './layout';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import { fillCard, type CardHandlers } from './card';
@@ -709,6 +710,14 @@ function setupAddDialog(): void {
     opt.textContent = label;
     select.append(opt);
   }
+  // NR-036 п.1: при выборе типа — значок роли рядом со списком
+  // (статическая таблица типов, не данные API).
+  const preview = $('add-kind-preview') as HTMLImageElement;
+  const updatePreview = (): void => {
+    preview.src = svgIcon(select.value);
+  };
+  select.addEventListener('change', updatePreview);
+  updatePreview();
   const dialog = $('add-dialog') as HTMLDialogElement;
   $('btn-add').addEventListener('click', () => {
     ($('add-error') as HTMLElement).hidden = true;

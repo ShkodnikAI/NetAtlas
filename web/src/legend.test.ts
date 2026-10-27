@@ -59,11 +59,15 @@ describe('legendItems', () => {
     ]);
   });
 
-  it('у каждого элемента есть подпись и значок', () => {
+  it('у каждого элемента есть подпись и значок роли', () => {
     const items = legendItems(graph([{ kind: 'iot' }, { kind: 'tv' }], []));
     for (const item of items) {
       expect(item.label).not.toBe('');
       expect(item.icon).toContain('data:image/svg+xml');
+      // Значок роли — диск цвета группы с белым глифом (NR-036).
+      const svg = decodeURIComponent(item.icon);
+      expect(svg).toContain('stroke="#FFFFFF"');
+      expect(svg).toMatch(/#[0-9A-Fa-f]{6}/);
     }
   });
 });
@@ -78,17 +82,26 @@ describe('hasAssumedLinks', () => {
 });
 
 describe('renderLegend', () => {
-  it('рисует строки статусов, типов и пунктирную строку при assumed-связи (NR-033 п.5)', () => {
+  it('рисует образцы колец статусов, значки ролей и пунктирную строку при assumed-связи (NR-036 п.2)', () => {
     const box = document.createElement('div');
     renderLegend(box, graph([{ kind: 'router' }, { kind: 'printer' }], [{ source: 'assumed' }]));
     expect(box.hidden).toBe(false);
     const chips = [...box.querySelectorAll('.legend-item')];
-    // Сначала статусы (fixture-узлы verified → ● в сети), затем типы,
-    // затем пунктирная строка предполагаемой связи.
+    // Сначала образцы колец статусов (fixture-узлы verified → ● в сети),
+    // затем значки ролей с подписями типов, затем пунктирная строка
+    // предполагаемой связи.
     const marks = chips.map((c) => (c as HTMLElement).dataset.status ?? null);
     expect(marks.filter((x) => x !== null)).toEqual(['online']);
     const kinds = chips.map((c) => (c as HTMLElement).dataset.kind);
     expect(kinds).toEqual([undefined, 'router', 'printer', 'assumed']);
+    // Статусная строка — SVG-образец кольца (NR-036 п.2).
+    const statusChip = chips.find((c) => (c as HTMLElement).dataset.status === 'online');
+    const img = statusChip?.querySelector('img');
+    expect(img?.getAttribute('src')).toContain('data:image/svg+xml');
+    expect(statusChip?.textContent).toContain('в сети');
+    // Строка роли — значок диска с белым глифом.
+    const roleChip = chips.find((c) => (c as HTMLElement).dataset.kind === 'router');
+    expect(decodeURIComponent(roleChip?.querySelector('img')?.getAttribute('src') ?? '')).toContain('#2F6FB5');
     // Пунктирная строка с текстом из наряда.
     const assumed = box.querySelector('.legend-assumed');
     expect(assumed?.textContent).toBe(ASSUMED_TEXT);

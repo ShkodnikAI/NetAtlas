@@ -194,6 +194,61 @@ test('значки узлов различаются по типам (data-kind,
   await shot(page, 'map-kinds');
 });
 
+test('значки NR-036 «Цвет по роли»: диски по ролям, пунктир offline, маркеры форм', async ({ page }) => {
+  await openMap(page);
+  const icons = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const out: Record<string, string> = {};
+    cy.nodes()
+      .filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'))
+      .forEach((n: { data: (k: string) => string }) => {
+        const k = n.data('kind');
+        if (out[k] === undefined) out[k] = n.data('icon') ?? '';
+      });
+    return out;
+  });
+  const dec = (s: string): string => decodeURIComponent(s);
+  // Разные роли — разный цвет диска: сеть, компьютеры, мобильное.
+  expect(dec(icons.router)).toContain('#2F6FB5');
+  expect(dec(icons.device)).toContain('#2F7A68');
+  expect(dec(icons.phone)).toContain('#A13F72');
+  expect(icons.router).not.toBe(icons.device);
+  // Белый глиф типа и тёмный маркер формы в правом верхнем углу.
+  expect(dec(icons.router)).toContain('stroke="#FFFFFF"');
+  expect(dec(icons.router)).toContain('fill="#0E1116"');
+  // Устройство трое суток не выходило на связь, но у него открыто
+  // решение «новое устройство» (▲ перебивает ○). Принимаем решение
+  // через API (как это делает владелец в карточке) — остаётся только
+  // сигнал «не отвечает» и статус «не в сети».
+  const accept = await page.request.patch('/api/devices/02:00:00:00:00:12', {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+    data: { class: 'known_no_agent' },
+  });
+  expect(accept.ok()).toBe(true);
+  await page.reload();
+  await openMap(page);
+  const stale = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.getElementById('02:00:00:00:00:12');
+    return { icon: String(n.data('icon') ?? ''), kind: String(n.data('kind') ?? '') };
+  });
+  expect(stale.kind).toBe('unknown');
+  // Кольцо статуса «не в сети» — пунктирное (NR-036: различимо без
+  // цвета), цвет #9AA6B5.
+  expect(dec(stale.icon)).toContain('stroke-dasharray');
+  expect(dec(stale.icon)).toContain('#9AA6B5');
+  // У статуса «в сети» пунктира нет.
+  const solid = Object.values(icons).filter((i) => !dec(i).includes('stroke-dasharray'));
+  expect(solid.length).toBeGreaterThan(0);
+  // Скриншоты карты и легенды — в артефакт прогона (NR-036 п.5).
+  await shot(page, 'map-badges');
+  const legend = page.locator('#map-legend');
+  // Легенда: образцы колец статусов и значки ролей с подписями типов.
+  await expect(legend.locator('.legend-status img').first()).toBeVisible();
+  await expect(legend.locator('.legend-item:not(.legend-status) img').first()).toBeVisible();
+  await legend.screenshot({ path: join(SHOTS, 'legend-badges.png') });
+});
+
 test('предполагаемых связей столько же, сколько не-шлюзов (NR-032 п.3, п.6)', async ({ page }) => {
   await login(page);
   await page.click('nav .item[data-page="map"]');
@@ -524,7 +579,14 @@ test('у узла с оповещением виден бейдж внимани
       .filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'))
       .map((n: { data: (k: string) => string }) => n.data('icon') ?? '');
   });
-  const withAttention = icons.filter((i: string) => i.includes('%E2%96%B2') || i.includes('▲') || decodeURIComponent(i).includes('M19.2 2.9'));
+  const withAttention = icons.filter(
+    (i: string) =>
+      i.includes('%E2%96%B2') ||
+      i.includes('▲') ||
+      // Маркер ▲ в правом верхнем углу значка (NR-036): треугольник
+      // над тёмным кругом маркера.
+      decodeURIComponent(i).includes('M57 18.4'),
+  );
   expect(withAttention.length).toBeGreaterThan(0);
   // a11y-слой показывает статус «▲ внимание».
   const a11y = await page.locator('#map-a11y li').allTextContents();
@@ -943,7 +1005,8 @@ test('глиф значка заполняет плашку по центру, �
         bad.push(`${n.id()}: bg ${w} x ${h}`);
       }
       // SVG-иконка с intrinsic-размером (глиф рисуется в центре).
-      // data URI кодируется encodeURIComponent: '=' -> %3D.
+      // data URI кодируется encodeURIComponent: '=' -> %3D. NR-036:
+      // глиф — вложенный SVG 34×34 (viewBox 24×24).
       const icon = String(n.data('icon') ?? '');
       let decoded = '';
       try {
@@ -951,7 +1014,7 @@ test('глиф значка заполняет плашку по центру, �
       } catch {
         decoded = icon;
       }
-      if (!decoded.includes('width="24"')) {
+      if (!decoded.includes('width="34"')) {
         bad.push(`${n.id()}: svg без width`);
       }
     }
