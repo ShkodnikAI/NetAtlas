@@ -274,17 +274,28 @@ export interface GraphStatuses {
   status: (id: string) => { status: NodeStatusKind; decisions: number };
 }
 
+// SetGraphOptions — варианты перезаливки графа (NR-035 п.1).
+export interface SetGraphOptions {
+  // rearrange — игнорировать текущие позиции канвы и расставить
+  // все узлы сеткой заново: «Выстроить сеткой» стирает сохранённые
+  // положения и пересобирает раскладку целиком.
+  rearrange?: boolean;
+}
+
 export function setGraph(
   cy: Core,
   g: Graph,
   saved?: ReadonlyMap<string, { x: number; y: number }>,
   statuses?: GraphStatuses,
+  opts?: SetGraphOptions,
 ): void {
   const positions = new Map<string, { x: number; y: number }>();
-  cy.nodes().forEach((n) => {
-    if (n.hasClass('bend')) return;
-    positions.set(n.id(), n.position());
-  });
+  if (opts?.rearrange !== true) {
+    cy.nodes().forEach((n) => {
+      if (n.hasClass('bend')) return;
+      positions.set(n.id(), n.position());
+    });
+  }
   cy.elements().remove();
 
   const elements: ElementDefinition[] = [];
@@ -394,14 +405,16 @@ export function fitIfClipped(cy: Core): void {
 function arrangeMap(
   cy: Core,
   g: Graph,
-  unplaced: ReadonlySet<string>,
+  placed: ReadonlySet<string>,
   saved: ReadonlyMap<string, { x: number; y: number }>,
 ): void {
   const nodeEls: NodeSingular[] = [];
   cy.nodes().forEach((n) => {
     if (!n.isParent() && !n.hasClass('bend')) nodeEls.push(n);
   });
-  const arranging = nodeEls.filter((n) => unplaced.has(n.id()));
+  // Расставляются узлы БЕЗ явного положения (placed — узлы с
+  // положением: текущим на канве или серверным, NR-035 п.1).
+  const arranging = nodeEls.filter((n) => !placed.has(n.id()));
   if (arranging.length === 0) return;
   const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
   // Ширина области карты в модельных координатах при масштабе по
@@ -438,7 +451,7 @@ function arrangeMap(
   // Прочие (сохранённые) участвуют в деоверкапе, только если сетка
   // наехала на них — они сдвигаются минимально.
   const others: Positioned[] = nodeEls
-    .filter((n) => !unplaced.has(n.id()))
+    .filter((n) => placed.has(n.id()))
     .map((n) => ({
       id: n.id(),
       x: n.position('x'),

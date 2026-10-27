@@ -32248,12 +32248,14 @@ ${marks}`;
       verified: Boolean(e.data("verified"))
     };
   }
-  function setGraph(cy2, g, saved, statuses) {
+  function setGraph(cy2, g, saved, statuses, opts) {
     const positions2 = /* @__PURE__ */ new Map();
-    cy2.nodes().forEach((n) => {
-      if (n.hasClass("bend")) return;
-      positions2.set(n.id(), n.position());
-    });
+    if (opts?.rearrange !== true) {
+      cy2.nodes().forEach((n) => {
+        if (n.hasClass("bend")) return;
+        positions2.set(n.id(), n.position());
+      });
+    }
     cy2.elements().remove();
     const elements = [];
     const placed = /* @__PURE__ */ new Set();
@@ -32345,12 +32347,12 @@ ${marks}`;
       cy2.center(cy2.elements());
     }
   }
-  function arrangeMap(cy2, g, unplaced, saved) {
+  function arrangeMap(cy2, g, placed, saved) {
     const nodeEls = [];
     cy2.nodes().forEach((n) => {
       if (!n.isParent() && !n.hasClass("bend")) nodeEls.push(n);
     });
-    const arranging = nodeEls.filter((n) => unplaced.has(n.id()));
+    const arranging = nodeEls.filter((n) => !placed.has(n.id()));
     if (arranging.length === 0) return;
     const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
     const maxWidth = Math.max(400, (cy2.width() - FIT_PADDING) / MIN_ICON_ZOOM);
@@ -32378,7 +32380,7 @@ ${marks}`;
       const n = cy2.$id(p2.id).first();
       if (n !== void 0) n.position({ x: p2.x, y: p2.y });
     }
-    const others = nodeEls.filter((n) => !unplaced.has(n.id())).map((n) => ({
+    const others = nodeEls.filter((n) => placed.has(n.id())).map((n) => ({
       id: n.id(),
       x: n.position("x"),
       y: n.position("y"),
@@ -33830,7 +33832,7 @@ ${marks}`;
     } catch {
     }
     savedPositions = /* @__PURE__ */ new Map();
-    setGraph(cy, graph, savedPositions, statusProvider());
+    setGraph(cy, graph, savedPositions, statusProvider(), { rearrange: true });
     renderA11y(graph, statusProvider());
     renderLegend($2("map-legend"), graph, statusProvider());
   });

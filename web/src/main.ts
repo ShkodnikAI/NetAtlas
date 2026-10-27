@@ -367,7 +367,9 @@ $('btn-arrange').addEventListener('click', async () => {
     // даже при ошибке сети выстроим локально
   }
   savedPositions = new Map<string, { x: number; y: number }>();
-  setGraph(cy, graph, savedPositions, statusProvider());
+  // rearrange: позиции канвы не учитываются — все узлы заново
+  // выстраиваются детерминированной сеткой (NR-035 п.1).
+  setGraph(cy, graph, savedPositions, statusProvider(), { rearrange: true });
   renderA11y(graph, statusProvider());
   renderLegend($('map-legend'), graph, statusProvider());
 });
