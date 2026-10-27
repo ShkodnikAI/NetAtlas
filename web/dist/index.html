@@ -35,11 +35,17 @@
       <div class="actions" aria-label="Действия с картой">
         <button id="btn-add">Добавить элемент</button>
         <button id="btn-arrange">Выстроить сеткой</button>
+        <button id="btn-fit" title="Вписать карту в окно (0)">Вписать в окно</button>
+        <button id="btn-center" title="Центрировать карту (смена масштаба — «+»/«-»)">Центр</button>
+        <button id="btn-zoom100" title="Масштаб 100%">100%</button>
         <button id="btn-connect" disabled>Соединить два узла</button>
         <button id="btn-disconnect" disabled>Разорвать связь</button>
         <button id="btn-attention">Требуют внимания <span id="attention-count" class="soon-badge" hidden>0</span></button>
         <label class="snap-toggle" for="snap-grid">
           <input type="checkbox" id="snap-grid" checked> Привязка к сетке
+        </label>
+        <label class="snap-toggle" for="show-grid">
+          <input type="checkbox" id="show-grid" checked> Показывать сетку
         </label>
         <button id="btn-reload">Обновить</button>
       </div>
@@ -179,6 +185,7 @@
     <div class="workspace">
       <section class="canvas-wrap" aria-label="Граф сети">
         <div id="graph" role="application" aria-label="Карта сети"></div>
+        <div id="map-grid" aria-hidden="true"></div>
         <div id="graph-tooltip" hidden></div>
         <div id="map-legend" class="legend" aria-label="Легенда карты" hidden></div>
         <div id="attention-panel" class="attention-panel" aria-label="Требуют внимания" hidden></div>

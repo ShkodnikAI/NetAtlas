@@ -184,6 +184,20 @@ func (f *fakeStore) SavePosition(ctx context.Context, id string, x, y float64, a
 	return nil
 }
 
+func (f *fakeStore) SavePositions(ctx context.Context, pos []store.NodePosition, actor string) (int, error) {
+	saved := 0
+	for _, p := range pos {
+		if _, ok := f.devices[p.ID]; !ok {
+			continue
+		}
+		if err := f.SavePosition(ctx, p.ID, p.X, p.Y, actor); err != nil {
+			continue
+		}
+		saved++
+	}
+	return saved, nil
+}
+
 func (f *fakeStore) ClearPositions(ctx context.Context, actor string) error {
 	f.positions = map[string][2]float64{}
 	f.positionOrder = nil

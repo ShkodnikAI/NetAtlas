@@ -106,6 +106,59 @@ func (s *Store) ClearPositions(ctx context.Context, actor string) error {
 	return tx.Commit()
 }
 
+// SavePositions запоминает позиции пакетом (NR-035 п.1): клиент
+// отправляет все сдвинутые узлы одним запросом после дебаунса.
+// Пакет пишется одной транзакцией; несуществующие узлы пропускаются
+// (устройство могло быть удалено между загрузкой карты и сохранением),
+// координаты — конечные числа: NaN и бесконечности отбрасываются.
+// Возвращает число записанных позиций. В аудит — одна запись на пакет.
+func (s *Store) SavePositions(ctx context.Context, pos []NodePosition, actor string) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("store: транзакция: %w", err)
+	}
+	defer tx.Rollback()
+	saved := 0
+	for _, p := range pos {
+		if err := checkCoordinate("x", p.X); err != nil {
+			continue
+		}
+		if err := checkCoordinate("y", p.Y); err != nil {
+			continue
+		}
+		var exists int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM devices WHERE id = ?`, p.ID).Scan(&exists); err != nil {
+			return 0, fmt.Errorf("store: узел %s: %w", p.ID, err)
+		}
+		if exists == 0 {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO node_positions (node_id, x, y, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(node_id) DO UPDATE SET x = excluded.x, y = excluded.y, updated_at = excluded.updated_at`,
+			p.ID, p.X, p.Y, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return 0, fmt.Errorf("store: позиция узла %s: %w", p.ID, err)
+		}
+		saved++
+	}
+	if saved > 0 {
+		detail, err := jsonDetail(map[string]int{"count": saved})
+		if err != nil {
+			return 0, err
+		}
+		if _, err := audit.Append(ctx, tx, audit.Entry{
+			Actor: actor, Action: "save_positions", Target: "map", Result: "ok", Detail: detail,
+		}); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store: фиксация позиций: %w", err)
+	}
+	return saved, nil
+}
+
 // checkCoordinate — координата должна быть конечным числом: NaN и
 // бесконечности ломают раскладку и JSON.
 func checkCoordinate(name string, v float64) error {

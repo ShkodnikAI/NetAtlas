@@ -256,6 +256,13 @@ function parseErrorBody(body: string): string {
   return '';
 }
 
+// NodePositionView — сохранённая позиция узла карты (NR-035 п.1).
+export interface NodePositionView {
+  id: string;
+  x: number;
+  y: number;
+}
+
 export class NetatlasApi {
   private token = '';
   // Вызывается при 401: интерфейс снова запрашивает токен.
@@ -349,16 +356,19 @@ export class NetatlasApi {
     return this.req('PATCH', `/api/devices/${encodeURIComponent(id)}`, patch);
   }
 
-  positions(): Promise<{ positions: { id: string; x: number; y: number }[] }> {
-    return this.req('GET', '/api/positions');
+  // Позиции узлов карты (NR-035 п.1): чтение одним запросом, запись
+  // пакетом (клиент копит сдвинутые узлы и шлёт их после дебаунса),
+  // очистка — «Выстроить сеткой».
+  mapPositions(): Promise<{ positions: NodePositionView[] }> {
+    return this.req('GET', '/api/map/positions');
   }
 
-  savePosition(id: string, x: number, y: number): Promise<{ ok: boolean }> {
-    return this.req('PUT', `/api/positions/${encodeURIComponent(id)}`, { x, y });
+  savePositions(list: NodePositionView[]): Promise<{ ok: boolean; saved: number }> {
+    return this.req('PUT', '/api/map/positions', { positions: list });
   }
 
   clearPositions(): Promise<{ ok: boolean }> {
-    return this.req('DELETE', '/api/positions');
+    return this.req('DELETE', '/api/map/positions');
   }
 
   deleteDevice(id: string): Promise<{ ok: boolean }> {

@@ -62,6 +62,14 @@ export function createGraph(
           'background-color': '#1B2430',
           'background-image': 'data(icon)',
           'background-fit': 'contain',
+          // NR-035 п.4: глиф заполняет плашку по центру (около 60%
+          // размера узла) — явный размер фона снимает зависимость от
+          // intrinsic-размера SVG (без него глиф рисовался крошечным
+          // в углу плашки).
+          'background-width': '100%',
+          'background-height': '100%',
+          'background-position-x': '50%',
+          'background-position-y': '50%',
           'background-opacity': 1,
           'border-width': 2,
           // Ободок статуса (NR-033 п.2): цвет от сигналов узла.
@@ -93,7 +101,12 @@ export function createGraph(
         style: {
           width: 1.6,
           'line-color': 'data(color)',
+          'source-arrow-shape': 'circle',
+          'target-arrow-shape': 'circle',
+          'source-arrow-color': 'data(color)',
           'target-arrow-color': 'data(color)',
+          // Точка соединения 6-8 px (NR-035 п.2): 1.6 x 4 = 6.4 px.
+          'arrow-scale': 4,
           // Ортогональные связи (NR-033 п.1): ломаная под прямыми
           // углами. taxi-direction vertical: вертикальный участок у
           // источника, горизонталь в зазоре между рядами (излом на
@@ -117,12 +130,53 @@ export function createGraph(
       },
       {
         selector: ':selected',
-        style: { 'border-color': '#5AA9FF', 'line-color': '#5AA9FF' },
+        style: {
+          'border-color': '#5AA9FF',
+          'line-color': '#5AA9FF',
+          'source-arrow-color': '#5AA9FF',
+          'target-arrow-color': '#5AA9FF',
+        },
+      },
+      {
+        // Точки на изломах ортогональных линий (NR-035 п.2):
+        // порт-узлы без событий и перетаскивания.
+        selector: 'node.bend',
+        style: {
+          width: 6,
+          height: 6,
+          shape: 'ellipse',
+          'background-color': 'data(color)',
+          'background-opacity': 1,
+          'border-width': 0,
+          label: '',
+          events: 'no',
+        },
       },
     ],
     layout: { name: 'cose', animate: false, randomize: false },
     wheelSensitivity: 0.2,
+    minZoom: 0.05,
+    maxZoom: 3,
   });
+
+  // Пересчёт точек изломов (NR-035 п.2): позиции сегментных точек
+  // зависят от положения узлов и от масштаба (taxi-turn в px),
+  // поэтому пересчитываются на перемещение узлов, зуме и панели —
+  // с throttling через requestAnimationFrame.
+  let bendScheduled = 0;
+  const scheduleBendSync = (): void => {
+    if (bendScheduled !== 0) return;
+    bendScheduled = requestAnimationFrame(() => {
+      bendScheduled = 0;
+      syncBendDots(cy);
+    });
+  };
+  cy.on('position', 'node', (ev: EventObject) => {
+    const t = ev.target as NodeSingular;
+    if (t.hasClass('bend')) return;
+    scheduleBendSync();
+  });
+  cy.on('pan zoom resize', () => scheduleBendSync());
 
   // Двойной клик (NR-033 п.3): cytoscape не умеет dblclick — два
   // быстрых tap по одному узлу в пределах 400 мс открывают карточку.
@@ -223,16 +277,18 @@ export interface GraphStatuses {
 export function setGraph(
   cy: Core,
   g: Graph,
-  saved?: ReadonlySet<string>,
+  saved?: ReadonlyMap<string, { x: number; y: number }>,
   statuses?: GraphStatuses,
 ): void {
   const positions = new Map<string, { x: number; y: number }>();
   cy.nodes().forEach((n) => {
+    if (n.hasClass('bend')) return;
     positions.set(n.id(), n.position());
   });
   cy.elements().remove();
 
   const elements: ElementDefinition[] = [];
+  const placed = new Set<string>();
   let hasGuests = false;
   for (const n of g.nodes) {
     const nodeStatus = statuses?.status(n.id) ?? { status: 'online' as NodeStatusKind, decisions: 0 };
@@ -242,6 +298,7 @@ export function setGraph(
       nodeStatus.status === 'online' && !n.verified ? 'unverified' : nodeStatus.status;
     const st = nodeStyle(n, status, nodeStatus.decisions);
     hasGuests = hasGuests || n.class === 'guest';
+    if (positions.has(n.id) || saved?.has(n.id)) placed.add(n.id);
     elements.push({
       group: 'nodes',
       data: {
@@ -259,7 +316,10 @@ export function setGraph(
         // Гости объединяются группой «Гостевая сеть» (compound).
         parent: n.class === 'guest' ? 'grp-guest' : undefined,
       },
-      position: positions.get(n.id) ?? { x: 0, y: 0 },
+      // Приоритет положения (NR-035 п.1): текущая позиция на канве
+      // (владелец двигал, отправка ещё не прошла) сильнее серверной;
+      // серверная — сильнее раскладки; без всего — раскладка.
+      position: positions.get(n.id) ?? saved?.get(n.id) ?? { x: 0, y: 0 },
       style: { shape: st.shape, width: String(st.width), height: String(st.height) },
       classes: [n.manual ? 'manual' : '', n.verified ? '' : 'unverified']
         .filter(Boolean)
@@ -299,8 +359,9 @@ export function setGraph(
     });
   }
   cy.add(elements);
-  arrangeMap(cy, g, saved ?? new Set());
+  arrangeMap(cy, g, placed, saved ?? new Map());
   fitIfClipped(cy);
+  syncBendDots(cy);
 }
 
 // fitIfClipped — если карта не влезает в окно (шлюз у края канвы,
@@ -330,17 +391,24 @@ export function fitIfClipped(cy: Core): void {
 // узлов без сохранённого смещения — из arrangeGrid (шлюз сверху,
 // ряды по типам); затем deoverlap для защиты от пересечений, если
 // сохранённые позиции влезли в сетку.
-function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
+function arrangeMap(
+  cy: Core,
+  g: Graph,
+  unplaced: ReadonlySet<string>,
+  saved: ReadonlyMap<string, { x: number; y: number }>,
+): void {
   const nodeEls: NodeSingular[] = [];
   cy.nodes().forEach((n) => {
-    if (!n.isParent()) nodeEls.push(n);
+    if (!n.isParent() && !n.hasClass('bend')) nodeEls.push(n);
   });
+  const arranging = nodeEls.filter((n) => unplaced.has(n.id()));
+  if (arranging.length === 0) return;
   const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
   // Ширина области карты в модельных координатах при масштабе по
   // умолчанию (NR-034 п.2): ряд переносится, когда не влезает.
   const maxWidth = Math.max(400, (cy.width() - FIT_PADDING) / MIN_ICON_ZOOM);
   const grid = arrangeGrid(
-    nodeEls.map((n) => ({
+    arranging.map((n) => ({
       id: n.id(),
       kind: kinds.get(n.id()) ?? 'unknown',
       label: String(n.data('label') ?? ''),
@@ -348,13 +416,13 @@ function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
     saved,
     maxWidth,
   );
-  for (const n of nodeEls) {
+  for (const n of arranging) {
     const p = grid.get(n.id());
     if (p !== undefined) n.position({ x: p.x, y: p.y });
   }
   // Пересечения разводятся только среди автоматически расставленных:
   // узлы владельца не сдвигаются.
-  const auto: Positioned[] = nodeEls
+  const auto: Positioned[] = arranging
     .filter((n) => grid.has(n.id()))
     .map((n) => ({
       id: n.id(),
@@ -370,7 +438,7 @@ function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
   // Прочие (сохранённые) участвуют в деоверкапе, только если сетка
   // наехала на них — они сдвигаются минимально.
   const others: Positioned[] = nodeEls
-    .filter((n) => !grid.has(n.id()) && saved.has(n.id()))
+    .filter((n) => !unplaced.has(n.id()))
     .map((n) => ({
       id: n.id(),
       x: n.position('x'),
@@ -385,6 +453,77 @@ function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
       if (n !== undefined) n.position({ x: p.x, y: p.y });
     }
   }
+}
+
+// syncBendDots — точки на изломах ортогональных линий (NR-035 п.2):
+// порт-узел в каждой сегментной точке ребра, цветом линии. Позиции
+// пересчитываются при перемещении узлов и смене масштаба; устаревшие
+// точки удаляются. Точки не попадают в раскладку и не ловят события.
+export function syncBendDots(cy: Core): void {
+  const seen = new Set<string>();
+  cy.edges().forEach((e) => {
+    const pts = e.segmentPoints() as { x: number; y: number }[];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (p === undefined) continue;
+      const id = `bend:${e.id()}:${i}`;
+      seen.add(id);
+      const existing = cy.$id(id).first() as NodeSingular | undefined;
+      if (existing !== undefined && existing.nonempty()) {
+        existing.position({ x: p.x, y: p.y });
+      } else {
+        cy.add({
+          group: 'nodes',
+          data: { id, color: String(e.data('color') ?? '#7C8798') },
+          position: { x: p.x, y: p.y },
+          classes: 'bend',
+        });
+      }
+    }
+  });
+  cy.nodes()
+    .filter((n) => n.hasClass('bend') && !seen.has(n.id()))
+    .remove();
+}
+
+// fitMap — кнопка «Вписать в окно» (NR-035 п.3): вся карта видима.
+export function fitMap(cy: Core): void {
+  if (cy.elements().length === 0) return;
+  cy.fit(cy.elements(), FIT_PADDING);
+}
+
+// centerMap — кнопка «Центр» (NR-035 п.3): центрирование без смены
+// масштаба.
+export function centerMap(cy: Core): void {
+  if (cy.elements().length === 0) return;
+  cy.center(cy.elements());
+}
+
+// zoom100 — кнопка «100%» (NR-035 п.3): масштаб 1:1, содержимое в
+// центре канвы.
+export function zoom100(cy: Core): void {
+  if (cy.elements().length === 0) return;
+  cy.zoom(1);
+  cy.center(cy.elements());
+}
+
+// Поле от угла канвы при показе верхнего левого фрагмента (NR-035 п.3).
+const CORNER_PAD = 40;
+
+// initialFit — первая загрузка карты (NR-035 п.3): вписать в окно,
+// но значки не мельче 32 px (MIN_ICON_ZOOM, NR-034 п.2); если карта
+// целиком не помещается, показывается верхний левый фрагмент — поле
+// двигается перетаскиванием и клавишами.
+export function initialFit(cy: Core): void {
+  if (cy.nodes().length === 0) return;
+  cy.fit(cy.elements(), FIT_PADDING);
+  if (cy.zoom() >= MIN_ICON_ZOOM) return;
+  cy.zoom(MIN_ICON_ZOOM);
+  const bb = cy.elements().boundingBox();
+  cy.pan({
+    x: CORNER_PAD - bb.x1 * MIN_ICON_ZOOM,
+    y: CORNER_PAD - bb.y1 * MIN_ICON_ZOOM,
+  });
 }
 
 // renderA11y — скрытый список узлов для скринридеров и сквозных

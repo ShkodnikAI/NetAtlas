@@ -44,7 +44,7 @@ describe('arrangeGrid', () => {
         n('d', 'phone'),
         n('e', 'server'),
       ],
-      new Set(),
+      new Map(),
     );
     // Роутер сверху.
     const router = grid.get('c');
@@ -62,7 +62,7 @@ describe('arrangeGrid', () => {
   it('узлы одного ряда на равных координатах Y (сетка), X с равным шагом', () => {
     const grid = arrangeGrid(
       [n('01', 'device'), n('02', 'device'), n('03', 'device'), n('04', 'device')],
-      new Set(),
+      new Map(),
     );
     const ys = [...grid.values()].map((p) => p.y);
     expect(new Set(ys).size).toBe(1);
@@ -76,10 +76,10 @@ describe('arrangeGrid', () => {
   });
 
   it('шаг ряда не меньше ширины самой длинной подписи в ряду', () => {
-    const short = arrangeGrid([n('a', 'device', 'ab'), n('b', 'device', 'cd')], new Set());
+    const short = arrangeGrid([n('a', 'device', 'ab'), n('b', 'device', 'cd')], new Map());
     const long = arrangeGrid(
       [n('a', 'device', 'очень длинная подпись принтера канцелярии'), n('b', 'device', 'cd')],
-      new Set(),
+      new Map(),
     );
     const stepOf = (g: Map<string, { x: number; y: number }>): number => {
       const xs = [...g.values()].map((p) => p.x).sort((a, b) => a - b);
@@ -90,8 +90,8 @@ describe('arrangeGrid', () => {
 
   it('порядок входа не влияет на результат (детерминированность)', () => {
     const base = [n('a', 'device'), n('b', 'printer'), n('c', 'router')];
-    const one = arrangeGrid(base, new Set());
-    const two = arrangeGrid([...base].reverse(), new Set());
+    const one = arrangeGrid(base, new Map());
+    const two = arrangeGrid([...base].reverse(), new Map());
     expect(one.get('a')).toEqual(two.get('a'));
     expect(one.get('b')).toEqual(two.get('b'));
     expect(one.get('c')).toEqual(two.get('c'));
@@ -100,7 +100,7 @@ describe('arrangeGrid', () => {
   it('сохранённые позиции владельца исключаются из раскладки', () => {
     const grid = arrangeGrid(
       [n('a', 'device'), n('b', 'device'), n('c', 'router')],
-      new Set(['a']),
+      new Map([['a', { x: 500, y: 0 }]]),
     );
     expect(grid.has('a')).toBe(false);
     expect(grid.has('b')).toBe(true);
@@ -110,7 +110,7 @@ describe('arrangeGrid', () => {
   it('ряды идут сверху вниз с постоянным вертикальным шагом', () => {
     const grid = arrangeGrid(
       [n('r', 'router'), n('s', 'server'), n('d', 'device'), n('p', 'printer')],
-      new Set(),
+      new Map(),
     );
     expect((grid.get('s')?.y ?? 0) - (grid.get('r')?.y ?? 0)).toBeCloseTo(GRID_STEP_Y, 6);
     expect((grid.get('d')?.y ?? 0) - (grid.get('s')?.y ?? 0)).toBeCloseTo(GRID_STEP_Y, 6);
@@ -123,11 +123,11 @@ describe('arrangeGrid', () => {
       n(id, 'device', `устройство-${id}`),
     );
     // Без ограничения — одна строка.
-    const wide = arrangeGrid(nodes, new Set());
+    const wide = arrangeGrid(nodes, new Map());
     expect(new Set([...wide.values()].map((p) => p.y)).size).toBe(1);
     // Ширина ровно на 3 колонки — две строки по 3.
     const step = stepOfLabel('устройство-01');
-    const wrapped = arrangeGrid(nodes, new Set(), 3 * step);
+    const wrapped = arrangeGrid(nodes, new Map(), 3 * step);
     const first = nodes.slice(0, 3).map((x) => wrapped.get(x.id));
     const second = nodes.slice(3).map((x) => wrapped.get(x.id));
     for (const p of first) {
@@ -148,7 +148,7 @@ describe('arrangeGrid', () => {
         ...['01', '02', '03', '04', '05', '06'].map((id) => n(id, 'device', `компьютер-${id}`)),
         n('p', 'printer'),
       ],
-      new Set(),
+      new Map(),
       3 * step,
     );
     // Роутер сверху; после переноса ряда device следующие ряды
@@ -158,8 +158,44 @@ describe('arrangeGrid', () => {
     expect(grid.get('p')?.y ?? 0).toBeGreaterThan(grid.get('06')?.y ?? 0);
   });
 
+  // NR-035 п.1: новое устройство встаёт в свободную клетку сетки
+  // своего ряда, не поверх сохранённого владельцем узла.
+  it('авто-узлы пропускают клетки, занятые сохранёнными узлами', () => {
+    // Ряд device без сохранённых: a и b на соседних слотах (шаг
+    // NODE_SIZE.width + NODE_GAP = 62).
+    const plain = arrangeGrid([n('a', 'device'), n('b', 'device')], new Map());
+    const base = plain.get('a') ?? { x: 0, y: 0 };
+    // Клетка узла «a» занята сохранённым узлом «kept» — новые узлы
+    // встают на следующие свободные слоты.
+    const saved = new Map([['kept', { x: base.x, y: base.y }]]);
+    const grid = arrangeGrid([n('a', 'device'), n('b', 'device')], saved);
+    const a = grid.get('a');
+    const b = grid.get('b');
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    // Ни один авто-узел не попал в занятую клетку.
+    for (const p of [a, b]) {
+      const same = Math.round((p?.x ?? 0) / 100) === Math.round(base.x / 100)
+        && Math.round((p?.y ?? 0) / 120) === Math.round(base.y / 120);
+      expect(same).toBe(false);
+    }
+    // Сохранённый узел в клетке «b» — узлы обходят и её.
+    const saved2 = new Map([
+      ['kept', { x: base.x, y: base.y }],
+      ['kept2', { x: plain.get('b')?.x ?? 0, y: plain.get('b')?.y ?? 0 }],
+    ]);
+    const grid2 = arrangeGrid([n('a', 'device'), n('b', 'device')], saved2);
+    for (const p of [grid2.get('a'), grid2.get('b')]) {
+      const hit = [...saved2.values()].some((s) =>
+        Math.round(s.x / 100) === Math.round((p?.x ?? 0) / 100)
+        && Math.round(s.y / 120) === Math.round((p?.y ?? 0) / 120),
+      );
+      expect(hit).toBe(false);
+    }
+  });
+
   it('узкий максимум не даёт пустых колонок (одна колонка минимум)', () => {
-    const grid = arrangeGrid([n('a', 'device'), n('b', 'device')], new Set(), 1);
+    const grid = arrangeGrid([n('a', 'device'), n('b', 'device')], new Map(), 1);
     expect(grid.get('a')?.x).toBe(grid.get('b')?.x);
     expect((grid.get('b')?.y ?? 0) - (grid.get('a')?.y ?? 0)).toBeCloseTo(GRID_STEP_Y, 6);
   });
