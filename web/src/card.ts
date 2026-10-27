@@ -7,7 +7,7 @@
 // недоверенные: вставка только через textContent.
 
 import type { DeviceInfo, Graph, MapSignal } from './api';
-import { className, CLASSES, KIND_OPTIONS } from './panels';
+import { className, CLASSES, KIND_OPTIONS, kindIcon } from './panels';
 import { KIND_LABELS } from './nodes';
 
 export interface CardHandlers {
@@ -246,7 +246,15 @@ function fillOverview(info: DeviceInfo): void {
   let typeValue = kindLabel;
   if (info.kindManual) typeValue += ' (указан вручную)';
   else if (info.kindAuto !== '' && info.kindAuto === info.kind) typeValue += ' (определён автоматически)';
-  kvRow(dl, 'Тип', typeValue);
+  // NR-036 п.1: в карточке тип показывается со значком роли; значок
+  // строится из статической таблицы типов, текст — через textContent.
+  const typeRow = el('div', 'kv-row');
+  const typeDt = el('dt');
+  text(typeDt, 'Тип');
+  const typeDd = el('dd');
+  typeDd.append(kindIcon(info.kind ?? 'unknown'), document.createTextNode(typeValue));
+  typeRow.append(typeDt, typeDd);
+  dl.append(typeRow);
   kvRow(dl, 'Класс', className(info.class));
   if (info.ssid !== '') kvRow(dl, 'SSID', info.ssid);
   kvRow(dl, 'Первое обнаружение', fmtTime(info.first_seen));

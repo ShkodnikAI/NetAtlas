@@ -9,11 +9,15 @@
 // NR-033: связи ортогональные (curve-style taxi, излом под прямым
 // углом в зазоре между рядами), двойной клик открывает полную
 // карточку, значки несут маркер статуса и счётчик решений.
+// NR-036: значки — вариант В «Цвет по роли»: круглый диск 74 px с
+// цветом по роли и белым глифом, кольцо статуса внутри SVG; рамка
+// узла cytoscape не рисуется, выделение — яркая внешняя обводка
+// #E6EAF0 (подложка под узлом), не меняющая цвет статуса.
 
 import cytoscape from 'cytoscape';
 import type { Core, ElementDefinition, EventObject, NodeSingular } from 'cytoscape';
 import type { Graph, LinkInfo, NodeInfo } from './api';
-import { nodeStyle, STATUS_STYLES, type NodeStatusKind } from './nodes';
+import { BADGE_NODE, nodeStyle, STATUS_STYLES, type NodeStatusKind } from './nodes';
 import { arrangeGrid, deoverlap, measureLabel, type Positioned } from './layout';
 
 export interface GraphCallbacks {
@@ -37,9 +41,10 @@ const STROKE: Record<string, string> = {
 // полная подпись остаётся в data(fullLabel) для подсказки.
 const LABEL_MAX_CHARS = 28;
 
-// Минимальный масштаб по умолчанию (NR-034 п.2): значок шириной
-// 40px модели при зуме 0.8 отрисовывается не мельче 32 px.
-export const MIN_ICON_ZOOM = 32 / 40;
+// Минимальный масштаб по умолчанию (NR-034 п.2, пересчёт NR-036):
+// значок-диск 74 px модели при зуме 0.8 отрисовывается не мельче
+// 59 px — мельче значки не сжимаются, карта прокручивается.
+export const MIN_ICON_ZOOM = 0.8;
 // Поля вокруг карты при подгонке и расчёте переноса ряда (px).
 const FIT_PADDING = 90;
 
@@ -59,21 +64,20 @@ export function createGraph(
       {
         selector: 'node',
         style: {
-          'background-color': '#1B2430',
+          'background-color': 'rgba(0,0,0,0)',
           'background-image': 'data(icon)',
           'background-fit': 'contain',
-          // NR-035 п.4: глиф заполняет плашку по центру (около 60%
-          // размера узла) — явный размер фона снимает зависимость от
-          // intrinsic-размера SVG (без него глиф рисовался крошечным
-          // в углу плашки).
+          // NR-035 п.4: значок заполняет узел целиком — явный размер
+          // фона снимает зависимость от intrinsic-размера SVG (без
+          // него глиф рисовался крошечным в углу плашки).
           'background-width': '100%',
           'background-height': '100%',
           'background-position-x': '50%',
           'background-position-y': '50%',
           'background-opacity': 1,
-          'border-width': 2,
-          // Ободок статуса (NR-033 п.2): цвет от сигналов узла.
-          'border-color': 'data(border)',
+          // NR-036: кольцо статуса рисуется внутри SVG-значка, рамка
+          // узла не нужна — выделение не перекрашивает статус.
+          'border-width': 0,
           color: '#E6EAF0',
           'font-size': 11,
           'font-family': 'system-ui, sans-serif',
@@ -81,20 +85,21 @@ export function createGraph(
           'text-margin-y': 6,
           'text-wrap': 'wrap',
           'text-max-width': '140',
-          width: '40',
-          height: '32',
+          width: String(BADGE_NODE),
+          height: String(BADGE_NODE),
           label: 'data(label)',
         },
       },
       {
-        selector: 'node[manual]',
-        style: { 'border-color': '#F5B83D' },
-      },
-      {
-        // NR-031 п.4, NR-033 п.2: «не проверен» — пунктирный ободок и
-        // маркер ◇ на значке, а не строка в подписи.
-        selector: 'node.unverified',
-        style: { 'border-style': 'dashed' },
+        // NR-036 п.3: выделение узла и режим «соединить» — яркая
+        // внешняя обводка #E6EAF0 2 px. Рамка рисуется по границе
+        // узла (38–40 px при значке 74) — вне кольца статуса, его
+        // цвет не меняется.
+        selector: 'node:selected, node.selected',
+        style: {
+          'border-width': 2,
+          'border-color': '#E6EAF0',
+        },
       },
       {
         selector: 'edge',
@@ -109,12 +114,14 @@ export function createGraph(
           'arrow-scale': 4,
           // Ортогональные связи (NR-033 п.1): ломаная под прямыми
           // углами. taxi-direction vertical: вертикальный участок у
-          // источника, горизонталь в зазоре между рядами (излом на
-          // полшага ряда — 35px + половина высоты узла от центра),
-          // вертикаль по колонке цели.
+          // источника, горизонталь в зазоре между рядами. NR-036:
+          // значок-диск 80 px, шаг ряда 120 — зазор 40 px. ВАЖНО:
+          // cytoscape считает taxi-turn от границы узла, а не от
+          // центра: 20 px от границы = 60 px от центра — середина
+          // зазора между рядами.
           'curve-style': 'taxi',
           'taxi-direction': 'vertical',
-          'taxi-turn': '35px',
+          'taxi-turn': '20px',
           'taxi-turn-min-distance': 8,
           color: '#9AA6B5',
           'font-size': 10,
@@ -129,9 +136,10 @@ export function createGraph(
         style: { 'line-style': 'dashed' },
       },
       {
+        // NR-036: цвет выделенных связей; рамка узлов при выделении
+        // не перекрашивается (кольцо статуса остаётся цветом статуса).
         selector: ':selected',
         style: {
-          'border-color': '#5AA9FF',
           'line-color': '#5AA9FF',
           'source-arrow-color': '#5AA9FF',
           'target-arrow-color': '#5AA9FF',
@@ -323,7 +331,8 @@ export function setGraph(
         manual: n.manual,
         verified: n.verified,
         kindLabel: st.kindLabel,
-        aria: `${st.kindLabel}: ${n.label}`,
+        // NR-036 п.4: в a11y-описании узла — тип и статус.
+        aria: `${st.kindLabel}: ${n.label} — ${STATUS_STYLES[status].label}`,
         // Гости объединяются группой «Гостевая сеть» (compound).
         parent: n.class === 'guest' ? 'grp-guest' : undefined,
       },
@@ -344,6 +353,9 @@ export function setGraph(
       style: {
         shape: 'round-rectangle',
         'background-opacity': '0.06',
+        // Рамка группы — пунктир (граница гостей); у обычных узлов
+        // рамки нет (кольцо в SVG, NR-036), группе задаётся явно.
+        'border-width': 2,
         'border-style': 'dashed',
         'border-color': '#8FB8E8',
         'font-size': '12',

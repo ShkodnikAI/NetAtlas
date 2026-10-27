@@ -1,17 +1,20 @@
-// Легенда карты (NR-032 п.3, п.5): внизу показываются типы узлов,
-// которые есть на карте (значок + подпись), и — если на карте есть
-// предполагаемые связи — пунктирная строка «предполагаемая связь:
-// данных о коммутаторе нет». Функции чистые: legendItems вычисляет
-// состав легенды, renderLegend рисует её в DOM (только textContent,
-// данные API недоверенные).
+// Легенда карты (NR-032 п.3, п.5; NR-036 п.2): внизу показываются
+// значки ролей с подписями типов (только присутствующие на карте) и
+// — отдельно — образцы колец статусов (цвет и стиль линии, символ
+// формы в центре). Если на карте есть предполагаемые или ручные
+// связи — пунктирные строки с пояснением. Функции чистые:
+// legendItems вычисляет состав легенды, renderLegend рисует её в DOM
+// (только textContent, данные API недоверенные).
 
 import type { Graph } from './api';
-import { KIND_LABELS, STATUS_STYLES, svgIcon, type NodeStatusKind } from './nodes';
+import { KIND_LABELS, STATUS_STYLES, statusSample, svgIcon, type NodeStatusKind } from './nodes';
 import type { GraphStatuses } from './graph';
 
-// StatusLegendItem — строка статуса: маркер (● ▲ ■ ○ ◇) и подпись.
+// StatusLegendItem — строка статуса: образец кольца (SVG),
+// форма-символ и подпись.
 export interface StatusLegendItem {
   status: NodeStatusKind;
+  sample: string;
   glyph: string;
   label: string;
 }
@@ -33,6 +36,7 @@ export function presentStatuses(
     .filter((s) => present.has(s))
     .map((s) => ({
       status: s,
+      sample: statusSample(s),
       glyph: STATUS_STYLES[s].glyph,
       label: STATUS_STYLES[s].label,
     }));
@@ -46,17 +50,20 @@ export function hasManualLinks(g: Graph): boolean {
 // MANUAL_TEXT — подпись пунктирной строки ручной связи.
 export const MANUAL_TEXT = 'ручная связь (пунктир)';
 
-// Порядок типов в легенде: как в наряде — роутеры и коммутаторы,
-// серверы, компьютеры, принтеры, телефоны, прочее.
+// Порядок типов в легенде: как в наряде — сеть, серверы и
+// хранилища, компьютеры, периферия, смартфоны/IoT/ТВ, прочее
+// (NR-036: группы цветов ролей).
 const KIND_ORDER: string[] = [
   'internet',
   'router',
   'switch',
   'ap',
   'server',
+  'nas',
   'device',
   'laptop',
   'printer',
+  'camera',
   'phone',
   'iot',
   'tv',
@@ -115,26 +122,30 @@ export function renderLegend(container: HTMLElement, g: Graph, statuses?: GraphS
     return;
   }
   container.hidden = false;
+  // Сначала образцы колец статусов (NR-036 п.2): кольцо с символом
+  // формы, затем подпись; только присутствующие на карте статусы.
   for (const s of statusItems) {
     const chip = document.createElement('span');
     chip.className = `legend-item legend-status status-${s.status}`;
     chip.dataset.status = s.status;
-    const mark = document.createElement('span');
-    mark.className = 'legend-mark';
-    mark.textContent = s.glyph;
-    mark.setAttribute('aria-hidden', 'true');
-    chip.append(mark, document.createTextNode(s.label));
+    const img = document.createElement('img');
+    img.src = s.sample;
+    img.alt = '';
+    img.width = 18;
+    img.height = 18;
+    chip.append(img, document.createTextNode(s.label));
     container.append(chip);
   }
   for (const item of items) {
     const chip = document.createElement('span');
     chip.className = 'legend-item';
     chip.dataset.kind = item.kind;
+    // NR-036 п.2: значок роли (диск + белый глиф) с подписью типа.
     const img = document.createElement('img');
     img.src = item.icon;
     img.alt = '';
-    img.width = 16;
-    img.height = 16;
+    img.width = 20;
+    img.height = 20;
     chip.append(img, document.createTextNode(item.label));
     container.append(chip);
   }

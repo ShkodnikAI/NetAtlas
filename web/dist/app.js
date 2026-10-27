@@ -31754,45 +31754,105 @@
 
   // src/nodes.ts
   var STATUS_STYLES = {
-    online: { color: "#5FD38D", glyph: "\u25CF", label: "\u0432 \u0441\u0435\u0442\u0438" },
-    attention: { color: "#F5B83D", glyph: "\u25B2", label: "\u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435" },
-    problem: { color: "#FF7A7A", glyph: "\u25A0", label: "\u043F\u0440\u043E\u0431\u043B\u0435\u043C\u0430" },
-    offline: { color: "#9AA6B5", glyph: "\u25CB", label: "\u043D\u0435 \u0432 \u0441\u0435\u0442\u0438" },
-    unverified: { color: "#B48FE8", glyph: "\u25C7", label: "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D" }
+    online: { color: "#5FD38D", glyph: "\u25CF", label: "\u0432 \u0441\u0435\u0442\u0438", dashed: false },
+    attention: { color: "#F5B83D", glyph: "\u25B2", label: "\u0432\u043D\u0438\u043C\u0430\u043D\u0438\u0435", dashed: false },
+    problem: { color: "#FF7A7A", glyph: "\u25A0", label: "\u043F\u0440\u043E\u0431\u043B\u0435\u043C\u0430", dashed: false },
+    offline: { color: "#9AA6B5", glyph: "\u25CB", label: "\u043D\u0435 \u0432 \u0441\u0435\u0442\u0438", dashed: true },
+    unverified: { color: "#5AA9FF", glyph: "\u25C7", label: "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D", dashed: true }
   };
-  var ICONS = {
-    // Глобус: меридиан, параллели.
-    internet: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z M3.5 12h17 M12 3.5c-2.6 2.2-4 5.1-4 8.5s1.4 6.3 4 8.5c2.6-2.2 4-5.1 4-8.5s-1.4-6.3-4-8.5z",
-    // Роутер: корпус, две антенны, индикаторы.
-    router: "M4 11.5h16v6H4z M8 11.5V5 M16 11.5V5 M7 14.5h.01 M10.5 14.5h.01 M14 14.5h.01",
-    // Коммутатор: корпус, порты, обмен стрелками.
-    switch: "M3.5 8.5h17v8h-17z M6.5 16.5h.01 M9.5 16.5h.01 M14.5 16.5h.01 M17.5 16.5h.01 M9.5 13.8V9.9 M8.2 11.2l1.3-1.3 1.3 1.3 M14.5 10.2v3.9 M13.2 12.8l1.3 1.3 1.3-1.3",
-    // Точка доступа: волны и точка.
-    ap: "M3 9a13 13 0 0 1 18 0 M6 12.5a8.5 8.5 0 0 1 12 0 M9 16a4 4 0 0 1 6 0 M12 19.5h.01",
-    // Сервер: две стойки с индикаторами.
-    server: "M3.5 4.5h17v6h-17z M3.5 13.5h17v6h-17z M6.5 7.5h.01 M6.5 16.5h.01 M17 7.5h.5 M17 16.5h.5",
-    // Компьютер: монитор и стойка.
-    device: "M3.5 4.5h17v11h-17z M9.5 20h5 M12 15.5V20",
-    // Ноутбук: экран и база.
-    laptop: "M5 5.5h14v9.5H5z M2.5 19h19 M8.5 19a3.5 1.6 0 0 1 7 0",
-    // Принтер: лоток, корпус, лист.
-    printer: "M7 9V4.5h10V9 M7 15.5h10v4H7z M4 9h16v6.5H4z M16.5 11.5h.01",
-    // Смартфон.
-    phone: "M8 2.5h8A1.5 1.5 0 0 1 17.5 4v16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 20V4A1.5 1.5 0 0 1 8 2.5z M10.5 18.5h3",
-    // IoT: чип с ядром и ножками.
-    iot: "M7 7h10v10H7z M10.5 10.5h3v3h-3z M12 3.5V7 M12 17v3.5 M3.5 12H7 M17 12h3.5 M8 3.5V7 M16 3.5V7 M8 17v3.5 M16 17v3.5 M3.5 8.5H7 M3.5 15.5H7 M17 8.5h3.5 M17 15.5h3.5",
-    // Телевизор: экран на подставке.
-    tv: "M3 5h18v11.5H3z M8.5 20.5h7 M12 16.5v4",
-    // Камера (видеонаблюдение): корпус и объектив.
-    camera: "M3 7.5h11.5v9H3z M6 7.5V6a2 2 0 0 1 2-2h1.5 M14.5 10.5l6-2.5v8l-6-2.5 M6.5 16.5v2 M11.5 16.5v2",
-    // NAS: башня с дисками и индикаторами.
-    nas: "M5.5 3.5h13v17h-13z M9 7.5h6 M9 11h6 M9 14.5h6 M9 18h.01 M12 18h.01 M15 18h.01",
-    // Неуправляемый коммутатор: коробка без управления.
-    cloud: "M4 8h16v9H4z M7 14.5h.01 M10 14.5h.01 M13 14.5h.01 M16 14.5h.01 M12 8v-2.5",
-    // Хост без MAC.
-    host: "M4 4.5h16v15H4z M12 8v.01 M12 11v4.5 M9.5 18h5",
-    // Неизвестное: вопросительный знак.
-    unknown: "M9 9.3a3 3 0 1 1 4.6 2.5c-1 .7-1.6 1.3-1.6 2.7 M12 17.8h.01"
+  var BADGE_NODE = 80;
+  var CENTER = BADGE_NODE / 2;
+  var DISK_R = 31;
+  var GLYPH_SIZE = 34;
+  var MARKER_R = 11;
+  var RING_DASH = "4 3";
+  var MARKER_DX = 17;
+  var MARKER_DY = -17;
+  var ROLE_COLORS = {
+    router: "#2F6FB5",
+    switch: "#2F6FB5",
+    ap: "#2F6FB5",
+    internet: "#2F6FB5",
+    server: "#6A4FB3",
+    nas: "#6A4FB3",
+    device: "#2F7A68",
+    laptop: "#2F7A68",
+    printer: "#94591F",
+    camera: "#94591F",
+    phone: "#A13F72",
+    iot: "#A13F72",
+    tv: "#A13F72",
+    unknown: "#4A5568",
+    host: "#4A5568",
+    cloud: "#4A5568"
+  };
+  var GLYPHS = {
+    router: {
+      body: "M3 14h18v6H3z",
+      d: "M7 17h.01M11 17h.01M8 14V9M16 14V9M8 9l-1-2M16 9l1-2"
+    },
+    switch: {
+      body: "M2.5 8h19v8h-19z",
+      d: "M6 12h.01M10 12h.01M14 12h.01M18 12h.01"
+    },
+    ap: {
+      body: "M10 18.5a2 2 0 1 0 4 0a2 2 0 1 0-4 0",
+      d: "M3 9a13 13 0 0 1 18 0M6 12.5a8.5 8.5 0 0 1 12 0M9 16a4 4 0 0 1 6 0"
+    },
+    internet: {
+      body: "M6.5 18h11a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.4 9.2 4.4 4.4 0 0 0 6.5 18z",
+      d: "M6.5 18h11"
+    },
+    server: {
+      body: "M3.5 4h17v6h-17zM3.5 14h17v6h-17z",
+      d: "M7 7h.01M7 17h.01M11 7h6M11 17h6"
+    },
+    nas: {
+      body: "M4 5h16v14H4z",
+      d: "M7 9h10M7 13h10M8 17h.01M12 17h.01"
+    },
+    device: {
+      body: "M3 4h18v12H3z",
+      d: "M9 20h6M12 16v4"
+    },
+    laptop: {
+      body: "M5 5h14v10H5z",
+      d: "M2.5 19h19M2.5 19l2.5-4M21.5 19L19 15"
+    },
+    printer: {
+      body: "M4 9h16v8H4z",
+      d: "M7 9V4h10v5M7 14h10v6H7z"
+    },
+    camera: {
+      body: "M4 9h16v8H4z",
+      d: "M12 11.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5M8 9l1-2h6l1 2"
+    },
+    phone: {
+      body: "M7 2.5h10v19H7z",
+      d: "M11 18.5h2"
+    },
+    iot: {
+      body: "M7 7h10v10H7z",
+      d: "M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"
+    },
+    tv: {
+      body: "M3 6h18v11H3z",
+      d: "M8 21h8M12 17v4"
+    },
+    // Неизвестное, хост без MAC и неуправляемый коммутатор делят
+    // нейтральный серый диск и глиф «?» — роль не определена.
+    unknown: {
+      body: "M4 4h16v16H4z",
+      d: "M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"
+    },
+    host: {
+      body: "M4 4h16v16H4z",
+      d: "M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"
+    },
+    cloud: {
+      body: "M4 4h16v16H4z",
+      d: "M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"
+    }
   };
   var KIND_LABELS = {
     internet: "\u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442",
@@ -31813,72 +31873,77 @@
     unknown: "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
     host: "\u0445\u043E\u0441\u0442 \u0431\u0435\u0437 MAC"
   };
-  var SHAPES = {
-    internet: "ellipse",
-    router: "round-rectangle",
-    switch: "round-rectangle",
-    ap: "round-rectangle",
-    server: "round-rectangle",
-    device: "round-rectangle",
-    laptop: "round-rectangle",
-    printer: "round-rectangle",
-    phone: "round-rectangle",
-    iot: "round-rectangle",
-    tv: "round-rectangle",
-    camera: "round-rectangle",
-    nas: "round-rectangle",
-    cloud: "round-rectangle",
-    unknown: "round-rectangle",
-    host: "round-rectangle"
-  };
   function svgIcon(kind, status, decisions = 0) {
-    const path = ICONS[kind] ?? ICONS["unknown"] ?? "";
-    const stroke = status === void 0 ? "#C5CEDA" : glyphColor(status);
-    let extra = "";
+    const known = Object.prototype.hasOwnProperty.call(GLYPHS, kind);
+    const k = known ? kind : "unknown";
+    const disk = ROLE_COLORS[k] ?? ROLE_COLORS["unknown"] ?? "#4A5568";
+    const glyph = GLYPHS[k] ?? { body: "", d: "" };
+    let inner = "";
     if (status !== void 0) {
-      extra = statusMarker(status);
-      if (decisions > 0) extra += decisionBadge(decisions);
+      const dash = STATUS_STYLES[status].dashed ? ` stroke-dasharray="${RING_DASH}"` : "";
+      inner += `<circle cx="${CENTER}" cy="${CENTER}" r="36" fill="none" stroke="${STATUS_STYLES[status].color}" stroke-width="2"${dash}/>`;
     }
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/>${extra}</svg>`;
+    inner += `<circle cx="${CENTER}" cy="${CENTER}" r="${DISK_R}" fill="${disk}" stroke="none"/>` + glyphWhite(glyph);
+    if (status !== void 0) {
+      inner += statusMarker(status);
+      if (decisions > 0) inner += decisionBadge(decisions);
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${BADGE_NODE}" height="${BADGE_NODE}" viewBox="0 0 ${BADGE_NODE} ${BADGE_NODE}">${inner}</svg>`;
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   }
-  function glyphColor(status) {
-    return STATUS_STYLES[status]?.color ?? "#C5CEDA";
+  function glyphWhite(g) {
+    const half = GLYPH_SIZE / 2;
+    const x2 = CENTER - half;
+    return `<svg x="${x2}" y="${x2}" width="${GLYPH_SIZE}" height="${GLYPH_SIZE}" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="${g.body}"/><path d="${g.d}"/></svg>`;
   }
   function statusMarker(status) {
     const c = STATUS_STYLES[status].color;
-    const halo = `<circle cx="19.2" cy="4.8" r="3.6" fill="#0E1116" stroke="none"/>`;
+    const halo = `<circle cx="${CENTER + MARKER_DX}" cy="${CENTER + MARKER_DY}" r="${MARKER_R}" fill="#0E1116" stroke="${c}" stroke-width="1"/>`;
+    return halo + shapeSymbol(status, CENTER + MARKER_DX, CENTER + MARKER_DY, 1);
+  }
+  function shapeSymbol(status, cx, cy2, k) {
+    const c = STATUS_STYLES[status].color;
+    const n = (v) => String(Math.round(v * 1e3) / 1e3);
     switch (status) {
       case "online":
-        return halo + `<circle cx="19.2" cy="4.8" r="2" fill="${c}" stroke="none"/>`;
+        return `<circle cx="${n(cx)}" cy="${n(cy2)}" r="${n(4.5 * k)}" fill="${c}" stroke="none"/>`;
       case "attention":
-        return halo + `<path d="M19.2 2.9l2 3.4h-4z" fill="${c}" stroke="none"/>`;
+        return `<path d="M${n(cx)} ${n(cy2 - 4.6 * k)}L${n(cx + 4.6 * k)} ${n(cy2 + 3.4 * k)}H${n(cx - 4.6 * k)}Z" fill="${c}" stroke="none"/>`;
       case "problem":
-        return halo + `<rect x="17.4" y="3" width="3.6" height="3.6" fill="${c}" stroke="none"/>`;
+        return `<rect x="${n(cx - 4.2 * k)}" y="${n(cy2 - 4.2 * k)}" width="${n(8.4 * k)}" height="${n(8.4 * k)}" fill="${c}" stroke="none"/>`;
       case "offline":
-        return halo + `<circle cx="19.2" cy="4.8" r="2" fill="none" stroke="${c}" stroke-width="1.5"/>`;
+        return `<circle cx="${n(cx)}" cy="${n(cy2)}" r="${n(4.2 * k)}" fill="none" stroke="${c}" stroke-width="${n(1.7 * k)}"/>`;
       case "unverified":
-        return halo + `<path d="M19.2 2.8l2 2-2 2-2-2z" fill="none" stroke="${c}" stroke-width="1.5"/>`;
+        return `<path d="M${n(cx)} ${n(cy2 - 5.4 * k)}L${n(cx + 4.8 * k)} ${n(cy2)}L${n(cx)} ${n(cy2 + 5.4 * k)}L${n(cx - 4.8 * k)} ${n(cy2)}Z" fill="none" stroke="${c}" stroke-width="${n(1.7 * k)}"/>`;
       default:
         return "";
     }
   }
+  function statusSample(status) {
+    const s = STATUS_STYLES[status];
+    const dash = s.dashed ? ' stroke-dasharray="3.5 2.5"' : "";
+    const ring = `<circle cx="11" cy="11" r="8.5" fill="none" stroke="${s.color}" stroke-width="2"${dash}/>`;
+    const sym = shapeSymbol(status, 11, 11, 0.62);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">${ring}${sym}</svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
   function decisionBadge(count) {
     const label = count > 9 ? "9+" : String(count);
-    return `<circle cx="4.8" cy="19.2" r="3.6" fill="#F5B83D" stroke="#0E1116" stroke-width="0.8"/><text x="4.8" y="20.9" font-size="5.4" font-family="system-ui, sans-serif" font-weight="700" fill="#0E1116" text-anchor="middle" stroke="none">${label}</text>`;
+    const cx = CENTER - 16;
+    const cy2 = CENTER + 16;
+    return `<circle cx="${cx}" cy="${cy2}" r="8" fill="#F5B83D" stroke="#0E1116" stroke-width="0.8"/><text x="${cx}" y="${cy2 + 3.7}" font-size="10.5" font-family="system-ui, sans-serif" font-weight="700" fill="#0E1116" text-anchor="middle" stroke="none">${label}</text>`;
   }
   function nodeStyle(n, status = "online", decisions = 0) {
-    const known = Object.prototype.hasOwnProperty.call(SHAPES, n.kind);
+    const known = Object.prototype.hasOwnProperty.call(ROLE_COLORS, n.kind);
     const kind = known ? n.kind : "unknown";
-    const size3 = kind === "cloud" || kind === "unknown" ? { w: 44, h: 34 } : kind === "tv" ? { w: 48, h: 34 } : { w: 40, h: 32 };
     const st = STATUS_STYLES[status] ?? STATUS_STYLES["online"];
     return {
-      shape: SHAPES[kind] ?? "round-rectangle",
+      shape: "ellipse",
       icon: svgIcon(kind, status, decisions),
       kindLabel: KIND_LABELS[kind] ?? KIND_LABELS["unknown"] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E",
       borderColor: st.color,
-      width: size3.w,
-      height: size3.h
+      width: BADGE_NODE,
+      height: BADGE_NODE
     };
   }
 
@@ -32043,7 +32108,7 @@
     manual: "#F5B83D"
   };
   var LABEL_MAX_CHARS = 28;
-  var MIN_ICON_ZOOM = 32 / 40;
+  var MIN_ICON_ZOOM = 0.8;
   var FIT_PADDING = 90;
   function truncateLabel(text3, max5 = LABEL_MAX_CHARS) {
     if (text3.length <= max5) return text3;
@@ -32057,21 +32122,20 @@
         {
           selector: "node",
           style: {
-            "background-color": "#1B2430",
+            "background-color": "rgba(0,0,0,0)",
             "background-image": "data(icon)",
             "background-fit": "contain",
-            // NR-035 п.4: глиф заполняет плашку по центру (около 60%
-            // размера узла) — явный размер фона снимает зависимость от
-            // intrinsic-размера SVG (без него глиф рисовался крошечным
-            // в углу плашки).
+            // NR-035 п.4: значок заполняет узел целиком — явный размер
+            // фона снимает зависимость от intrinsic-размера SVG (без
+            // него глиф рисовался крошечным в углу плашки).
             "background-width": "100%",
             "background-height": "100%",
             "background-position-x": "50%",
             "background-position-y": "50%",
             "background-opacity": 1,
-            "border-width": 2,
-            // Ободок статуса (NR-033 п.2): цвет от сигналов узла.
-            "border-color": "data(border)",
+            // NR-036: кольцо статуса рисуется внутри SVG-значка, рамка
+            // узла не нужна — выделение не перекрашивает статус.
+            "border-width": 0,
             color: "#E6EAF0",
             "font-size": 11,
             "font-family": "system-ui, sans-serif",
@@ -32079,20 +32143,21 @@
             "text-margin-y": 6,
             "text-wrap": "wrap",
             "text-max-width": "140",
-            width: "40",
-            height: "32",
+            width: String(BADGE_NODE),
+            height: String(BADGE_NODE),
             label: "data(label)"
           }
         },
         {
-          selector: "node[manual]",
-          style: { "border-color": "#F5B83D" }
-        },
-        {
-          // NR-031 п.4, NR-033 п.2: «не проверен» — пунктирный ободок и
-          // маркер ◇ на значке, а не строка в подписи.
-          selector: "node.unverified",
-          style: { "border-style": "dashed" }
+          // NR-036 п.3: выделение узла и режим «соединить» — яркая
+          // внешняя обводка #E6EAF0 2 px. Рамка рисуется по границе
+          // узла (38–40 px при значке 74) — вне кольца статуса, его
+          // цвет не меняется.
+          selector: "node:selected, node.selected",
+          style: {
+            "border-width": 2,
+            "border-color": "#E6EAF0"
+          }
         },
         {
           selector: "edge",
@@ -32107,12 +32172,14 @@
             "arrow-scale": 4,
             // Ортогональные связи (NR-033 п.1): ломаная под прямыми
             // углами. taxi-direction vertical: вертикальный участок у
-            // источника, горизонталь в зазоре между рядами (излом на
-            // полшага ряда — 35px + половина высоты узла от центра),
-            // вертикаль по колонке цели.
+            // источника, горизонталь в зазоре между рядами. NR-036:
+            // значок-диск 80 px, шаг ряда 120 — зазор 40 px. ВАЖНО:
+            // cytoscape считает taxi-turn от границы узла, а не от
+            // центра: 20 px от границы = 60 px от центра — середина
+            // зазора между рядами.
             "curve-style": "taxi",
             "taxi-direction": "vertical",
-            "taxi-turn": "35px",
+            "taxi-turn": "20px",
             "taxi-turn-min-distance": 8,
             color: "#9AA6B5",
             "font-size": 10,
@@ -32127,9 +32194,10 @@
           style: { "line-style": "dashed" }
         },
         {
+          // NR-036: цвет выделенных связей; рамка узлов при выделении
+          // не перекрашивается (кольцо статуса остаётся цветом статуса).
           selector: ":selected",
           style: {
-            "border-color": "#5AA9FF",
             "line-color": "#5AA9FF",
             "source-arrow-color": "#5AA9FF",
             "target-arrow-color": "#5AA9FF"
@@ -32279,7 +32347,8 @@ ${marks}`;
           manual: n.manual,
           verified: n.verified,
           kindLabel: st.kindLabel,
-          aria: `${st.kindLabel}: ${n.label}`,
+          // NR-036 п.4: в a11y-описании узла — тип и статус.
+          aria: `${st.kindLabel}: ${n.label} \u2014 ${STATUS_STYLES[status].label}`,
           // Гости объединяются группой «Гостевая сеть» (compound).
           parent: n.class === "guest" ? "grp-guest" : void 0
         },
@@ -32298,6 +32367,9 @@ ${marks}`;
         style: {
           shape: "round-rectangle",
           "background-opacity": "0.06",
+          // Рамка группы — пунктир (граница гостей); у обычных узлов
+          // рамки нет (кольцо в SVG, NR-036), группе задаётся явно.
+          "border-width": 2,
           "border-style": "dashed",
           "border-color": "#8FB8E8",
           "font-size": "12",
@@ -32496,6 +32568,7 @@ ${marks}`;
     }
     return order.filter((s) => present.has(s)).map((s) => ({
       status: s,
+      sample: statusSample(s),
       glyph: STATUS_STYLES[s].glyph,
       label: STATUS_STYLES[s].label
     }));
@@ -32510,9 +32583,11 @@ ${marks}`;
     "switch",
     "ap",
     "server",
+    "nas",
     "device",
     "laptop",
     "printer",
+    "camera",
     "phone",
     "iot",
     "tv",
@@ -32556,11 +32631,12 @@ ${marks}`;
       const chip = document.createElement("span");
       chip.className = `legend-item legend-status status-${s.status}`;
       chip.dataset.status = s.status;
-      const mark = document.createElement("span");
-      mark.className = "legend-mark";
-      mark.textContent = s.glyph;
-      mark.setAttribute("aria-hidden", "true");
-      chip.append(mark, document.createTextNode(s.label));
+      const img = document.createElement("img");
+      img.src = s.sample;
+      img.alt = "";
+      img.width = 18;
+      img.height = 18;
+      chip.append(img, document.createTextNode(s.label));
       container2.append(chip);
     }
     for (const item of items) {
@@ -32570,8 +32646,8 @@ ${marks}`;
       const img = document.createElement("img");
       img.src = item.icon;
       img.alt = "";
-      img.width = 16;
-      img.height = 16;
+      img.width = 20;
+      img.height = 20;
       chip.append(img, document.createTextNode(item.label));
       container2.append(chip);
     }
@@ -32673,6 +32749,15 @@ ${marks}`;
   function text(parent4, value) {
     parent4.textContent = value;
   }
+  function kindIcon(kind, size3 = 20) {
+    const img = document.createElement("img");
+    img.src = svgIcon(kind);
+    img.alt = "";
+    img.width = size3;
+    img.height = size3;
+    img.className = "kv-icon";
+    return img;
+  }
   function fillOverview(page, info, kind, onChangeKind = () => void 0, onOpenCard = () => void 0) {
     page.textContent = "";
     const dl = el7("dl", "kv");
@@ -32687,7 +32772,7 @@ ${marks}`;
     const dt = el7("dt");
     text(dt, "\u0422\u0438\u043F");
     const dd = el7("dd");
-    text(dd, KIND_LABELS2[kind] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E");
+    dd.append(kindIcon(kind), document.createTextNode(KIND_LABELS2[kind] ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E"));
     if (info.kindManual) {
       const b = el7("span", "badge manual");
       text(b, "\u0443\u043A\u0430\u0437\u0430\u043D \u0432\u0440\u0443\u0447\u043D\u0443\u044E");
@@ -33027,7 +33112,13 @@ ${marks}`;
     let typeValue = kindLabel2;
     if (info.kindManual) typeValue += " (\u0443\u043A\u0430\u0437\u0430\u043D \u0432\u0440\u0443\u0447\u043D\u0443\u044E)";
     else if (info.kindAuto !== "" && info.kindAuto === info.kind) typeValue += " (\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0451\u043D \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438)";
-    kvRow2(dl, "\u0422\u0438\u043F", typeValue);
+    const typeRow = el8("div", "kv-row");
+    const typeDt = el8("dt");
+    text2(typeDt, "\u0422\u0438\u043F");
+    const typeDd = el8("dd");
+    typeDd.append(kindIcon(info.kind ?? "unknown"), document.createTextNode(typeValue));
+    typeRow.append(typeDt, typeDd);
+    dl.append(typeRow);
     kvRow2(dl, "\u041A\u043B\u0430\u0441\u0441", className(info.class));
     if (info.ssid !== "") kvRow2(dl, "SSID", info.ssid);
     kvRow2(dl, "\u041F\u0435\u0440\u0432\u043E\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u0438\u0435", fmtTime(info.first_seen));
@@ -33384,6 +33475,17 @@ ${marks}`;
       mark.className = "attention-mark";
       mark.textContent = STATUS_STYLES[s.status]?.glyph ?? "\u25CF";
       mark.setAttribute("aria-hidden", "true");
+      row.append(mark);
+      const node = nodes3.find((x2) => x2.id === s.device_id);
+      if (node !== void 0) {
+        const icon = document.createElement("img");
+        icon.src = svgIcon(node.kind);
+        icon.alt = "";
+        icon.width = 20;
+        icon.height = 20;
+        icon.className = "attention-icon";
+        row.append(icon);
+      }
       const body = document.createElement("span");
       body.className = "attention-body";
       const head = document.createElement("span");
@@ -33526,13 +33628,21 @@ ${marks}`;
   }
   function deviceRow(info, onClass) {
     const tr = document.createElement("tr");
+    const nameCell = document.createElement("td");
+    const icon = document.createElement("img");
+    icon.src = svgIcon(info.kind ?? "unknown");
+    icon.alt = "";
+    icon.width = 20;
+    icon.height = 20;
+    icon.className = "dev-icon";
+    nameCell.append(icon, document.createTextNode(displayName(info)));
     const cell = (value) => {
       const td = document.createElement("td");
       td.textContent = value;
       return td;
     };
     tr.append(
-      cell(displayName(info)),
+      nameCell,
       cell(info.ips.join(", ")),
       cell(info.id),
       cell(info.vendor)
@@ -34123,6 +34233,12 @@ ${marks}`;
       opt.textContent = label;
       select.append(opt);
     }
+    const preview = $2("add-kind-preview");
+    const updatePreview = () => {
+      preview.src = svgIcon(select.value);
+    };
+    select.addEventListener("change", updatePreview);
+    updatePreview();
     const dialog = $2("add-dialog");
     $2("btn-add").addEventListener("click", () => {
       $2("add-error").hidden = true;

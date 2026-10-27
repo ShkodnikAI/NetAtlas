@@ -26,7 +26,12 @@ describe('fillOverview', () => {
     const page = document.createElement('div');
     fillOverview(page, info({ hostname: '<img src=x onerror=alert(1)>', id: 'manual:1' }), 'printer');
     const html = page.innerHTML;
-    expect(html).not.toContain('<img');
+    // Значок роли в строке «Тип» — единственный img, и он строится из
+    // статической таблицы типов, а не из данных API (NR-036 п.1).
+    const imgs = [...page.querySelectorAll('img')];
+    expect(imgs.length).toBe(1);
+    expect(imgs[0]?.getAttribute('src')).toContain('data:image/svg+xml');
+    expect(html).not.toContain('<img src=x');
     expect(page.textContent).toContain('<img src=x onerror=alert(1)>');
   });
 

@@ -3,6 +3,7 @@
 // вставляются как текст (textContent), не как HTML.
 
 import type { DeviceInfo, Graph, LinkInfo } from './api';
+import { svgIcon } from './nodes';
 
 export interface PanelHandlers {
   onRename: (id: string, name: string) => void;
@@ -65,6 +66,18 @@ function text(parent: HTMLElement, value: string): void {
   parent.textContent = value;
 }
 
+// kindIcon — маленький значок роли (NR-036 п.1): диск цвета роли с
+// белым глифом; источник — статическая таблица типов, не данные API.
+export function kindIcon(kind: string, size = 20): HTMLImageElement {
+  const img = document.createElement('img');
+  img.src = svgIcon(kind);
+  img.alt = '';
+  img.width = size;
+  img.height = size;
+  img.className = 'kv-icon';
+  return img;
+}
+
 // fillOverview — вкладка «Обзор»: тип, имя, IP, MAC, производитель,
 // класс, SSID; метки «вручную» и «не проверен». Тип, выведенный
 // классификатором, помечается «определён автоматически, изменить»
@@ -86,12 +99,13 @@ export function fillOverview(
     dl.append(t, d);
   };
   // Тип: автоматический вывод помечается и даёт «изменить»; ручной
-  // выбор владельца сильнее классификатора.
+  // выбор владельца сильнее классификатора. NR-036 п.1: перед
+  // подписью типа — значок роли.
   const typeRow = el('div', 'kv-row');
   const dt = el('dt');
   text(dt, 'Тип');
   const dd = el('dd');
-  text(dd, KIND_LABELS[kind] ?? 'неизвестное устройство');
+  dd.append(kindIcon(kind), document.createTextNode(KIND_LABELS[kind] ?? 'неизвестное устройство'));
   if (info.kindManual) {
     const b = el('span', 'badge manual');
     text(b, 'указан вручную');

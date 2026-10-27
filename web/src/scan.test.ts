@@ -165,9 +165,16 @@ describe('deviceRow', () => {
     verified: false,
   };
 
-  it('значения вставляются текстом: HTML в имени безопасен', () => {
+  it('значок роли 20 px рядом с именем, имя — текстом: HTML в имени безопасен (NR-036 п.1)', () => {
     const tr = deviceRow(base, () => {});
-    expect(tr.innerHTML).not.toContain('<img');
+    // Значок строится из статической таблицы типов (kind нет —
+    // unknown), данные API в атрибуты не попадают.
+    const icon = tr.querySelector('img.dev-icon');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('width')).toBe('20');
+    expect(icon?.getAttribute('src')).toContain('data:image/svg+xml');
+    expect(tr.innerHTML).not.toContain('<img src=x');
+    expect(tr.innerHTML).not.toContain('onerror');
     expect(tr.textContent).toContain('printer');
   });
 
