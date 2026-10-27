@@ -232,12 +232,23 @@ export interface GridKindNode {
 // deoverlap.
 export function arrangeGrid(
   nodes: GridKindNode[],
-  saved: ReadonlySet<string>,
+  saved: ReadonlyMap<string, { x: number; y: number }>,
   maxWidth: number = Number.POSITIVE_INFINITY,
 ): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   const auto = nodes.filter((n) => !saved.has(n.id));
   if (auto.length === 0) return out;
+
+  // Клетки, занятые сохранёнными узлами (NR-035 п.1): новое
+  // устройство встаёт в свободную клетку сетки своего ряда, а не
+  // поверх сдвинутого владельцем узла. Клетка — ближайший узел
+  // привязки (SNAP_STEP_X x SNAP_STEP_Y).
+  const occupied = new Set<string>();
+  for (const p of saved.values()) {
+    occupied.add(`${Math.round(p.x / SNAP_STEP_X)}:${Math.round(p.y / SNAP_STEP_Y)}`);
+  }
+  const cellFree = (x: number, y: number): boolean =>
+    !occupied.has(`${Math.round(x / SNAP_STEP_X)}:${Math.round(y / SNAP_STEP_Y)}`);
 
   // Разбивка по рядам; внутри ряда — по id.
   const rows = new Map<number, GridKindNode[]>();
@@ -285,13 +296,24 @@ export function arrangeGrid(
     } else {
       x = lowerStart;
     }
-    for (let j = 0; j < row.length; j++) {
-      const n = row[j];
-      if (n === undefined) continue;
-      const line = Math.floor(j / cols);
-      out.set(n.id, { x: x + (j % cols) * stepX, y: y + line * GRID_STEP_Y });
+    // Слоты ряда идут подряд; занятая сохранённым узлом клетка
+    // пропускается — фактическое число строк учитывается при
+    // переносе следующих рядов (slot, а не длина ряда).
+    let slot = 0;
+    for (const n of row) {
+      let line = Math.floor(slot / cols);
+      let cx = x + (slot % cols) * stepX;
+      let cy = y + line * GRID_STEP_Y;
+      while (!cellFree(cx, cy)) {
+        slot++;
+        line = Math.floor(slot / cols);
+        cx = x + (slot % cols) * stepX;
+        cy = y + line * GRID_STEP_Y;
+      }
+      out.set(n.id, { x: cx, y: cy });
+      slot++;
     }
-    y += Math.ceil(row.length / cols) * GRID_STEP_Y;
+    y += Math.ceil(slot / cols) * GRID_STEP_Y;
   }
   return out;
 }

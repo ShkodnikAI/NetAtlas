@@ -18,13 +18,25 @@ import {
 import { renderDisks } from './disks';
 import { renderQuality } from './quality';
 import { renderSecurity } from './security';
-import { createGraph, setGraph, renderA11y, type GraphCallbacks, type GraphStatuses } from './graph';
+import {
+  centerMap,
+  createGraph,
+  fitMap,
+  initialFit,
+  renderA11y,
+  setGraph,
+  zoom100,
+  type GraphCallbacks,
+  type GraphStatuses,
+} from './graph';
 import { renderLegend } from './legend';
+import { setupGridLayer } from './mapgrid';
+import { SNAP_STEP_X, SNAP_STEP_Y, snapToGrid } from './layout';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import { fillCard, type CardHandlers } from './card';
 import { renderAttentionPanel, statusesOf, type SignalStatus } from './signals';
-import { snapToGrid } from './layout';
 import type { SignalsView } from './api';
+import type { NodeSingular } from 'cytoscape';
 import {
   renderDevicesTable,
   expectedStages,
@@ -56,10 +68,44 @@ let signalsView: SignalsView = { signals: [], statuses: [] };
 let attentionOpen = false;
 // Открытая полная карточка (NR-033 п.3).
 let openCardId: string | null = null;
-// savedPositions — узлы, сдвинутые владельцем (NR-032 п.4):
-// детерминированная раскладка их не трогает; кнопка «Выстроить
-// сеткой» очищает набор (и на сервере).
-let savedPositions = new Set<string>();
+// savedPositions — положения узлов (NR-035 п.1): все сдвинутые
+// узлы с их координатами (сервер отдаёт при загрузке, раскладка их
+// не трогает); кнопка «Выстроить сеткой» очищает (и на сервере).
+let savedPositions = new Map<string, { x: number; y: number }>();
+// pendingPositions — несохранённые на сервере положения: отправляются
+// пакетом одним запросом после 500 мс без новых сдвигов (NR-035 п.1).
+const pendingPositions = new Map<string, { x: number; y: number }>();
+let positionsTimer: ReturnType<typeof setTimeout> | null = null;
+
+// flushPositions — пакетная запись накопленных положений. Пакет
+// собирается по всем сдвинутым узлам; при ошибке сети накопленные
+// остаются в очереди до следующей попытки (позиции косметические:
+// интерфейс не роняем).
+async function flushPositions(): Promise<void> {
+  positionsTimer = null;
+  if (pendingPositions.size === 0) return;
+  const batch = [...pendingPositions.entries()].map(([id, p]) => ({ id, ...p }));
+  try {
+    await api.savePositions(batch);
+    for (const item of batch) {
+      const queued = pendingPositions.get(item.id);
+      if (queued !== undefined && queued.x === item.x && queued.y === item.y) {
+        pendingPositions.delete(item.id);
+      }
+    }
+  } catch {
+    // ошибка сети: очередь остаётся, повтор — после следующего сдвига
+  }
+}
+
+// queuePosition — запомнить положение узла локально и поставить в
+// очередь отправки (500 мс после последнего сдвига, NR-035 п.1).
+function queuePosition(id: string, x: number, y: number): void {
+  savedPositions.set(id, { x, y });
+  pendingPositions.set(id, { x, y });
+  if (positionsTimer !== null) clearTimeout(positionsTimer);
+  positionsTimer = setTimeout(() => void flushPositions(), 500);
+}
 
 const addKinds: [string, string][] = [
   ['internet', 'Интернет'],
@@ -77,6 +123,11 @@ const addKinds: [string, string][] = [
   ['unknown', 'Неизвестное'],
 ];
 
+// firstMapFit — первая за сеанс страницы загрузка карты (NR-035 п.3).
+let firstMapFit = true;
+// gridUpdate — перерисовать слой сетки после смены вида/переключателей.
+let gridUpdate: () => void = () => undefined;
+
 // --- служебные ------------------------------------------------------------
 
 function showNotice(message: string, isError: boolean): void {
@@ -93,10 +144,11 @@ function hideNotice(): void {
 async function reload(): Promise<void> {
   try {
     graph = await api.topology();
-    // Позиции владельца (NR-032 п.4): сервер помнит сдвинутые узлы.
+    // Положения узлов (NR-035 п.1): сервер помнит сдвинутые узлы;
+    // при загрузке карты сохранённое положение имеет приоритет.
     try {
-      const { positions } = await api.positions();
-      savedPositions = new Set(positions.map((p) => p.id));
+      const { positions } = await api.mapPositions();
+      savedPositions = new Map(positions.map((p) => [p.id, { x: p.x, y: p.y }]));
     } catch {
       // без позиций — вся карта сеткой
     }
@@ -107,6 +159,14 @@ async function reload(): Promise<void> {
       signalsView = { signals: [], statuses: [] };
     }
     setGraph(cy, graph, savedPositions, statusProvider());
+    // Первая загрузка (NR-035 п.3): карта вписывается в окно, но
+    // значки не мельче 32 px; при переполнении — верхний левый
+    // фрагмент, поле двигается перетаскиванием и клавишами.
+    if (firstMapFit) {
+      firstMapFit = false;
+      initialFit(cy);
+      gridUpdate();
+    }
     renderA11y(graph, statusProvider());
     renderLegend($('map-legend'), graph, statusProvider());
     refreshAttention();
@@ -200,11 +260,84 @@ const callbacks: GraphCallbacks = {
 
 const cy = createGraph($('graph'), callbacks);
 
+// Фоновая сетка из точек (NR-035 п.2): слой над канвой с шагом
+// привязки; обновляется на pan/zoom и переключатели.
+gridUpdate = setupGridLayer(cy);
+for (const id of ['show-grid', 'snap-grid']) {
+  $(id).addEventListener('change', () => gridUpdate());
+}
+
+// Кнопки вида (NR-035 п.3): вписать, центр, 100%.
+$('btn-fit').addEventListener('click', () => {
+  fitMap(cy);
+  gridUpdate();
+});
+$('btn-center').addEventListener('click', () => {
+  centerMap(cy);
+  gridUpdate();
+});
+$('btn-zoom100').addEventListener('click', () => {
+  zoom100(cy);
+  gridUpdate();
+});
+
+// Клавиши карты (NR-035 п.3): 0 — вписать, «+»/«-» — масштаб,
+// стрелки — выбранный узел на шаг сетки, без выбора — поле.
+document.addEventListener('keydown', (ev) => {
+  const workspace = document.querySelector('.workspace');
+  if (workspace === null || (workspace as HTMLElement).hidden) return;
+  const t = ev.target as HTMLElement | null;
+  if (
+    t !== null
+    && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+  ) {
+    return;
+  }
+  if (document.querySelector('dialog[open]') !== null) return;
+  const zoomStep = (factor: number): void => {
+    const z = Math.min(3, Math.max(0.05, cy.zoom() * factor));
+    cy.zoom(z);
+    gridUpdate();
+  };
+  if (ev.key === '0') {
+    fitMap(cy);
+    gridUpdate();
+    return;
+  }
+  if (ev.key === '+' || ev.key === '=') {
+    zoomStep(1.25);
+    return;
+  }
+  if (ev.key === '-') {
+    zoomStep(0.8);
+    return;
+  }
+  const dx = { ArrowLeft: -SNAP_STEP_X, ArrowRight: SNAP_STEP_X }[ev.key];
+  const dy = { ArrowUp: -SNAP_STEP_Y, ArrowDown: SNAP_STEP_Y }[ev.key];
+  if (dx === undefined && dy === undefined) return;
+  ev.preventDefault();
+  const selected = cy.nodes(':selected').filter((n) => !n.hasClass('bend'));
+  if (selected.nonempty()) {
+    // Выбранный узел двигается на шаг сетки; положение сохраняется.
+    const n = selected.first() as NodeSingular;
+    const x = n.position('x') + (dx ?? 0);
+    const y = n.position('y') + (dy ?? 0);
+    n.position({ x, y });
+    queuePosition(n.id(), x, y);
+  } else {
+    // Поле двигается на шаг сетки в экранных пикселях.
+    cy.panBy({
+      x: (dx ?? 0) * cy.zoom(),
+      y: (dy ?? 0) * cy.zoom(),
+    });
+    gridUpdate();
+  }
+});
+
 // Перетаскивание узла запоминается на сервере (NR-032 п.4): позиция
 // переживёт перезагрузку страницы и не будет тронута раскладкой.
 cy.on('dragfree', 'node', (ev) => {
   const n = ev.target;
-  savedPositions.add(n.id());
   // Привязка к сетке (NR-033 п.1): включена по умолчанию,
   // переключатель на панели карты.
   const snap = $('snap-grid') as HTMLInputElement;
@@ -212,21 +345,31 @@ cy.on('dragfree', 'node', (ev) => {
     const snapped = snapToGrid(n.position('x'), n.position('y'));
     n.position(snapped);
   }
-  void api.savePosition(n.id(), n.position('x'), n.position('y')).catch(() => {
-    // позиция косметическая: ошибка сети не роняет интерфейс
-  });
+  // Пакетная отправка после 500 мс без новых сдвигов (NR-035 п.1).
+  queuePosition(n.id(), n.position('x'), n.position('y'));
 });
 
 // «Выстроить сеткой» (NR-032 п.4): очистить сохранённые позиции и
 // заново выстроить карту детерминированной сеткой.
 $('btn-arrange').addEventListener('click', async () => {
+  // Подтверждение (NR-035 п.1): сохранённые положения будут стёрты.
+  if (!window.confirm('Переставить все узлы по сетке? Сохранённые положения узлов будут очищены.')) {
+    return;
+  }
+  if (positionsTimer !== null) {
+    clearTimeout(positionsTimer);
+    positionsTimer = null;
+  }
+  pendingPositions.clear();
   try {
     await api.clearPositions();
   } catch {
     // даже при ошибке сети выстроим локально
   }
-  savedPositions = new Set<string>();
-  setGraph(cy, graph, savedPositions, statusProvider());
+  savedPositions = new Map<string, { x: number; y: number }>();
+  // rearrange: позиции канвы не учитываются — все узлы заново
+  // выстраиваются детерминированной сеткой (NR-035 п.1).
+  setGraph(cy, graph, savedPositions, statusProvider(), { rearrange: true });
   renderA11y(graph, statusProvider());
   renderLegend($('map-legend'), graph, statusProvider());
 });

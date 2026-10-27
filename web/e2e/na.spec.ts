@@ -139,7 +139,7 @@ test('на карте 15 узлов и подписи не перекрываю�
     const cy = (window as unknown as {
       __netatlas: { cy: import('cytoscape').default };
     }).__netatlas.cy;
-    const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent());
+    const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'));
     // 15 устройств фикстуры (NR-032 + NR-034 п.3): связей LLDP/FDB
     // нет, узел коммутатора не создаётся.
     if (nodes.length !== 15) return { error: `узлов ${nodes.length}, хочу 15`, overlaps: [] as string[] };
@@ -206,7 +206,7 @@ test('предполагаемых связей столько же, сколь�
       __netatlas: { cy: import('cytoscape').default };
     }).__netatlas.cy;
     const assumed = cy.edges().filter((e: { data: (k: string) => string }) => e.data('src') === 'assumed');
-    const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent());
+    const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'));
     const gateways = nodes.filter((n: { data: (k: string) => string }) => n.data('kind') === 'router');
     // Все предполагаемые связи ведут к шлюзу, у каждого не-шлюза ровно одна.
     const toGateway = assumed.every((e: { data: (k: string) => string; connectedNodes: () => { length: number }[] }) =>
@@ -234,7 +234,7 @@ test('узлы выстроены сеткой: ряды на равных ко�
     }).__netatlas.cy;
     const byKind = new Map<string, number[]>();
     cy.nodes()
-      .filter((n: { isParent: () => boolean }) => !n.isParent())
+      .filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'))
       .forEach((n: { data: (k: string) => string; position: (a: string) => number }) => {
         const kind = n.data('kind');
         const ys = byKind.get(kind) ?? [];
@@ -393,7 +393,7 @@ test('линии не проходят сквозь узлы (NR-033 п.1, пр�
   await openMap(page);
   const report = await page.evaluate(() => {
     const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
-    const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent());
+    const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'));
     const boxes = nodes.map((n: { id: () => string; boundingBox: (o: object) => { x1: number; y1: number; x2: number; y2: number } }) => ({
       id: n.id(),
       box: n.boundingBox({ includeLabels: false, includeOverlays: false, includeEdges: false }),
@@ -521,7 +521,7 @@ test('у узла с оповещением виден бейдж внимани
   const icons = await page.evaluate(() => {
     const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
     return cy.nodes()
-      .filter((n: { isParent: () => boolean }) => !n.isParent())
+      .filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'))
       .map((n: { data: (k: string) => string }) => n.data('icon') ?? '');
   });
   const withAttention = icons.filter((i: string) => i.includes('%E2%96%B2') || i.includes('▲') || decodeURIComponent(i).includes('M19.2 2.9'));
@@ -650,7 +650,7 @@ test('старая база без kind_auto: после старта серве
     await page.waitForTimeout(600);
     const report = await page.evaluate(() => {
       const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
-      const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent());
+      const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent() && !n.hasClass('bend'));
       const kinds = new Set(nodes.map((n: { data: (k: string) => string }) => n.data('kind')));
       const routers = nodes.filter((n: { data: (k: string) => string }) => n.data('kind') === 'router');
       const routerY = routers.length === 1 ? routers[0].position('y') : NaN;
@@ -689,6 +689,9 @@ test('старая база без kind_auto: после старта серве
 
 test('ряд одинаковых узлов переносится после N колонок, значки не мельче 32 px (NR-034 п.2)', async ({ page }) => {
   await openMap(page);
+  // «Выстроить сеткой» теперь с подтверждением (NR-035 п.1):
+  // диалог принимается автоматически.
+  page.on('dialog', (d) => void d.accept());
   // Открыть панель: канва сузилась, ряд unknown (8 узлов) не влезает.
   await page.evaluate(() => {
     const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
@@ -702,7 +705,7 @@ test('ряд одинаковых узлов переносится после N
     const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
     const unknown = cy.nodes().filter(
       (n: { isParent: () => boolean; data: (k: string) => string }) =>
-        !n.isParent() && n.data('kind') === 'unknown',
+        !n.isParent() && !n.hasClass('bend') && n.data('kind') === 'unknown',
     );
     const ys = [...new Set(unknown.map((n: { position: (a: string) => number }) => Math.round(n.position('y'))))]
       .sort((a: number, b: number) => a - b);
@@ -718,4 +721,243 @@ test('ряд одинаковых узлов переносится после N
   // Масштаб по умолчанию: значок 40px модели отрисован ≥ 32 px.
   expect(report.zoom).toBeGreaterThanOrEqual(0.79);
   await shot(page, 'map-wrap');
+});
+
+// --- NR-035: запоминание положений, точки соединений, поле ------------
+
+// bendCount — число точек на изломах (порт-узлы NR-035 п.2).
+async function bendCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.nodes().filter((n: { hasClass: (c: string) => boolean }) => n.hasClass('bend')).length;
+  });
+}
+
+test('сдвинутый узел сохраняет положение после перезагрузки страницы (NR-035 п.1)', async ({ page }) => {
+  await openMap(page);
+  // Чистый старт: подтверждаем «Выстроить сеткой» (стирает прошлые
+  // положения тестов в общей базе).
+  page.on('dialog', (d) => void d.accept());
+  await page.click('#btn-arrange');
+  await page.waitForTimeout(600);
+
+  // Детерминированная проекция: масштаб 1, панорама 0.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.zoom(1);
+    cy.pan({ x: 0, y: 0 });
+  });
+  const nodeId = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.nodes().filter((x: { data: (k: string) => string }) => x.data('kind') === 'device').first().id();
+  });
+  const start = await canvasPoint(page, nodeByKind('device'));
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 150, start.y + 120, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(900); // дебаунс 500 мс + отправка
+  const posBefore = await page.evaluate((id: string) => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.getElementById(id).first();
+    return { x: n.position('x'), y: n.position('y') };
+  }, nodeId);
+
+  // Перезагрузка страницы: токен только в памяти страницы — вход заново.
+  await page.reload();
+  await login(page);
+  await page.click('nav .item[data-page="map"]');
+  await page.waitForFunction(() => {
+    const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
+  });
+  await page.waitForTimeout(700);
+  const posAfter = await page.evaluate((id: string) => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.getElementById(id).first();
+    return { x: n.position('x'), y: n.position('y') };
+  }, nodeId);
+  expect(Math.round(posAfter.x)).toBe(Math.round(posBefore.x));
+  expect(Math.round(posAfter.y)).toBe(Math.round(posBefore.y));
+  await shot(page, 'map-positions-persist');
+});
+
+test('pan мышью по пустому полю сдвигает панораму; колесо меняет масштаб (NR-035 п.3)', async ({ page }) => {
+  await openMap(page);
+  // Вписать в окно: карта в центре, углы канвы пустые.
+  await page.click('#btn-fit');
+  await page.waitForTimeout(200);
+  const panBefore = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.pan();
+  });
+  // Пустое место: верхний левый угол канвы (поле подгонки 90 px).
+  const rect = await page.evaluate(() => {
+    const r = document.getElementById('graph')?.getBoundingClientRect();
+    return { left: r?.left ?? 0, top: r?.top ?? 0 };
+  });
+  await page.mouse.move(rect.left + 12, rect.top + 12);
+  await page.mouse.down();
+  await page.mouse.move(rect.left + 172, rect.top + 132, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const panAfter = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.pan();
+  });
+  expect(panAfter.x - panBefore.x).toBeGreaterThan(100);
+  expect(panAfter.y - panBefore.y).toBeGreaterThan(60);
+  // Колесо меняет масштаб относительно курсора.
+  const zoomBefore = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.zoom();
+  });
+  await page.mouse.move(rect.left + 400, rect.top + 300);
+  await page.mouse.wheel(0, -240);
+  await page.waitForTimeout(200);
+  const zoomAfter = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.zoom();
+  });
+  expect(zoomAfter).toBeGreaterThan(zoomBefore);
+  await shot(page, 'map-pan');
+});
+
+test('«Вписать в окно» показывает все узлы, «Центр» центрирует без смены масштаба (NR-035 п.3)', async ({ page }) => {
+  await openMap(page);
+  // Увести вид далеко, затем «Вписать в окно»: все узлы видимы.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.pan({ x: 3000, y: 3000 });
+  });
+  await page.click('#btn-fit');
+  await page.waitForTimeout(200);
+  const visible = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const ext = cy.extent();
+    const out = cy.nodes()
+      .filter((n: { isParent: () => boolean; hasClass: (c: string) => boolean }) => !n.isParent() && !n.hasClass('bend'))
+      .filter((n: { position: (a: string) => number }) => {
+        const x = n.position('x');
+        const y = n.position('y');
+        return x < ext.x1 || x > ext.x2 || y < ext.y1 || y > ext.y2;
+      }).length;
+    return out;
+  });
+  expect(visible).toBe(0);
+  await shot(page, 'map-fit');
+
+  // «Центр»: центр карты в центре канвы, масштаб не меняется.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.pan({ x: 3000, y: -3000 });
+  });
+  const zoomBefore = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.zoom();
+  });
+  await page.click('#btn-center');
+  await page.waitForTimeout(200);
+  const centered = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const bb = cy.nodes()
+      .filter((n: { isParent: () => boolean; hasClass: (c: string) => boolean }) => !n.isParent() && !n.hasClass('bend'))
+      .boundingBox();
+    return {
+      dx: bb.x1 + (bb.x2 - bb.x1) / 2 - (cy.width() / 2 - cy.pan().x) / cy.zoom(),
+      dy: bb.y1 + (bb.y2 - bb.y1) / 2 - (cy.height() / 2 - cy.pan().y) / cy.zoom(),
+    };
+  });
+  expect(Math.abs(centered.dx)).toBeLessThan(10);
+  expect(Math.abs(centered.dy)).toBeLessThan(10);
+  const zoomAfter = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.zoom();
+  });
+  expect(zoomAfter).toBeCloseTo(zoomBefore, 6);
+  await shot(page, 'map-center');
+});
+
+test('на концах рёбер точки, на изломах — порт-узлы, в DOM есть фоновая сетка (NR-035 п.2)', async ({ page }) => {
+  await openMap(page);
+  const report = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const edges = cy.edges().toArray();
+    const plain = edges.every((e: { style: (k: string) => string }) =>
+      e.style('source-arrow-shape') === 'circle' && e.style('target-arrow-shape') === 'circle');
+    const layer = document.getElementById('map-grid');
+    const show = document.getElementById('show-grid') as HTMLInputElement | null;
+    const snap = document.getElementById('snap-grid') as HTMLInputElement | null;
+    const gridOn = layer !== null && show !== null && snap !== null
+      && show.checked && snap.checked && window.getComputedStyle(layer).display !== 'none';
+    const bg = layer !== null ? window.getComputedStyle(layer).backgroundImage : '';
+    const size = layer !== null ? layer.style.backgroundSize : '';
+    return {
+      edges: edges.length,
+      plain,
+      gridOn,
+      bgHasDots: bg.includes('radial-gradient'),
+      size: size,
+      zoom: cy.zoom(),
+    };
+  });
+  expect(report.edges).toBeGreaterThan(0);
+  expect(report.plain).toBe(true);
+  expect(report.gridOn).toBe(true);
+  expect(report.bgHasDots).toBe(true);
+  // Тайл сетки = шаг привязки × масштаб (100 × 120 при зуме 1).
+  const sizeX = Number.parseFloat(report.size.split('px')[0] ?? '0');
+  expect(sizeX).toBeCloseTo(100 * report.zoom, 1);
+  // Точки изломов: порт-узлы класса bend.
+  const bends = await bendCount(page);
+  expect(bends).toBeGreaterThan(0);
+  // Выключатель «Показывать сетку» прячет слой.
+  await page.click('#show-grid');
+  await page.waitForTimeout(100);
+  const hidden = await page.evaluate(() => {
+    const layer = document.getElementById('map-grid');
+    return layer === null || window.getComputedStyle(layer).display === 'none';
+  });
+  expect(hidden).toBe(true);
+  await page.click('#show-grid');
+  await shot(page, 'map-grid-dots');
+});
+
+test('глиф значка заполняет плашку по центру, фон не меньше половины узла (NR-035 п.4)', async ({ page }) => {
+  await openMap(page);
+  const report = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const nodes = cy.nodes()
+      .filter((n: { isParent: () => boolean; hasClass: (c: string) => boolean }) => !n.isParent() && !n.hasClass('bend'))
+      .toArray();
+    const bad: string[] = [];
+    for (const n of nodes) {
+      // Заданный размер фона: проценты или px относительно узла.
+      const bw = n.style('background-width');
+      const bh = n.style('background-height');
+      const w = String(bw);
+      const h = String(bh);
+      const fracW = w.endsWith('%') ? Number.parseFloat(w.slice(0, -1)) / 100 : 1;
+      const fracH = h.endsWith('%') ? Number.parseFloat(h.slice(0, -1)) / 100 : 1;
+      if (!(fracW >= 0.5) || !(fracH >= 0.5)) {
+        bad.push(`${n.id()}: bg ${w} x ${h}`);
+      }
+      // SVG-иконка с intrinsic-размером (глиф рисуется в центре).
+      // data URI кодируется encodeURIComponent: '=' -> %3D.
+      const icon = String(n.data('icon') ?? '');
+      let decoded = '';
+      try {
+        decoded = decodeURIComponent(icon);
+      } catch {
+        decoded = icon;
+      }
+      if (!decoded.includes('width="24"')) {
+        bad.push(`${n.id()}: svg без width`);
+      }
+    }
+    return { total: nodes.length, bad };
+  });
+  expect(report.total).toBeGreaterThan(0);
+  expect(report.bad).toEqual([]);
+  await shot(page, 'map-glyph');
 });

@@ -106,14 +106,17 @@
     updateDevice(id2, patch) {
       return this.req("PATCH", `/api/devices/${encodeURIComponent(id2)}`, patch);
     }
-    positions() {
-      return this.req("GET", "/api/positions");
+    // Позиции узлов карты (NR-035 п.1): чтение одним запросом, запись
+    // пакетом (клиент копит сдвинутые узлы и шлёт их после дебаунса),
+    // очистка — «Выстроить сеткой».
+    mapPositions() {
+      return this.req("GET", "/api/map/positions");
     }
-    savePosition(id2, x2, y2) {
-      return this.req("PUT", `/api/positions/${encodeURIComponent(id2)}`, { x: x2, y: y2 });
+    savePositions(list) {
+      return this.req("PUT", "/api/map/positions", { positions: list });
     }
     clearPositions() {
-      return this.req("DELETE", "/api/positions");
+      return this.req("DELETE", "/api/map/positions");
     }
     deleteDevice(id2) {
       return this.req("DELETE", `/api/devices/${encodeURIComponent(id2)}`);
@@ -2314,7 +2317,7 @@
       }
     };
   })();
-  var requestAnimationFrame = function requestAnimationFrame2(fn3) {
+  var requestAnimationFrame2 = function requestAnimationFrame3(fn3) {
     return raf(fn3);
   };
   var performanceNow = pnow;
@@ -14157,7 +14160,7 @@
         if (!cy2._private.animationsRunning) {
           return;
         }
-        requestAnimationFrame(function animationStep(now) {
+        requestAnimationFrame2(function animationStep(now) {
           stepAll(now, cy2);
           headlessStep();
         });
@@ -19228,7 +19231,7 @@
           if (now - startTime >= options2.animationThreshold) {
             refresh();
           }
-          requestAnimationFrame(_frame);
+          requestAnimationFrame2(_frame);
         }
       };
       _frame();
@@ -25160,9 +25163,9 @@
         beforeRenderCallbacks(r, false, requestTime);
       }
       r.skipFrame = false;
-      requestAnimationFrame(_renderFn);
+      requestAnimationFrame2(_renderFn);
     };
-    requestAnimationFrame(_renderFn);
+    requestAnimationFrame2(_renderFn);
   };
   var BaseRenderer = function BaseRenderer2(options2) {
     this.init(options2);
@@ -31836,7 +31839,7 @@
       extra = statusMarker(status);
       if (decisions > 0) extra += decisionBadge(decisions);
     }
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/>${extra}</svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/>${extra}</svg>`;
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   }
   function glyphColor(status) {
@@ -31973,6 +31976,11 @@
     const out = /* @__PURE__ */ new Map();
     const auto = nodes3.filter((n) => !saved.has(n.id));
     if (auto.length === 0) return out;
+    const occupied = /* @__PURE__ */ new Set();
+    for (const p2 of saved.values()) {
+      occupied.add(`${Math.round(p2.x / SNAP_STEP_X)}:${Math.round(p2.y / SNAP_STEP_Y)}`);
+    }
+    const cellFree = (x2, y3) => !occupied.has(`${Math.round(x2 / SNAP_STEP_X)}:${Math.round(y3 / SNAP_STEP_Y)}`);
     const rows = /* @__PURE__ */ new Map();
     for (const n of auto) {
       const rank = rowRank(n.kind);
@@ -32007,13 +32015,21 @@
       } else {
         x2 = lowerStart;
       }
-      for (let j = 0; j < row.length; j++) {
-        const n = row[j];
-        if (n === void 0) continue;
-        const line = Math.floor(j / cols);
-        out.set(n.id, { x: x2 + j % cols * stepX, y: y2 + line * GRID_STEP_Y });
+      let slot = 0;
+      for (const n of row) {
+        let line = Math.floor(slot / cols);
+        let cx = x2 + slot % cols * stepX;
+        let cy2 = y2 + line * GRID_STEP_Y;
+        while (!cellFree(cx, cy2)) {
+          slot++;
+          line = Math.floor(slot / cols);
+          cx = x2 + slot % cols * stepX;
+          cy2 = y2 + line * GRID_STEP_Y;
+        }
+        out.set(n.id, { x: cx, y: cy2 });
+        slot++;
       }
-      y2 += Math.ceil(row.length / cols) * GRID_STEP_Y;
+      y2 += Math.ceil(slot / cols) * GRID_STEP_Y;
     }
     return out;
   }
@@ -32044,6 +32060,14 @@
             "background-color": "#1B2430",
             "background-image": "data(icon)",
             "background-fit": "contain",
+            // NR-035 п.4: глиф заполняет плашку по центру (около 60%
+            // размера узла) — явный размер фона снимает зависимость от
+            // intrinsic-размера SVG (без него глиф рисовался крошечным
+            // в углу плашки).
+            "background-width": "100%",
+            "background-height": "100%",
+            "background-position-x": "50%",
+            "background-position-y": "50%",
             "background-opacity": 1,
             "border-width": 2,
             // Ободок статуса (NR-033 п.2): цвет от сигналов узла.
@@ -32075,7 +32099,12 @@
           style: {
             width: 1.6,
             "line-color": "data(color)",
+            "source-arrow-shape": "circle",
+            "target-arrow-shape": "circle",
+            "source-arrow-color": "data(color)",
             "target-arrow-color": "data(color)",
+            // Точка соединения 6-8 px (NR-035 п.2): 1.6 x 4 = 6.4 px.
+            "arrow-scale": 4,
             // Ортогональные связи (NR-033 п.1): ломаная под прямыми
             // углами. taxi-direction vertical: вертикальный участок у
             // источника, горизонталь в зазоре между рядами (излом на
@@ -32099,12 +32128,48 @@
         },
         {
           selector: ":selected",
-          style: { "border-color": "#5AA9FF", "line-color": "#5AA9FF" }
+          style: {
+            "border-color": "#5AA9FF",
+            "line-color": "#5AA9FF",
+            "source-arrow-color": "#5AA9FF",
+            "target-arrow-color": "#5AA9FF"
+          }
+        },
+        {
+          // Точки на изломах ортогональных линий (NR-035 п.2):
+          // порт-узлы без событий и перетаскивания.
+          selector: "node.bend",
+          style: {
+            width: 6,
+            height: 6,
+            shape: "ellipse",
+            "background-color": "data(color)",
+            "background-opacity": 1,
+            "border-width": 0,
+            label: "",
+            events: "no"
+          }
         }
       ],
       layout: { name: "cose", animate: false, randomize: false },
-      wheelSensitivity: 0.2
+      wheelSensitivity: 0.2,
+      minZoom: 0.05,
+      maxZoom: 3
     });
+    let bendScheduled = 0;
+    const scheduleBendSync = () => {
+      if (bendScheduled !== 0) return;
+      bendScheduled = requestAnimationFrame(() => {
+        bendScheduled = 0;
+        syncBendDots(cy2);
+      });
+    };
+    cy2.on("position", "node", (ev) => {
+      const t = ev.target;
+      if (t.hasClass("bend")) return;
+      scheduleBendSync();
+    });
+    cy2.on("pan zoom resize", () => scheduleBendSync());
     let lastTapId = "";
     let lastTapAt = 0;
     cy2.on("tap", "node", (ev) => {
@@ -32183,19 +32248,24 @@ ${marks}`;
       verified: Boolean(e.data("verified"))
     };
   }
-  function setGraph(cy2, g, saved, statuses) {
+  function setGraph(cy2, g, saved, statuses, opts) {
     const positions2 = /* @__PURE__ */ new Map();
-    cy2.nodes().forEach((n) => {
-      positions2.set(n.id(), n.position());
-    });
+    if (opts?.rearrange !== true) {
+      cy2.nodes().forEach((n) => {
+        if (n.hasClass("bend")) return;
+        positions2.set(n.id(), n.position());
+      });
+    }
     cy2.elements().remove();
     const elements = [];
+    const placed = /* @__PURE__ */ new Set();
     let hasGuests = false;
     for (const n of g.nodes) {
       const nodeStatus = statuses?.status(n.id) ?? { status: "online", decisions: 0 };
       const status = nodeStatus.status === "online" && !n.verified ? "unverified" : nodeStatus.status;
       const st = nodeStyle(n, status, nodeStatus.decisions);
       hasGuests = hasGuests || n.class === "guest";
+      if (positions2.has(n.id) || saved?.has(n.id)) placed.add(n.id);
       elements.push({
         group: "nodes",
         data: {
@@ -32213,7 +32283,10 @@ ${marks}`;
           // Гости объединяются группой «Гостевая сеть» (compound).
           parent: n.class === "guest" ? "grp-guest" : void 0
         },
-        position: positions2.get(n.id) ?? { x: 0, y: 0 },
+        // Приоритет положения (NR-035 п.1): текущая позиция на канве
+        // (владелец двигал, отправка ещё не прошла) сильнее серверной;
+        // серверная — сильнее раскладки; без всего — раскладка.
+        position: positions2.get(n.id) ?? saved?.get(n.id) ?? { x: 0, y: 0 },
         style: { shape: st.shape, width: String(st.width), height: String(st.height) },
         classes: [n.manual ? "manual" : "", n.verified ? "" : "unverified"].filter(Boolean).join(" ")
       });
@@ -32256,8 +32329,9 @@ ${marks}`;
       });
     }
     cy2.add(elements);
-    arrangeMap(cy2, g, saved ?? /* @__PURE__ */ new Set());
+    arrangeMap(cy2, g, placed, saved ?? /* @__PURE__ */ new Map());
     fitIfClipped(cy2);
+    syncBendDots(cy2);
   }
   function fitIfClipped(cy2) {
     if (cy2.elements().length === 0) return;
@@ -32273,15 +32347,17 @@ ${marks}`;
       cy2.center(cy2.elements());
     }
   }
-  function arrangeMap(cy2, g, saved) {
+  function arrangeMap(cy2, g, placed, saved) {
     const nodeEls = [];
     cy2.nodes().forEach((n) => {
-      if (!n.isParent()) nodeEls.push(n);
+      if (!n.isParent() && !n.hasClass("bend")) nodeEls.push(n);
     });
+    const arranging = nodeEls.filter((n) => !placed.has(n.id()));
+    if (arranging.length === 0) return;
     const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
     const maxWidth = Math.max(400, (cy2.width() - FIT_PADDING) / MIN_ICON_ZOOM);
     const grid = arrangeGrid(
-      nodeEls.map((n) => ({
+      arranging.map((n) => ({
         id: n.id(),
         kind: kinds.get(n.id()) ?? "unknown",
         label: String(n.data("label") ?? "")
@@ -32289,11 +32365,11 @@ ${marks}`;
       saved,
       maxWidth
     );
-    for (const n of nodeEls) {
+    for (const n of arranging) {
       const p2 = grid.get(n.id());
       if (p2 !== void 0) n.position({ x: p2.x, y: p2.y });
     }
-    const auto = nodeEls.filter((n) => grid.has(n.id())).map((n) => ({
+    const auto = arranging.filter((n) => grid.has(n.id())).map((n) => ({
       id: n.id(),
       x: n.position("x"),
       y: n.position("y"),
@@ -32304,7 +32380,7 @@ ${marks}`;
       const n = cy2.$id(p2.id).first();
       if (n !== void 0) n.position({ x: p2.x, y: p2.y });
     }
-    const others = nodeEls.filter((n) => !grid.has(n.id()) && saved.has(n.id())).map((n) => ({
+    const others = nodeEls.filter((n) => placed.has(n.id())).map((n) => ({
       id: n.id(),
       x: n.position("x"),
       y: n.position("y"),
@@ -32318,6 +32394,55 @@ ${marks}`;
         if (n !== void 0) n.position({ x: p2.x, y: p2.y });
       }
     }
+  }
+  function syncBendDots(cy2) {
+    const seen = /* @__PURE__ */ new Set();
+    cy2.edges().forEach((e) => {
+      const pts2 = e.segmentPoints();
+      for (let i2 = 0; i2 < pts2.length; i2++) {
+        const p2 = pts2[i2];
+        if (p2 === void 0) continue;
+        const id2 = `bend:${e.id()}:${i2}`;
+        seen.add(id2);
+        const existing = cy2.$id(id2).first();
+        if (existing !== void 0 && existing.nonempty()) {
+          existing.position({ x: p2.x, y: p2.y });
+        } else {
+          cy2.add({
+            group: "nodes",
+            data: { id: id2, color: String(e.data("color") ?? "#7C8798") },
+            position: { x: p2.x, y: p2.y },
+            classes: "bend"
+          });
+        }
+      }
+    });
+    cy2.nodes().filter((n) => n.hasClass("bend") && !seen.has(n.id())).remove();
+  }
+  function fitMap(cy2) {
+    if (cy2.elements().length === 0) return;
+    cy2.fit(cy2.elements(), FIT_PADDING);
+  }
+  function centerMap(cy2) {
+    if (cy2.elements().length === 0) return;
+    cy2.center(cy2.elements());
+  }
+  function zoom100(cy2) {
+    if (cy2.elements().length === 0) return;
+    cy2.zoom(1);
+    cy2.center(cy2.elements());
+  }
+  var CORNER_PAD = 40;
+  function initialFit(cy2) {
+    if (cy2.nodes().length === 0) return;
+    cy2.fit(cy2.elements(), FIT_PADDING);
+    if (cy2.zoom() >= MIN_ICON_ZOOM) return;
+    cy2.zoom(MIN_ICON_ZOOM);
+    const bb = cy2.elements().boundingBox();
+    cy2.pan({
+      x: CORNER_PAD - bb.x1 * MIN_ICON_ZOOM,
+      y: CORNER_PAD - bb.y1 * MIN_ICON_ZOOM
+    });
   }
   function renderA11y(g, statuses) {
     const box = document.getElementById("map-a11y");
@@ -32470,6 +32595,37 @@ ${marks}`;
       chip.append(line, document.createTextNode(MANUAL_TEXT));
       container2.append(chip);
     }
+  }
+
+  // src/mapgrid.ts
+  function gridPaint(zoom2, pan2) {
+    return {
+      sizeX: SNAP_STEP_X * zoom2,
+      sizeY: SNAP_STEP_Y * zoom2,
+      posX: pan2.x,
+      posY: pan2.y
+    };
+  }
+  function applyGridPaint(layer, paint) {
+    layer.style.backgroundSize = `${paint.sizeX}px ${paint.sizeY}px`;
+    layer.style.backgroundPosition = `${paint.posX}px ${paint.posY}px`;
+  }
+  function gridVisible(showGrid, snapGrid) {
+    return showGrid.checked && snapGrid.checked;
+  }
+  function setupGridLayer(cy2) {
+    const layer = document.getElementById("map-grid");
+    if (layer === null) return () => void 0;
+    const show2 = document.getElementById("show-grid");
+    const snap = document.getElementById("snap-grid");
+    const update = () => {
+      const visible = show2 !== null && snap !== null && gridVisible(show2, snap);
+      layer.style.display = visible ? "block" : "none";
+      applyGridPaint(layer, gridPaint(cy2.zoom(), cy2.pan()));
+    };
+    cy2.on("pan zoom resize", update);
+    update();
+    return update;
   }
 
   // src/panels.ts
@@ -33447,7 +33603,30 @@ ${marks}`;
   var signalsView = { signals: [], statuses: [] };
   var attentionOpen = false;
   var openCardId = null;
-  var savedPositions = /* @__PURE__ */ new Set();
+  var savedPositions = /* @__PURE__ */ new Map();
+  var pendingPositions = /* @__PURE__ */ new Map();
+  var positionsTimer = null;
+  async function flushPositions() {
+    positionsTimer = null;
+    if (pendingPositions.size === 0) return;
+    const batch2 = [...pendingPositions.entries()].map(([id2, p2]) => ({ id: id2, ...p2 }));
+    try {
+      await api2.savePositions(batch2);
+      for (const item of batch2) {
+        const queued = pendingPositions.get(item.id);
+        if (queued !== void 0 && queued.x === item.x && queued.y === item.y) {
+          pendingPositions.delete(item.id);
+        }
+      }
+    } catch {
+    }
+  }
+  function queuePosition(id2, x2, y2) {
+    savedPositions.set(id2, { x: x2, y: y2 });
+    pendingPositions.set(id2, { x: x2, y: y2 });
+    if (positionsTimer !== null) clearTimeout(positionsTimer);
+    positionsTimer = setTimeout(() => void flushPositions(), 500);
+  }
   var addKinds = [
     ["internet", "\u0418\u043D\u0442\u0435\u0440\u043D\u0435\u0442"],
     ["router", "\u0420\u043E\u0443\u0442\u0435\u0440"],
@@ -33463,6 +33642,8 @@ ${marks}`;
     ["cloud", "\u041D\u0435\u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0439 \u043A\u043E\u043C\u043C\u0443\u0442\u0430\u0442\u043E\u0440"],
     ["unknown", "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
   ];
+  var firstMapFit = true;
+  var gridUpdate = () => void 0;
   function showNotice(message, isError) {
     const n = $2("notice");
     n.hidden = false;
@@ -33476,8 +33657,8 @@ ${marks}`;
     try {
       graph = await api2.topology();
       try {
-        const { positions: positions2 } = await api2.positions();
-        savedPositions = new Set(positions2.map((p2) => p2.id));
+        const { positions: positions2 } = await api2.mapPositions();
+        savedPositions = new Map(positions2.map((p2) => [p2.id, { x: p2.x, y: p2.y }]));
       } catch {
       }
       try {
@@ -33486,6 +33667,11 @@ ${marks}`;
         signalsView = { signals: [], statuses: [] };
       }
       setGraph(cy, graph, savedPositions, statusProvider());
+      if (firstMapFit) {
+        firstMapFit = false;
+        initialFit(cy);
+        gridUpdate();
+      }
       renderA11y(graph, statusProvider());
       renderLegend($2("map-legend"), graph, statusProvider());
       refreshAttention();
@@ -33562,24 +33748,91 @@ ${marks}`;
     }
   };
   var cy = createGraph($2("graph"), callbacks);
+  gridUpdate = setupGridLayer(cy);
+  for (const id2 of ["show-grid", "snap-grid"]) {
+    $2(id2).addEventListener("change", () => gridUpdate());
+  }
+  $2("btn-fit").addEventListener("click", () => {
+    fitMap(cy);
+    gridUpdate();
+  });
+  $2("btn-center").addEventListener("click", () => {
+    centerMap(cy);
+    gridUpdate();
+  });
+  $2("btn-zoom100").addEventListener("click", () => {
+    zoom100(cy);
+    gridUpdate();
+  });
+  document.addEventListener("keydown", (ev) => {
+    const workspace = document.querySelector(".workspace");
+    if (workspace === null || workspace.hidden) return;
+    const t = ev.target;
+    if (t !== null && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) {
+      return;
+    }
+    if (document.querySelector("dialog[open]") !== null) return;
+    const zoomStep = (factor) => {
+      const z = Math.min(3, Math.max(0.05, cy.zoom() * factor));
+      cy.zoom(z);
+      gridUpdate();
+    };
+    if (ev.key === "0") {
+      fitMap(cy);
+      gridUpdate();
+      return;
+    }
+    if (ev.key === "+" || ev.key === "=") {
+      zoomStep(1.25);
+      return;
+    }
+    if (ev.key === "-") {
+      zoomStep(0.8);
+      return;
+    }
+    const dx = { ArrowLeft: -SNAP_STEP_X, ArrowRight: SNAP_STEP_X }[ev.key];
+    const dy = { ArrowUp: -SNAP_STEP_Y, ArrowDown: SNAP_STEP_Y }[ev.key];
+    if (dx === void 0 && dy === void 0) return;
+    ev.preventDefault();
+    const selected = cy.nodes(":selected").filter((n) => !n.hasClass("bend"));
+    if (selected.nonempty()) {
+      const n = selected.first();
+      const x2 = n.position("x") + (dx ?? 0);
+      const y2 = n.position("y") + (dy ?? 0);
+      n.position({ x: x2, y: y2 });
+      queuePosition(n.id(), x2, y2);
+    } else {
+      cy.panBy({
+        x: (dx ?? 0) * cy.zoom(),
+        y: (dy ?? 0) * cy.zoom()
+      });
+      gridUpdate();
+    }
+  });
   cy.on("dragfree", "node", (ev) => {
     const n = ev.target;
-    savedPositions.add(n.id());
     const snap = $2("snap-grid");
     if (snap.checked) {
       const snapped = snapToGrid(n.position("x"), n.position("y"));
       n.position(snapped);
     }
-    void api2.savePosition(n.id(), n.position("x"), n.position("y")).catch(() => {
-    });
+    queuePosition(n.id(), n.position("x"), n.position("y"));
   });
   $2("btn-arrange").addEventListener("click", async () => {
+    if (!window.confirm("\u041F\u0435\u0440\u0435\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0432\u0441\u0435 \u0443\u0437\u043B\u044B \u043F\u043E \u0441\u0435\u0442\u043A\u0435? \u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0443\u0437\u043B\u043E\u0432 \u0431\u0443\u0434\u0443\u0442 \u043E\u0447\u0438\u0449\u0435\u043D\u044B.")) {
+      return;
+    }
+    if (positionsTimer !== null) {
+      clearTimeout(positionsTimer);
+      positionsTimer = null;
+    }
+    pendingPositions.clear();
     try {
       await api2.clearPositions();
     } catch {
     }
-    savedPositions = /* @__PURE__ */ new Set();
-    setGraph(cy, graph, savedPositions, statusProvider());
+    savedPositions = /* @__PURE__ */ new Map();
+    setGraph(cy, graph, savedPositions, statusProvider(), { rearrange: true });
     renderA11y(graph, statusProvider());
     renderLegend($2("map-legend"), graph, statusProvider());
   });

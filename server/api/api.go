@@ -48,6 +48,7 @@ type Store interface {
 	// Позиции узлов карты (NR-032 п.4).
 	Positions(ctx context.Context) ([]store.NodePosition, error)
 	SavePosition(ctx context.Context, id string, x, y float64, actor string) error
+	SavePositions(ctx context.Context, pos []store.NodePosition, actor string) (int, error)
 	ClearPositions(ctx context.Context, actor string) error
 	RecordVerification(ctx context.Context, id, actor string, alive bool, detail string) error
 	ListDevices(ctx context.Context) ([]store.DeviceInfo, error)
@@ -172,6 +173,11 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("DELETE /api/links/{id}", a.handleDeleteLink)
 	mux.HandleFunc("GET /api/positions", a.handlePositionsList)
 	mux.HandleFunc("PUT /api/positions/{id}", a.handlePositionSave)
+	// Пакетные позиции карты (NR-035 п.1): клиент сохраняет все
+	// сдвинутые узлы одним запросом после дебаунса.
+	mux.HandleFunc("GET /api/map/positions", a.handlePositionsList)
+	mux.HandleFunc("PUT /api/map/positions", a.handlePositionsSaveBatch)
+	mux.HandleFunc("DELETE /api/map/positions", a.handlePositionsClear)
 	mux.HandleFunc("DELETE /api/positions", a.handlePositionsClear)
 	mux.HandleFunc("POST /api/devices/{id}/verify", a.handleVerify)
 	mux.HandleFunc("GET /api/audit", a.handleAudit)
@@ -679,6 +685,37 @@ func (a *API) handlePositionSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// mapPositionsBody — тело PUT /api/map/positions (NR-035 п.1).
+type mapPositionsBody struct {
+	Positions []store.NodePosition `json:"positions"`
+}
+
+// MaxPositionsBatch — ограничение размера пакета позиций: карта из
+// тысяч узлов не ожидается, пакет больше — ошибка клиента.
+const MaxPositionsBatch = 1000
+
+// handlePositionsSaveBatch — PUT /api/map/positions: запомнить
+// позиции узлов пакетом (клиент шлёт пакет после дебаунса 500 мс,
+// NR-035 п.1). Несуществующие узлы и мусорные координаты
+// отбрасываются хранилищем; ответ честно называет число записанных.
+func (a *API) handlePositionsSaveBatch(w http.ResponseWriter, r *http.Request) {
+	var body mapPositionsBody
+	if err := decodeJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		return
+	}
+	if len(body.Positions) > MaxPositionsBatch {
+		writeJSON(w, http.StatusRequestEntityTooLarge, errorBody{"пакет позиций больше лимита"})
+		return
+	}
+	saved, err := a.store.SavePositions(r.Context(), body.Positions, ActorOwner)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": saved})
 }
 
 // handlePositionsClear — DELETE /api/positions: «Выстроить сеткой» —
