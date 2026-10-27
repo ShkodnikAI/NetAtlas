@@ -3,7 +3,9 @@
 // таблица устройств с адресами, подписи карты без пересечений, один
 // пункт «Активность». Тесты обязаны падать, если убрать правило
 // [hidden] из CSS, — первый же экран увидит лишнее.
-import { mkdirSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -106,7 +108,7 @@ test('таблица устройств заполнена адресами и �
   await login(page);
   await page.click('nav .item[data-page="devices"]');
   const rows = page.locator('#devices-table tbody tr');
-  await expect(rows).toHaveCount(12);
+  await expect(rows).toHaveCount(15);
   const firstIP = await rows.first().locator('td').nth(1).textContent();
   expect(firstIP).toBe('192.168.100.1');
   const body = await page.locator('#devices-table').textContent();
@@ -123,12 +125,12 @@ test('пустая полоса под заголовком не показыв�
   await expect(notice).toHaveText('');
 });
 
-test('на карте 12 узлов и подписи не перекрываются (NR-031 п.4)', async ({ page }) => {
+test('на карте 15 узлов и подписи не перекрываются (NR-031 п.4, NR-034 п.3)', async ({ page }) => {
   await login(page);
   await page.click('nav .item[data-page="map"]');
   await page.waitForFunction(() => {
     const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
-    return hook !== undefined && hook.cy.nodes().length >= 12;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
   });
   // Дать раскладке и отрисовке закончиться, затем дважды проверить:
   // стабильность позиций и отсутствие пересечений подписей.
@@ -138,9 +140,9 @@ test('на карте 12 узлов и подписи не перекрываю�
       __netatlas: { cy: import('cytoscape').default };
     }).__netatlas.cy;
     const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent());
-    // 12 устройств фикстуры (NR-032): связей LLDP/FDB нет, узел
-    // коммутатора не создаётся.
-    if (nodes.length !== 12) return { error: `узлов ${nodes.length}, хочу 12`, overlaps: [] as string[] };
+    // 15 устройств фикстуры (NR-032 + NR-034 п.3): связей LLDP/FDB
+    // нет, узел коммутатора не создаётся.
+    if (nodes.length !== 15) return { error: `узлов ${nodes.length}, хочу 15`, overlaps: [] as string[] };
     const boxes = nodes.map((n: { id: () => string; boundingBox: (o: object) => { x1: number; y1: number; x2: number; y2: number } }) => ({
       id: n.id(),
       box: n.boundingBox({ includeLabels: true, includeOverlays: false, includeEdges: false }),
@@ -179,13 +181,13 @@ test('значки узлов различаются по типам (data-kind,
   await page.click('nav .item[data-page="map"]');
   await page.waitForFunction(() => {
     const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
-    return hook !== undefined && hook.cy.nodes().length >= 12;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
   });
   // a11y-слой повторяет узлы карты с data-kind (скринридеры и тесты).
   const kinds = await page.locator('#map-a11y li').evaluateAll((els) =>
     els.map((el) => (el as HTMLElement).dataset.kind ?? ''),
   );
-  expect(kinds).toHaveLength(12);
+  expect(kinds).toHaveLength(15);
   expect(new Set(kinds)).toEqual(
     new Set(['router', 'server', 'device', 'printer', 'phone', 'iot', 'unknown']),
   );
@@ -214,16 +216,16 @@ test('предполагаемых связей столько же, сколь�
   });
   expect(report.gateways).toBe(1);
   expect(report.assumed).toBe(report.nodes - report.gateways);
-  expect(report.assumed).toBe(11);
+  expect(report.assumed).toBe(14);
   expect(report.toGateway).toBe(true);
 });
 
-test('узлы выстроены сеткой: ряды на равных координатах (NR-032 п.4, п.6)', async ({ page }) => {
+test('узлы выстроены сеткой: ряды на равных координатах (NR-032 п.4, NR-034 п.2)', async ({ page }) => {
   await login(page);
   await page.click('nav .item[data-page="map"]');
   await page.waitForFunction(() => {
     const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
-    return hook !== undefined && hook.cy.nodes().length >= 12;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
   });
   await page.waitForTimeout(500);
   const report = await page.evaluate(() => {
@@ -239,21 +241,38 @@ test('узлы выстроены сеткой: ряды на равных ко�
         ys.push(n.position('y'));
         byKind.set(kind, ys);
       });
-    // Все узлы одного типа стоят в одном ряду (одна координата Y).
-    const rows = new Map<string, number>();
+    // Все узлы одного типа стоят в ряду (одна координата Y) либо в
+    // нескольких подряд идущих строках ряда: перенос после N колонок
+    // (NR-034 п.2), шаг строки — ровно 120.
+    const lines = new Map<number, string>(); // Y строки -> тип на ней
     for (const [kind, ys] of byKind) {
-      const unique = [...new Set(ys.map((y) => Math.round(y)))];
-      if (unique.length !== 1) return { error: `тип ${kind}: Y-координаты ${unique.join(', ')}` };
-      rows.set(kind, unique[0]);
+      const unique = [...new Set(ys.map((y) => Math.round(y)))].sort((a, b) => a - b);
+      for (let i = 1; i < unique.length; i++) {
+        const gap = (unique[i] ?? 0) - (unique[i - 1] ?? 0);
+        if (Math.abs(gap - 120) > 0.5) {
+          return { error: `тип ${kind}: строки через ${gap}, хочу 120` };
+        }
+      }
+      for (const y of unique) {
+        const occupant = lines.get(y);
+        if (occupant !== undefined && occupant !== kind) {
+          return { error: `Y ${y} делят типы ${occupant} и ${kind}` };
+        }
+        lines.set(y, kind);
+      }
     }
-    // Роутер — самый верхний ряд; типы не делят ряд друг с другом.
-    const routerY = rows.get('router') ?? NaN;
-    for (const [kind, y] of rows) {
-      if (kind !== 'router' && y <= routerY) {
+    // Роутер — самый верхний ряд; остальные ниже.
+    const routerY = Math.min(
+      ...(byKind.get('router') ?? [NaN]),
+    );
+    for (const [kind, ys] of byKind) {
+      if (kind === 'router') continue;
+      const minY = Math.min(...ys);
+      if (!(minY > routerY)) {
         return { error: `тип ${kind} не ниже роутера` };
       }
     }
-    return { error: null, rows: [...rows.entries()] };
+    return { error: null };
   });
   expect(report.error).toBeNull();
   await shot(page, 'map-grid');
@@ -290,7 +309,7 @@ test('ручной тип узла перекрывает автоматичес
   await page.click('nav .item[data-page="map"]');
   await page.waitForFunction(() => {
     const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
-    return hook !== undefined && hook.cy.nodes().length >= 12;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
   });
   // Открыть панель принтера, сменить тип на сервер.
   await page.locator('#map-a11y li[data-kind="printer"]').first().click({ force: true });
@@ -324,7 +343,7 @@ async function openMap(page: Page): Promise<void> {
   await page.click('nav .item[data-page="map"]');
   await page.waitForFunction(() => {
     const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
-    return hook !== undefined && hook.cy.nodes().length >= 12;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
   });
   await page.waitForTimeout(600);
 }
@@ -475,7 +494,10 @@ test('двойной клик открывает карточку с MAC и IP (
   await expect(page.locator('#screen-card')).toBeVisible();
   const text = await page.locator('#screen-card').textContent();
   expect(text).toContain(info.id);
-  expect(text).toContain('192.168.100.1');
+  // IP телефона фикстуры Android.local (NR-034: прежняя проверка
+  // '192.168.100.1' совпадала подстрокой с адресами .15/.16/.17,
+  // которые после NR-033/#73 больше не телефоны — ложный позитив).
+  expect(text).toContain('192.168.100.30');
   // Действия карточки доступны.
   await expect(page.locator('#card-root button', { hasText: 'Сформировать отчёт для ИИ' })).toBeVisible();
   await shot(page, 'card');
@@ -540,7 +562,7 @@ test('действие «Принять» меняет класс и убира�
   await page.click('nav .item[data-page="map"]');
   await page.waitForFunction(() => {
     const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
-    return hook !== undefined && hook.cy.nodes().length >= 12;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
   });
   // Открыть карточку двойным кликом по целевому узлу.
   const pt = await page.evaluate((id: string) => {
@@ -575,4 +597,125 @@ test('легенда показывает присутствующие стат�
   );
   expect(statuses).toContain('attention');
   expect(statuses.length).toBeGreaterThan(0);
+});
+
+// --- NR-034: пересчёт старых данных, перенос ряда, масштаб ----------
+
+test('старая база без kind_auto: после старта сервера карта показывает типы, шлюз и связи (NR-034 п.1)', async ({ page }) => {
+  const serverBin = process.env.NETATLAS_E2E_SERVER ?? '';
+  const seedBin = process.env.NETATLAS_E2E_SEED ?? '';
+  test.skip(!serverBin || !seedBin, 'нужны NETATLAS_E2E_SERVER и NETATLAS_E2E_SEED');
+  // База legacy: типы обнулены (kind = device, kind_auto пусто),
+  // шлюзов в последнем скане нет — как у владельца после обновления
+  // с версии до NR-032.
+  const work = mkdtempSync(join(tmpdir(), 'netatlas-legacy-'));
+  const db = join(work, 'legacy.db');
+  const seeded = spawnSync(seedBin, [db, 'legacy'], { stdio: 'ignore' });
+  expect(seeded.status).toBe(0);
+  const port = 18485;
+  const srv = spawn(
+    serverBin,
+    ['--db', db, '--listen', `127.0.0.1:${port}`, '--subnets', '192.168.100.0/24'],
+    {
+      env: { ...process.env, NETATLAS_TOKEN: TOKEN },
+      stdio: 'ignore',
+    },
+  );
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    await expect
+      .poll(
+        async () => {
+          try {
+            const r = await fetch(`${base}/app.css`);
+            return r.status;
+          } catch {
+            return 0;
+          }
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(200);
+    await page.goto(base);
+    const dialog = page.locator('#token-dialog');
+    await expect(dialog).toBeVisible();
+    await page.fill('#token-input', TOKEN);
+    await page.click('#token-submit');
+    await expect(dialog).toBeHidden();
+    await page.waitForFunction(() => {
+      const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } })
+        .__netatlas;
+      return hook !== undefined && hook.cy.nodes().length >= 15;
+    });
+    await page.waitForTimeout(600);
+    const report = await page.evaluate(() => {
+      const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+      const nodes = cy.nodes().filter((n: { isParent: () => boolean }) => !n.isParent());
+      const kinds = new Set(nodes.map((n: { data: (k: string) => string }) => n.data('kind')));
+      const routers = nodes.filter((n: { data: (k: string) => string }) => n.data('kind') === 'router');
+      const routerY = routers.length === 1 ? routers[0].position('y') : NaN;
+      const above = nodes.filter(
+        (n: { data: (k: string) => string; position: (a: string) => number }) =>
+          n.data('kind') !== 'router' && n.position('y') <= routerY,
+      ).length;
+      const ys = new Set(nodes.map((n: { position: (a: string) => number }) => Math.round(n.position('y'))));
+      const icons = new Set(nodes.map((n: { data: (k: string) => string }) => n.data('icon')));
+      const assumed = cy.edges().filter((e: { data: (k: string) => string }) => e.data('src') === 'assumed').length;
+      return {
+        total: nodes.length,
+        kindsCount: kinds.size,
+        routerCount: routers.length,
+        above,
+        lines: ys.size,
+        iconsCount: icons.size,
+        assumed,
+      };
+    });
+    // Пересчёт из пустого kind_auto: роутер один и сверху, типы
+    // разные (карта не «глупая» без нового скана).
+    expect(report.routerCount).toBe(1);
+    expect(report.above).toBe(0);
+    expect(report.kindsCount).toBeGreaterThanOrEqual(4);
+    expect(report.iconsCount).toBeGreaterThanOrEqual(4);
+    // 11 узлов одного типа не в одну строку: строки раскладки ≥ 5.
+    expect(report.lines).toBeGreaterThanOrEqual(5);
+    // Предполагаемые связи есть без нового скана: 14 не-шлюзов.
+    expect(report.assumed).toBe(14);
+    await shot(page, 'legacy-recompute');
+  } finally {
+    srv.kill();
+  }
+});
+
+test('ряд одинаковых узлов переносится после N колонок, значки не мельче 32 px (NR-034 п.2)', async ({ page }) => {
+  await openMap(page);
+  // Открыть панель: канва сузилась, ряд unknown (8 узлов) не влезает.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.nodes().filter((x: { data: (k: string) => string }) => x.data('kind') === 'unknown').first().emit('tap');
+  });
+  await expect(page.locator('#panel')).toHaveClass(/open/);
+  // «Выстроить сеткой» — та же раскладка, перенос по новой ширине.
+  await page.click('#btn-arrange');
+  await page.waitForTimeout(600);
+  const report = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const unknown = cy.nodes().filter(
+      (n: { isParent: () => boolean; data: (k: string) => string }) =>
+        !n.isParent() && n.data('kind') === 'unknown',
+    );
+    const ys = [...new Set(unknown.map((n: { position: (a: string) => number }) => Math.round(n.position('y'))))]
+      .sort((a: number, b: number) => a - b);
+    const router = cy.nodes().filter((n: { data: (k: string) => string }) => n.data('kind') === 'router').first();
+    return { lines: ys.length, ys, zoom: cy.zoom(), routerY: Math.round(router.position('y')) };
+  });
+  // 8 узлов unknown не помещаются в одну строку узкой канвы —
+  // перенос минимум на две строки, шаг строки ровно 120.
+  expect(report.lines).toBeGreaterThanOrEqual(2);
+  expect((report.ys[1] ?? 0) - (report.ys[0] ?? 0)).toBeCloseTo(120, 0);
+  // Перенесённые строки ниже роутера.
+  expect(report.ys[0] ?? 0).toBeGreaterThan(report.routerY);
+  // Масштаб по умолчанию: значок 40px модели отрисован ≥ 32 px.
+  expect(report.zoom).toBeGreaterThanOrEqual(0.79);
+  await shot(page, 'map-wrap');
 });

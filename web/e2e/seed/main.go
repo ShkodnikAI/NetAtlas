@@ -1,12 +1,20 @@
-// Command seed — фикстура сквозных тестов интерфейса (NR-031, NR-032):
+// Command seed — фикстура сквозных тестов интерфейса (NR-031, NR-032,
+// NR-034):
 // открывает базу SQLite, накатывает миграции и заполняет её
 // подставными данными сканирования. Сеть NR-032 (п.6): роутер Huawei
 // на адресе шлюза, принтер Canon, телефон со случайным MAC и именем
-// Android.local, сервер, два компьютера, IoT-модуль; связей
-// LLDP/FDB нет — карта рисует предполагаемые связи «устройство —
-// шлюз» и раскладывает узлы сеткой. Данные детерминированы.
+// Android.local, сервер, два компьютера, IoT-модуль; NR-034 (п.3):
+// три узла с общим префиксом b2:be:76 без имён — как у владельца.
+// Связей LLDP/FDB нет — карта рисует предполагаемые связи
+// «устройство — шлюз» и раскладывает узлы сеткой. Данные
+// детерминированы.
 //
-// Использование: seed <путь-к-базе>
+// Использование: seed <путь-к-базе> [legacy]
+//
+// Режим legacy (NR-034, E2E пересчёта): имитирует базу версии до
+// NR-032 — типы обнулены (kind = device, kind_auto = пусто), шлюзы
+// последнего скана стёрты; карта после старта сервера обязана
+// показать типы, шлюз и предполагаемые связи без нового скана.
 package main
 
 import (
@@ -50,8 +58,8 @@ func name(d *model.Device, source, value string) error {
 }
 
 func run() error {
-	if len(os.Args) != 2 {
-		return fmt.Errorf("использование: seed <путь-к-базе>")
+	if len(os.Args) != 2 && len(os.Args) != 3 {
+		return fmt.Errorf("использование: seed <путь-к-базе> [legacy]")
 	}
 	st, err := store.Open(os.Args[1])
 	if err != nil {
@@ -83,6 +91,12 @@ func run() error {
 		{"02:00:00:00:00:11", "", "", "192.168.100.17", []string{"ping"}, nil},
 		{"02:00:00:00:00:12", "", "", "192.168.100.18", []string{"arp"}, nil},
 		{"02:00:00:00:00:13", "", "", "", []string{"arp"}, nil},
+		// NR-034 п.3: три узла с общим префиксом владельца, без имён:
+		// классификатор обязан дать им unknown (случайный MAC — не
+		// телефон), а Android.local остаётся телефоном.
+		{"b2:be:76:00:00:01", "", "", "192.168.100.40", []string{"arp", "ping"}, nil},
+		{"b2:be:76:00:00:02", "", "", "192.168.100.41", []string{"arp"}, nil},
+		{"b2:be:76:00:00:03", "", "", "192.168.100.42", []string{"ping"}, nil},
 	}
 	devices := make([]model.Device, 0, len(specs))
 	for i, s := range specs {
@@ -116,7 +130,32 @@ func run() error {
 	if err := makeStale(os.Args[1]); err != nil {
 		return err
 	}
-	fmt.Println("seed: 12 устройств, шлюз 192.168.100.1, связей нет (карта построит предполагаемые)")
+	if len(os.Args) > 2 && os.Args[2] == "legacy" {
+		if err := makeLegacy(os.Args[1]); err != nil {
+			return err
+		}
+		fmt.Println("seed: база legacy — типы обнулены, шлюзов в скане нет (карта после пересчёта)")
+		return nil
+	}
+	fmt.Println("seed: 15 устройств, шлюз 192.168.100.1, связей нет (карта построит предполагаемые)")
+	return nil
+}
+
+// makeLegacy — имитация базы версии до NR-032: типов нет, шлюзов
+// в последнем скане нет. Пересчёт при старте сервера (NR-034 п.1)
+// обязан заполнить и то и другое.
+func makeLegacy(dbPath string) error {
+	d, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return fmt.Errorf("legacy: открытие: %w", err)
+	}
+	defer d.Close()
+	if _, err := d.Exec(`UPDATE devices SET kind = 'device', kind_auto = ''`); err != nil {
+		return fmt.Errorf("legacy: обнуление типов: %w", err)
+	}
+	if _, err := d.Exec(`UPDATE scans SET gateways = '[]'`); err != nil {
+		return fmt.Errorf("legacy: обнуление шлюзов: %w", err)
+	}
 	return nil
 }
 

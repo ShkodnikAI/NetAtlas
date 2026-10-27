@@ -224,12 +224,16 @@ export interface GridKindNode {
 // arrangeGrid — детерминированная раскладка: шлюзы и роутеры по
 // центру первого ряда, остальные узлы сеткой по рядам с шагом,
 // учитывающим ширину самой длинной подписи в ряду; порядок внутри
-// ряда — по id (устойчиво к порядку входа). Позиции из saved
-// (сдвинутые владельцем, NR-032 п.4) не трогаются; эти узлы
-// исключаются из раскладки, но остаются в deoverlap.
+// ряда — по id (устойчиво к порядку входа). Ряд длиннее ширины
+// области карты (maxWidth, NR-034 п.2) переносится: следующая
+// строка того же ряда под текущей, колонка шлюза остаётся
+// свободной. Позиции из saved (сдвинутые владельцем, NR-032 п.4) не
+// трогаются; эти узлы исключаются из раскладки, но остаются в
+// deoverlap.
 export function arrangeGrid(
   nodes: GridKindNode[],
   saved: ReadonlySet<string>,
+  maxWidth: number = Number.POSITIVE_INFINITY,
 ): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   const auto = nodes.filter((n) => !saved.has(n.id));
@@ -250,7 +254,9 @@ export function arrangeGrid(
   // Ряды сверху вниз: первый — по центру, остальные — слева
   // направо с полшаговым сдвигом (NR-033 п.1): колонки шлюзов
   // остаются свободными, вертикальные участки связей к шлюзу идут
-  // по свободной колонке и не проходят сквозь узлы.
+  // по свободной колонке и не проходят сквозь узлы. Ряд не влезает
+  // в ширину карты — переносится (NR-034 п.2): строки того же ряда
+  // стоят на тех же X, что и первая строка ряда.
   const ranks = [...rows.keys()].sort((a, b) => a - b);
   let y = 0;
   let lowerStart = 0;
@@ -264,8 +270,14 @@ export function arrangeGrid(
       widest = Math.max(widest, measureLabel(n.label).width);
     }
     const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
-    // Общая ширина ряда — для центрирования верхнего.
-    const totalWidth = (row.length - 1) * stepX;
+    // Колонок в строке: по ширине области карты, но не больше
+    // длины ряда (иначе деление на бесконечность обнуляет перенос).
+    const cols = Math.min(
+      Math.max(1, Math.floor(maxWidth / stepX)),
+      row.length,
+    );
+    // Общая ширина строки — для центрирования верхнего ряда.
+    const totalWidth = (cols - 1) * stepX;
     let x: number;
     if (i === 0) {
       x = -totalWidth / 2;
@@ -273,11 +285,13 @@ export function arrangeGrid(
     } else {
       x = lowerStart;
     }
-    for (const n of row) {
-      out.set(n.id, { x, y });
-      x += stepX;
+    for (let j = 0; j < row.length; j++) {
+      const n = row[j];
+      if (n === undefined) continue;
+      const line = Math.floor(j / cols);
+      out.set(n.id, { x: x + (j % cols) * stepX, y: y + line * GRID_STEP_Y });
     }
-    y += GRID_STEP_Y;
+    y += Math.ceil(row.length / cols) * GRID_STEP_Y;
   }
   return out;
 }

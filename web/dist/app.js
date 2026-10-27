@@ -31969,7 +31969,7 @@
     const i2 = ROW_ORDER.indexOf(kind);
     return i2 === -1 ? ROW_ORDER.length : i2;
   }
-  function arrangeGrid(nodes3, saved) {
+  function arrangeGrid(nodes3, saved, maxWidth = Number.POSITIVE_INFINITY) {
     const out = /* @__PURE__ */ new Map();
     const auto = nodes3.filter((n) => !saved.has(n.id));
     if (auto.length === 0) return out;
@@ -31995,7 +31995,11 @@
         widest = Math.max(widest, measureLabel(n.label).width);
       }
       const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
-      const totalWidth = (row.length - 1) * stepX;
+      const cols = Math.min(
+        Math.max(1, Math.floor(maxWidth / stepX)),
+        row.length
+      );
+      const totalWidth = (cols - 1) * stepX;
       let x2;
       if (i2 === 0) {
         x2 = -totalWidth / 2;
@@ -32003,11 +32007,13 @@
       } else {
         x2 = lowerStart;
       }
-      for (const n of row) {
-        out.set(n.id, { x: x2, y: y2 });
-        x2 += stepX;
+      for (let j = 0; j < row.length; j++) {
+        const n = row[j];
+        if (n === void 0) continue;
+        const line = Math.floor(j / cols);
+        out.set(n.id, { x: x2 + j % cols * stepX, y: y2 + line * GRID_STEP_Y });
       }
-      y2 += GRID_STEP_Y;
+      y2 += Math.ceil(row.length / cols) * GRID_STEP_Y;
     }
     return out;
   }
@@ -32021,6 +32027,8 @@
     manual: "#F5B83D"
   };
   var LABEL_MAX_CHARS = 28;
+  var MIN_ICON_ZOOM = 32 / 40;
+  var FIT_PADDING = 90;
   function truncateLabel(text3, max5 = LABEL_MAX_CHARS) {
     if (text3.length <= max5) return text3;
     return text3.slice(0, Math.max(1, max5 - 1)) + "\u2026";
@@ -32256,7 +32264,14 @@ ${marks}`;
     const bb = cy2.elements().boundingBox();
     const ext = cy2.extent();
     const inside = bb.x1 >= ext.x1 && bb.x2 <= ext.x2 && bb.y1 >= ext.y1 && bb.y2 <= ext.y2;
-    if (!inside) cy2.fit(cy2.elements(), 90);
+    if (inside) return;
+    cy2.fit(cy2.elements(), FIT_PADDING);
+    if (cy2.zoom() >= MIN_ICON_ZOOM) return;
+    const width2 = bb.x2 - bb.x1;
+    if (width2 * MIN_ICON_ZOOM <= cy2.width() - FIT_PADDING) {
+      cy2.zoom(MIN_ICON_ZOOM);
+      cy2.center(cy2.elements());
+    }
   }
   function arrangeMap(cy2, g, saved) {
     const nodeEls = [];
@@ -32264,13 +32279,15 @@ ${marks}`;
       if (!n.isParent()) nodeEls.push(n);
     });
     const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
+    const maxWidth = Math.max(400, (cy2.width() - FIT_PADDING) / MIN_ICON_ZOOM);
     const grid = arrangeGrid(
       nodeEls.map((n) => ({
         id: n.id(),
         kind: kinds.get(n.id()) ?? "unknown",
         label: String(n.data("label") ?? "")
       })),
-      saved
+      saved,
+      maxWidth
     );
     for (const n of nodeEls) {
       const p2 = grid.get(n.id());

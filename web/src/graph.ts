@@ -37,6 +37,12 @@ const STROKE: Record<string, string> = {
 // полная подпись остаётся в data(fullLabel) для подсказки.
 const LABEL_MAX_CHARS = 28;
 
+// Минимальный масштаб по умолчанию (NR-034 п.2): значок шириной
+// 40px модели при зуме 0.8 отрисовывается не мельче 32 px.
+export const MIN_ICON_ZOOM = 32 / 40;
+// Поля вокруг карты при подгонке и расчёте переноса ряда (px).
+const FIT_PADDING = 90;
+
 export function truncateLabel(text: string, max = LABEL_MAX_CHARS): string {
   if (text.length <= max) return text;
   return text.slice(0, Math.max(1, max - 1)) + '…';
@@ -299,14 +305,25 @@ export function setGraph(
 
 // fitIfClipped — если карта не влезает в окно (шлюз у края канвы,
 // NR-033 п.1: обзор всей карты), подгоняет масштаб; пока карта видна
-// целиком, зум и панорама владельца не трогаются.
-function fitIfClipped(cy: Core): void {
+// целиком, зум и панорама владельца не трогаются. После подгонки
+// значки не мельче 32 px (NR-034 п.2), если карта по ширине всё
+// равно влезает: переполнение по высоте допустимо, мельче — нет.
+export function fitIfClipped(cy: Core): void {
   if (cy.elements().length === 0) return;
   const bb = cy.elements().boundingBox();
   const ext = cy.extent();
   const inside =
     bb.x1 >= ext.x1 && bb.x2 <= ext.x2 && bb.y1 >= ext.y1 && bb.y2 <= ext.y2;
-  if (!inside) cy.fit(cy.elements(), 90);
+  if (inside) return;
+  cy.fit(cy.elements(), FIT_PADDING);
+  if (cy.zoom() >= MIN_ICON_ZOOM) return;
+  // Ширина карты при минимальном зуме влезает в канву с полями —
+  // поднимаем зум: по высоте карта прокручивается, значки читаются.
+  const width = bb.x2 - bb.x1;
+  if (width * MIN_ICON_ZOOM <= cy.width() - FIT_PADDING) {
+    cy.zoom(MIN_ICON_ZOOM);
+    cy.center(cy.elements());
+  }
 }
 
 // arrangeMap — детерминированная раскладка (NR-032 п.4): позиции
@@ -319,6 +336,9 @@ function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
     if (!n.isParent()) nodeEls.push(n);
   });
   const kinds = new Map(g.nodes.map((n) => [n.id, n.kind]));
+  // Ширина области карты в модельных координатах при масштабе по
+  // умолчанию (NR-034 п.2): ряд переносится, когда не влезает.
+  const maxWidth = Math.max(400, (cy.width() - FIT_PADDING) / MIN_ICON_ZOOM);
   const grid = arrangeGrid(
     nodeEls.map((n) => ({
       id: n.id(),
@@ -326,6 +346,7 @@ function arrangeMap(cy: Core, g: Graph, saved: ReadonlySet<string>): void {
       label: String(n.data('label') ?? ''),
     })),
     saved,
+    maxWidth,
   );
   for (const n of nodeEls) {
     const p = grid.get(n.id());

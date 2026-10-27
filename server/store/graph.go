@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -119,8 +118,10 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 
 // assumeLinks добавляет предполагаемые связи «устройство — шлюз»
 // (NR-032 п.3): условие — ни одной связи lldp/fdb/inferred; шлюзы —
-// из последнего скана (scans.gateways). Узел шлюза, у которого нет
-// своего устройства, создаётся как «ip:адрес» с kind router (п.2).
+// из последнего скана (scans.gateways), а если там пусто — из
+// резерва (NR-034): маршруты хоста внутри подсетей скана и первый
+// адрес подсети с устройством. Узел шлюза, у которого нет своего
+// устройства, создаётся как «ip:адрес» с kind router (п.2).
 func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
 	for _, l := range g.Links {
 		switch l.Source {
@@ -128,7 +129,7 @@ func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
 			return
 		}
 	}
-	gateways := s.latestGateways(ctx)
+	gateways := s.effectiveGateways(ctx)
 	if len(gateways) == 0 {
 		return
 	}
@@ -169,27 +170,6 @@ func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
 	for _, l := range topology.AssumedLinks(deviceIDs, gatewayIDs, base) {
 		g.Links = append(g.Links, LinkInfo{Link: l})
 	}
-}
-
-// latestGateways — шлюзы по умолчанию последнего скана (NR-032 п.2).
-func (s *Store) latestGateways(ctx context.Context) []netip.Addr {
-	var raw string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT gateways FROM scans ORDER BY id DESC LIMIT 1`).Scan(&raw)
-	if err != nil || raw == "" {
-		return nil
-	}
-	var addrs []netip.Addr
-	if err := json.Unmarshal([]byte(raw), &addrs); err != nil {
-		return nil
-	}
-	out := make([]netip.Addr, 0, len(addrs))
-	for _, a := range addrs {
-		if a.IsValid() {
-			out = append(out, a)
-		}
-	}
-	return out
 }
 
 // nodeLabel — подпись устройства (NR-031 п.4): ручное имя, hostname,
