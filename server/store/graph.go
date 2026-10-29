@@ -45,6 +45,9 @@ type Graph struct {
 // соседи). Результат детерминирован: сортировка как в model.Topology.
 func (s *Store) Topology(ctx context.Context) (Graph, error) {
 	g := Graph{Nodes: []NodeInfo{}, Links: []LinkInfo{}}
+	// Адрес шлюза для каждого устройства-шлюза (NR-037 п.3): подпись
+	// шлюза без имени — «Роутер <IP>» на карте, в таблице и карточке.
+	gwByDevice := s.gatewayIPsByDevice(ctx)
 
 	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, kind_auto, kind_manual, class, label, hostname, vendor, manual, verified,
                 (SELECT name FROM device_names WHERE device_id = devices.id ORDER BY seen ASC LIMIT 1)
@@ -63,7 +66,7 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 		}
 		known[id] = true
 		g.Nodes = append(g.Nodes, NodeInfo{
-			Node:       model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String, vendor)},
+			Node:       model.Node{ID: id, Kind: kind, Label: nodeLabel(id, label, hostname, name.String, vendor, gwByDevice[id])},
 			KindAuto:   kindAuto,
 			KindManual: kindManual,
 			Class:      class,
@@ -149,7 +152,7 @@ func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
 			if !nodeIDs[id] {
 				nodeIDs[id] = true
 				g.Nodes = append(g.Nodes, NodeInfo{
-					Node: model.Node{ID: id, Kind: model.NodeKindRouter, Label: "Шлюз (" + gw.String() + ")"},
+					Node: model.Node{ID: id, Kind: model.NodeKindRouter, Label: "Роутер " + gw.String()},
 				})
 			}
 			devID = id
@@ -172,11 +175,13 @@ func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
 	}
 }
 
-// nodeLabel — подпись устройства (NR-031 п.4): ручное имя, hostname,
-// первое имя, затем «производитель + последние 3 байта MAC» и только
-// после этого голый идентификатор (MAC). Длинный MAC в подписи —
-// последний вариант, а не первый.
-func nodeLabel(id, label, hostname, firstName, vendor string) string {
+// nodeLabel — подпись устройства (NR-031 п.4, NR-037 п.3): ручное
+// имя, hostname, первое имя, затем для шлюза «Роутер <IP>» (роутер
+// называется по адресу, а не по производителю: подпись «HUAWEI
+// TECHNOLOGIES CO.,LTD…» не читается), затем «производитель +
+// последние 3 байта MAC» и только после этого голый идентификатор
+// (MAC). Длинный MAC в подписи — последний вариант, а не первый.
+func nodeLabel(id, label, hostname, firstName, vendor, gatewayIP string) string {
 	switch {
 	case label != "":
 		return label
@@ -184,12 +189,34 @@ func nodeLabel(id, label, hostname, firstName, vendor string) string {
 		return hostname
 	case firstName != "":
 		return firstName
+	case gatewayIP != "":
+		return "Роутер " + gatewayIP
 	case vendor != "":
 		if tail := macTail(id); tail != "" {
 			return vendor + " " + tail
 		}
 	}
 	return id
+}
+
+// gatewayIPsByDevice — адрес шлюза для устройства: шлюзы последнего
+// скана (или резерва NR-034), найденные среди адресов устройств.
+// Устройство с несколькими шлюзами получает первый по порядку.
+func (s *Store) gatewayIPsByDevice(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	for _, gw := range s.effectiveGateways(ctx) {
+		var devID string
+		err := s.db.QueryRowContext(ctx,
+			`SELECT device_id FROM device_ips WHERE ip = ? ORDER BY device_id LIMIT 1`,
+			gw.String()).Scan(&devID)
+		if err != nil || devID == "" {
+			continue
+		}
+		if _, ok := out[devID]; !ok {
+			out[devID] = gw.String()
+		}
+	}
+	return out
 }
 
 // macTail — последние 3 байта MAC через двоеточия («dd:ee:ff»);
@@ -409,7 +436,9 @@ func (s *Store) Device(ctx context.Context, id string) (DeviceInfo, error) {
 // Данные собираются двумя-тремя выборками по всем устройствам и
 // раскладываются в памяти — без запроса на каждое устройство.
 func (s *Store) ListDevices(ctx context.Context) ([]DeviceInfo, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, class, hostname, vendor, ssid,
+	// kind — тип узла на карте (NR-037 п.3): таблица устройств
+	// называет шлюз «Роутер <IP>» тем же правилом, что и карта.
+	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, class, hostname, vendor, ssid,
 		manual, verified, last_seen FROM devices ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("store: список устройств: %w", err)
@@ -418,13 +447,14 @@ func (s *Store) ListDevices(ctx context.Context) ([]DeviceInfo, error) {
 	idx := make(map[string]int)
 	for rows.Next() {
 		var info DeviceInfo
-		var class, hostname, vendor, ssid, lastSeen string
-		if err := rows.Scan(&info.ID, &class, &hostname, &vendor, &ssid,
+		var kind, class, hostname, vendor, ssid, lastSeen string
+		if err := rows.Scan(&info.ID, &kind, &class, &hostname, &vendor, &ssid,
 			&info.Manual, &info.Verified, &lastSeen); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("store: устройство в списке: %w", err)
 		}
 		info.MAC = info.ID
+		info.Kind = kind
 		info.Class = model.Class(class)
 		// Срезы пустые, не nil: в JSON должны быть [], а не null —
 		// интерфейс вызывает .join по ним без проверок (смок NR-023).

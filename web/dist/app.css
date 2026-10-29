@@ -746,6 +746,36 @@ button.link {
 .attention-head { font-weight: 600; font-size: 12.5px; }
 .attention-text { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
+/* Группа однотипных сигналов «новые устройства» (NR-037 п.5):
+   одна свёрнутая строка, кнопки приёма и список — по раскрытию. */
+.attention-group { display: flex; flex-direction: column; gap: 6px; }
+.attention-group-head { width: 100%; }
+.attention-toggle { margin-left: auto; color: var(--muted); font-size: 12px; }
+.attention-group-actions {
+  display: flex;
+  gap: 6px;
+  padding-left: 21px;
+}
+.attention-accept {
+  flex: 1;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 9px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.attention-accept:hover { border-color: var(--accent); }
+.attention-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+  margin-left: 9px;
+}
+
 /* Строки статусов в легенде (NR-036 п.2): образцы колец — SVG,
    подпись текстом; цветовые правила не нужны (цвет в образце). */
 /* Ручная связь — жёлтый пунктир (цвет ручных связей на карте). */

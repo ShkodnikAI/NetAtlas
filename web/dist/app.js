@@ -32143,6 +32143,12 @@
             "text-margin-y": 6,
             "text-wrap": "wrap",
             "text-max-width": "140",
+            // NR-037 п.2: подпись читается поверх линий — фон под цвет
+            // поля с отступом 2 px; узлы с подписями рисуются выше
+            // рёбер сами (z-index-compare в cytoscape).
+            "text-background-color": "#0E1116",
+            "text-background-opacity": 1,
+            "text-background-padding": "2",
             width: String(BADGE_NODE),
             height: String(BADGE_NODE),
             label: "data(label)"
@@ -32164,22 +32170,31 @@
           style: {
             width: 1.6,
             "line-color": "data(color)",
-            "source-arrow-shape": "circle",
-            "target-arrow-shape": "circle",
-            "source-arrow-color": "data(color)",
-            "target-arrow-color": "data(color)",
-            // Точка соединения 6-8 px (NR-035 п.2): 1.6 x 4 = 6.4 px.
-            "arrow-scale": 4,
+            // NR-037 п.1: стрелок нет — точки соединений рисуют
+            // порт-узлы 6 px на стыке линии с диском (syncBendDots).
+            // Стрелка-«кружок» cytoscape при линии 1.6 и arrow-scale 4
+            // имеет диаметр ~35 px (min база 29 в формуле размера) и
+            // ложилась ровно на подписи узлов и шлюза.
+            "source-arrow-shape": "none",
+            "target-arrow-shape": "none",
+            // scale 1 держит отступ линии от диска (gap) 3.2 px — его
+            // закрывает точка на границе; при scale 4 отступ 12.8 px
+            // оставлял бы видимую щель.
+            "arrow-scale": 1,
             // Ортогональные связи (NR-033 п.1): ломаная под прямыми
             // углами. taxi-direction vertical: вертикальный участок у
-            // источника, горизонталь в зазоре между рядами. NR-036:
-            // значок-диск 80 px, шаг ряда 120 — зазор 40 px. ВАЖНО:
-            // cytoscape считает taxi-turn от границы узла, а не от
-            // центра: 20 px от границы = 60 px от центра — середина
-            // зазора между рядами.
+            // источника, горизонталь в зазоре между рядами. NR-037 п.2:
+            // cytoscape считает taxi-turn от границы узла: 10 px от
+            // границы = 50 px от центра — нижняя половина зазора между
+            // рядами (шаг ряда 120, диск 80). Раньше 20 px = 60 px от
+            // центра — ровно по нижнему краю подписей верхнего ряда
+            // (подпись висит на 6..20 px ниже диска, до y−60), и
+            // магистраль перечёркивала подписи. Теперь между подписью
+            // (до y−60) и диском (от y−40) свободная полоса y−60..y−40,
+            // магистраль — на y−50, посередине.
             "curve-style": "taxi",
             "taxi-direction": "vertical",
-            "taxi-turn": "20px",
+            "taxi-turn": "10px",
             "taxi-turn-min-distance": 8,
             color: "#9AA6B5",
             "font-size": 10,
@@ -32215,7 +32230,11 @@
             "background-opacity": 1,
             "border-width": 0,
             label: "",
-            events: "no"
+            events: "no",
+            // NR-037 п.1: точки ниже узлов и их подписей (среди узлов
+            // порядок по z-index, затем по добавлению), но выше линий —
+            // z-index-compare всегда рисует узлы над рёбрами.
+            "z-index": -1
           }
         }
       ],
@@ -32356,7 +32375,16 @@ ${marks}`;
         // (владелец двигал, отправка ещё не прошла) сильнее серверной;
         // серверная — сильнее раскладки; без всего — раскладка.
         position: positions2.get(n.id) ?? saved?.get(n.id) ?? { x: 0, y: 0 },
-        style: { shape: st.shape, width: String(st.width), height: String(st.height) },
+        style: {
+          shape: st.shape,
+          width: String(st.width),
+          height: String(st.height),
+          // NR-037 п.1: подпись шлюза — НАД диском. Звезда связей
+          // подходит к роутеру снизу, точка соединения — на нижней
+          // кромке диска; подпись под диском попадала бы под линию
+          // и под точку («у Huawei подпись наезжает на точку и линию»).
+          ...n.kind === "router" ? { "text-valign": "top", "text-margin-y": "-6" } : {}
+        },
         classes: [n.manual ? "manual" : "", n.verified ? "" : "unverified"].filter(Boolean).join(" ")
       });
     }
@@ -32470,11 +32498,19 @@ ${marks}`;
   function syncBendDots(cy2) {
     const seen = /* @__PURE__ */ new Set();
     cy2.edges().forEach((e) => {
-      const pts2 = e.segmentPoints();
-      for (let i2 = 0; i2 < pts2.length; i2++) {
-        const p2 = pts2[i2];
+      const places = [];
+      const segs = e.segmentPoints();
+      for (let i2 = 0; i2 < segs.length; i2++) {
+        const p2 = segs[i2];
+        if (p2 !== void 0) places.push({ suffix: String(i2), p: p2 });
+      }
+      places.push(
+        { suffix: "src", p: e.sourceEndpoint() },
+        { suffix: "tgt", p: e.targetEndpoint() }
+      );
+      for (const { suffix, p: p2 } of places) {
         if (p2 === void 0) continue;
-        const id2 = `bend:${e.id()}:${i2}`;
+        const id2 = `bend:${e.id()}:${suffix}`;
         seen.add(id2);
         const existing = cy2.$id(id2).first();
         if (existing !== void 0 && existing.nonempty()) {
@@ -32788,7 +32824,7 @@ ${marks}`;
     typeRow.append(dt, dd);
     dl.append(typeRow);
     row("ID", info.id);
-    if (info.hostname !== "") row("\u0418\u043C\u044F", info.hostname);
+    if (info.hostname) row("\u0418\u043C\u044F", info.hostname);
     row("IP", info.ips.length > 0 ? info.ips.join(", ") : "\u2014");
     if (info.vendor !== "") row("\u041F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C", info.vendor);
     row("\u041A\u043B\u0430\u0441\u0441", className(info.class));
@@ -32937,6 +32973,200 @@ ${marks}`;
     }
   }
 
+  // src/scan.ts
+  var CLASS_OPTIONS = [
+    ["managed", "\u041C\u043E\u0451"],
+    ["guest", "\u0413\u043E\u0441\u0442\u044C"],
+    ["known_no_agent", "\u0411\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430"],
+    ["unknown", "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
+  ];
+  function subnetGateway(cidr) {
+    const [base, prefix] = cidr.split("/");
+    const octets = (base ?? "").split(".");
+    if (octets.length !== 4 || prefix === void 0 || prefix === "") return null;
+    const nums = [];
+    for (const o of octets) {
+      const n = Number(o);
+      if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+      nums.push(n);
+    }
+    return `${nums[0]}.${nums[1]}.${nums[2]}.1`;
+  }
+  async function setupScanScreen(cfg, el9) {
+    el9.subnets.textContent = "";
+    for (const cidr of cfg.subnets) {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = cidr;
+      box.checked = true;
+      label.append(box, document.createTextNode(` ${cidr}`));
+      el9.subnets.append(label);
+    }
+    if (cfg.subnets.length > 0) {
+      const gw = subnetGateway(cfg.subnets[0] ?? "");
+      if (gw !== null) el9.snmp.placeholder = gw;
+    }
+    if (!cfg.snmp) {
+      el9.snmp.disabled = true;
+      el9.snmp.value = "";
+      el9.snmpNote.hidden = false;
+    }
+  }
+  function startScan(el9) {
+    const subnets = [...el9.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
+      (b) => b.value
+    );
+    const snmpTargets = el9.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    const out = {
+      subnets,
+      ping: el9.ping.checked,
+      names: el9.names.checked,
+      snmp_targets: snmpTargets,
+      confirm: true
+    };
+    const path = el9.leasesPath.value.trim();
+    if (path !== "") {
+      out.leases_path = path;
+      out.leases_format = el9.leasesFormat.value;
+    }
+    return out;
+  }
+  function expectedStages(ping, names, snmp, leases = false) {
+    let n = 1;
+    if (ping) n++;
+    if (names) n++;
+    if (leases) n++;
+    if (snmp) n += 2;
+    return n;
+  }
+  function renderProgress(el9, view, expected) {
+    el9.progressWrap.hidden = false;
+    const done = view.stages.length;
+    if (view.status === "done") {
+      el9.progress.style.width = "100%";
+      el9.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
+    } else if (view.status === "failed") {
+      el9.progress.style.width = "0";
+      el9.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
+    } else {
+      el9.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
+      el9.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
+    }
+  }
+  function ipSortKey(info) {
+    const first2 = info.ips[0];
+    if (first2 === void 0) return Number.POSITIVE_INFINITY;
+    const octets = first2.split(".");
+    if (octets.length !== 4) return Number.POSITIVE_INFINITY;
+    let key = 0;
+    for (const o of octets) {
+      const n = Number(o);
+      if (!Number.isInteger(n) || n < 0 || n > 255) return Number.POSITIVE_INFINITY;
+      key = key * 256 + n;
+    }
+    return key;
+  }
+  function displayName(info) {
+    if (info.hostname) return info.hostname;
+    const first2 = info.names[0];
+    if (first2 !== void 0 && first2.name !== "") return first2.name;
+    if (info.kind === "router" && info.ips.length > 0) return `\u0420\u043E\u0443\u0442\u0435\u0440 ${info.ips[0]}`;
+    if (info.vendor !== "") return info.vendor;
+    return info.id;
+  }
+  function lastSeenOf(info) {
+    let latest = null;
+    for (const o of info.observations) {
+      const t = new Date(o.seen);
+      if (Number.isNaN(t.getTime())) continue;
+      if (latest === null || t.getTime() > latest.getTime()) latest = t;
+    }
+    return latest;
+  }
+  function sourcesOf(info) {
+    const set2 = /* @__PURE__ */ new Set();
+    for (const o of info.observations) set2.add(o.source);
+    return [...set2].sort().join(", ");
+  }
+  function sortDevicesByIP(devices) {
+    return [...devices].sort((a, b) => {
+      const ka = ipSortKey(a);
+      const kb = ipSortKey(b);
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  }
+  function deviceRow(info, onClass) {
+    const tr = document.createElement("tr");
+    const nameCell = document.createElement("td");
+    const icon = document.createElement("img");
+    icon.src = svgIcon(info.kind ?? "unknown");
+    icon.alt = "";
+    icon.width = 20;
+    icon.height = 20;
+    icon.className = "dev-icon";
+    nameCell.append(icon, document.createTextNode(displayName(info)));
+    const cell = (value) => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      return td;
+    };
+    tr.append(
+      nameCell,
+      cell(info.ips.join(", ")),
+      cell(info.id),
+      cell(info.vendor)
+    );
+    const classCell = document.createElement("td");
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `\u041A\u043B\u0430\u0441\u0441 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 ${info.id}`);
+    for (const [value, label] of CLASS_OPTIONS) {
+      const opt = new Option(label, value);
+      if (info.class === value) opt.selected = true;
+      select.append(opt);
+    }
+    select.addEventListener("change", () => onClass(info.id, select.value));
+    classCell.append(select);
+    tr.append(classCell);
+    const seen = lastSeenOf(info);
+    tr.append(cell(seen === null ? "\u2014" : seen.toLocaleString()));
+    tr.append(cell(sourcesOf(info)));
+    return tr;
+  }
+  function renderDevicesTable(tbody, devices, onClass) {
+    tbody.textContent = "";
+    if (devices.length === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.className = "empty";
+      td.colSpan = 7;
+      td.textContent = "\u0423\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435.";
+      tr.append(td);
+      tbody.append(tr);
+      return;
+    }
+    for (const d of sortDevicesByIP(devices)) {
+      tbody.append(deviceRow(d, onClass));
+    }
+  }
+  function renderAlerts(el9, alerts, onAck) {
+    el9.alertsList.textContent = "";
+    el9.badge.hidden = alerts.length === 0;
+    el9.badge.textContent = String(alerts.length);
+    for (const a of alerts) {
+      const item = document.createElement("div");
+      item.className = "alert-item";
+      const text3 = document.createElement("span");
+      text3.textContent = `\u041D\u043E\u0432\u043E\u0435 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E: ${a.device_id}`;
+      const ack = document.createElement("button");
+      ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
+      ack.addEventListener("click", () => onAck(a.id));
+      item.append(text3, ack);
+      el9.alertsList.append(item);
+    }
+  }
+
   // src/card.ts
   var CARD_TABS = [
     ["card-tab-overview", "card-page-overview"],
@@ -32982,7 +33212,7 @@ ${marks}`;
     root.textContent = "";
     const head = el8("div", "card-head");
     const title = el8("h2");
-    text2(title, info.hostname ? info.hostname : info.id);
+    text2(title, info.hostname ? info.hostname : displayName(info));
     const marks = el8("p", "card-marks");
     const badge = (cls, label) => {
       const b = el8("span", `badge ${cls}`);
@@ -33464,236 +33694,149 @@ ${marks}`;
       return;
     }
     container2.hidden = false;
+    const { group: group2, rest } = newDeviceGroup(signals);
+    const groupedIds = new Set(group2.map((s) => s.device_id));
+    let groupShown = false;
     for (const s of sorted) {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = `attention-row status-${s.status}`;
-      row.dataset.deviceId = s.device_id;
-      row.dataset.kind = s.kind;
-      if (s.device_id === "") row.disabled = true;
-      const mark = document.createElement("span");
-      mark.className = "attention-mark";
-      mark.textContent = STATUS_STYLES[s.status]?.glyph ?? "\u25CF";
-      mark.setAttribute("aria-hidden", "true");
-      row.append(mark);
-      const node = nodes3.find((x2) => x2.id === s.device_id);
-      if (node !== void 0) {
-        const icon = document.createElement("img");
-        icon.src = svgIcon(node.kind);
-        icon.alt = "";
-        icon.width = 20;
-        icon.height = 20;
-        icon.className = "attention-icon";
-        row.append(icon);
+      if (!groupShown && groupedIds.has(s.device_id)) {
+        container2.append(groupBlock(group2, nodes3, handlers));
+        groupShown = true;
       }
-      const body = document.createElement("span");
-      body.className = "attention-body";
-      const head = document.createElement("span");
-      head.className = "attention-head";
-      head.textContent = (SIGNAL_HEAD[s.kind] ?? s.kind) + (s.device_id !== "" ? `: ${deviceLabel(s.device_id, nodes3)}` : "");
-      const text3 = document.createElement("span");
-      text3.className = "attention-text";
-      text3.textContent = s.text;
-      body.append(head, text3);
-      row.append(mark, body);
-      if (s.device_id !== "") {
-        row.addEventListener("click", () => handlers.onFocus(s.device_id));
-      }
-      container2.append(row);
+      if (groupedIds.has(s.device_id)) continue;
+      container2.append(signalRow(s, nodes3, handlers));
     }
+    if (!groupShown && group2.length >= 2) {
+      container2.append(groupBlock(group2, nodes3, handlers));
+    }
+    void rest;
   }
-
-  // src/scan.ts
-  var CLASS_OPTIONS = [
+  function signalRow(s, nodes3, handlers) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `attention-row status-${s.status}`;
+    row.dataset.deviceId = s.device_id;
+    row.dataset.kind = s.kind;
+    if (s.device_id === "") row.disabled = true;
+    const mark = document.createElement("span");
+    mark.className = "attention-mark";
+    mark.textContent = STATUS_STYLES[s.status]?.glyph ?? "\u25CF";
+    mark.setAttribute("aria-hidden", "true");
+    row.append(mark);
+    const node = nodes3.find((x2) => x2.id === s.device_id);
+    if (node !== void 0) {
+      const icon = document.createElement("img");
+      icon.src = svgIcon(node.kind);
+      icon.alt = "";
+      icon.width = 20;
+      icon.height = 20;
+      icon.className = "attention-icon";
+      row.append(icon);
+    }
+    const body = document.createElement("span");
+    body.className = "attention-body";
+    const head = document.createElement("span");
+    head.className = "attention-head";
+    head.textContent = (SIGNAL_HEAD[s.kind] ?? s.kind) + (s.device_id !== "" ? `: ${deviceLabel(s.device_id, nodes3)}` : "");
+    const text3 = document.createElement("span");
+    text3.className = "attention-text";
+    text3.textContent = s.text;
+    body.append(head, text3);
+    row.append(mark, body);
+    if (s.device_id !== "") {
+      row.addEventListener("click", () => handlers.onFocus(s.device_id));
+    }
+    return row;
+  }
+  var ACCEPT_ALL_CLASSES = [
     ["managed", "\u041C\u043E\u0451"],
-    ["guest", "\u0413\u043E\u0441\u0442\u044C"],
-    ["known_no_agent", "\u0411\u0435\u0437 \u0430\u0433\u0435\u043D\u0442\u0430"],
-    ["unknown", "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435"]
+    ["guest", "\u0413\u043E\u0441\u0442\u044C"]
   ];
-  function subnetGateway(cidr) {
-    const [base, prefix] = cidr.split("/");
-    const octets = (base ?? "").split(".");
-    if (octets.length !== 4 || prefix === void 0 || prefix === "") return null;
-    const nums = [];
-    for (const o of octets) {
-      const n = Number(o);
-      if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-      nums.push(n);
+  function groupBlock(group2, nodes3, handlers) {
+    const box = document.createElement("div");
+    box.className = "attention-group";
+    box.dataset.kind = "unknown_new";
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "attention-row status-attention attention-group-head";
+    head.setAttribute("aria-expanded", "false");
+    const mark = document.createElement("span");
+    mark.className = "attention-mark";
+    mark.textContent = STATUS_STYLES["attention"].glyph;
+    mark.setAttribute("aria-hidden", "true");
+    const body = document.createElement("span");
+    body.className = "attention-body";
+    const headText = document.createElement("span");
+    headText.className = "attention-head";
+    headText.textContent = `\u041D\u043E\u0432\u044B\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430: ${group2.length}`;
+    const sub = document.createElement("span");
+    sub.className = "attention-text";
+    sub.textContent = "\u043F\u0440\u0438\u043D\u044F\u0442\u044C \u0432\u0441\u0435 \u043A\u0430\u043A \xAB\u041C\u043E\u0451\xBB \u0438\u043B\u0438 \xAB\u0413\u043E\u0441\u0442\u044C\xBB \u2014 \u0440\u0435\u0448\u0435\u043D\u0438\u0435 \u043E\u0434\u043D\u043E \u043D\u0430 \u0432\u0441\u0435\u0445";
+    body.append(headText, sub);
+    const toggle = document.createElement("span");
+    toggle.className = "attention-toggle";
+    toggle.textContent = "\u25B8";
+    toggle.setAttribute("aria-hidden", "true");
+    head.append(mark, body, toggle);
+    const actions = document.createElement("div");
+    actions.className = "attention-group-actions";
+    actions.hidden = true;
+    const list = document.createElement("div");
+    list.className = "attention-group-list";
+    list.hidden = true;
+    for (const [klass, label] of ACCEPT_ALL_CLASSES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "attention-accept";
+      b.textContent = `\u041F\u0440\u0438\u043D\u044F\u0442\u044C \u0432\u0441\u0435 \u043A\u0430\u043A ${label}`;
+      b.addEventListener(
+        "click",
+        () => handlers.onAcceptAll?.(
+          group2.map((s) => s.device_id),
+          klass
+        )
+      );
+      actions.append(b);
     }
-    return `${nums[0]}.${nums[1]}.${nums[2]}.1`;
+    for (const s of group2) {
+      list.append(signalRow(s, nodes3, handlers));
+    }
+    head.addEventListener("click", () => {
+      const open = head.getAttribute("aria-expanded") === "true";
+      head.setAttribute("aria-expanded", open ? "false" : "true");
+      actions.hidden = open;
+      list.hidden = open;
+      toggle.textContent = open ? "\u25B8" : "\u25BE";
+    });
+    box.append(head, actions, list);
+    return box;
   }
-  async function setupScanScreen(cfg, el9) {
-    el9.subnets.textContent = "";
-    for (const cidr of cfg.subnets) {
-      const label = document.createElement("label");
-      const box = document.createElement("input");
-      box.type = "checkbox";
-      box.value = cidr;
-      box.checked = true;
-      label.append(box, document.createTextNode(` ${cidr}`));
-      el9.subnets.append(label);
-    }
-    if (cfg.subnets.length > 0) {
-      const gw = subnetGateway(cfg.subnets[0] ?? "");
-      if (gw !== null) el9.snmp.placeholder = gw;
-    }
-    if (!cfg.snmp) {
-      el9.snmp.disabled = true;
-      el9.snmp.value = "";
-      el9.snmpNote.hidden = false;
-    }
-  }
-  function startScan(el9) {
-    const subnets = [...el9.subnets.querySelectorAll('input[type="checkbox"]:checked')].map(
-      (b) => b.value
+  function newDeviceGroup(signals) {
+    const group2 = signals.filter(
+      (s) => s.kind === "unknown_new" && s.decision && s.device_id !== ""
     );
-    const snmpTargets = el9.snmp.value.split(",").map((s) => s.trim()).filter((s) => s !== "");
-    const out = {
-      subnets,
-      ping: el9.ping.checked,
-      names: el9.names.checked,
-      snmp_targets: snmpTargets,
-      confirm: true
-    };
-    const path = el9.leasesPath.value.trim();
-    if (path !== "") {
-      out.leases_path = path;
-      out.leases_format = el9.leasesFormat.value;
+    if (group2.length < 2) return { group: [], rest: signals };
+    const ids = new Set(group2.map((s) => s.device_id));
+    return { group: group2, rest: signals.filter((s) => !ids.has(s.device_id)) };
+  }
+  function attentionBadgeCount(signals) {
+    const { group: group2 } = newDeviceGroup(signals);
+    return signals.length - group2.length + (group2.length >= 2 ? 1 : 0);
+  }
+  function withGroupedDecisions(statuses, signals) {
+    const { group: group2 } = newDeviceGroup(signals);
+    if (group2.length < 2) return statuses;
+    const grouped = new Set(group2.map((s) => s.device_id));
+    const otherDecisions = new Set(
+      signals.filter((s) => s.decision && s.kind !== "unknown_new" && s.device_id !== "").map((s) => s.device_id)
+    );
+    const out = /* @__PURE__ */ new Map();
+    for (const [id2, st] of statuses) {
+      out.set(
+        id2,
+        grouped.has(id2) && !otherDecisions.has(id2) ? { status: st.status, decisions: 0 } : st
+      );
     }
     return out;
-  }
-  function expectedStages(ping, names, snmp, leases = false) {
-    let n = 1;
-    if (ping) n++;
-    if (names) n++;
-    if (leases) n++;
-    if (snmp) n += 2;
-    return n;
-  }
-  function renderProgress(el9, view, expected) {
-    el9.progressWrap.hidden = false;
-    const done = view.stages.length;
-    if (view.status === "done") {
-      el9.progress.style.width = "100%";
-      el9.status.textContent = `\u0413\u043E\u0442\u043E\u0432\u043E: \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 ${view.counts.devices}, \u0445\u043E\u0441\u0442\u043E\u0432 ${view.counts.hosts}, \u0441\u0432\u044F\u0437\u0435\u0439 ${view.counts.links}, SNMP-\u0446\u0435\u043B\u0435\u0439 ${view.counts.snmp_targets}.`;
-    } else if (view.status === "failed") {
-      el9.progress.style.width = "0";
-      el9.status.textContent = `\u041E\u0448\u0438\u0431\u043A\u0430: ${view.error ?? "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F"}`;
-    } else {
-      el9.progress.style.width = `${Math.min(100, Math.round(done / Math.max(1, expected) * 100))}%`;
-      el9.status.textContent = `\u0418\u0434\u0451\u0442 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435: \u0441\u0442\u0430\u0434\u0438\u044F ${done + 1} \u0438\u0437 ${expected}`;
-    }
-  }
-  function ipSortKey(info) {
-    const first2 = info.ips[0];
-    if (first2 === void 0) return Number.POSITIVE_INFINITY;
-    const octets = first2.split(".");
-    if (octets.length !== 4) return Number.POSITIVE_INFINITY;
-    let key = 0;
-    for (const o of octets) {
-      const n = Number(o);
-      if (!Number.isInteger(n) || n < 0 || n > 255) return Number.POSITIVE_INFINITY;
-      key = key * 256 + n;
-    }
-    return key;
-  }
-  function displayName(info) {
-    if (info.hostname !== "") return info.hostname;
-    const first2 = info.names[0];
-    if (first2 !== void 0 && first2.name !== "") return first2.name;
-    if (info.vendor !== "") return info.vendor;
-    return info.id;
-  }
-  function lastSeenOf(info) {
-    let latest = null;
-    for (const o of info.observations) {
-      const t = new Date(o.seen);
-      if (Number.isNaN(t.getTime())) continue;
-      if (latest === null || t.getTime() > latest.getTime()) latest = t;
-    }
-    return latest;
-  }
-  function sourcesOf(info) {
-    const set2 = /* @__PURE__ */ new Set();
-    for (const o of info.observations) set2.add(o.source);
-    return [...set2].sort().join(", ");
-  }
-  function sortDevicesByIP(devices) {
-    return [...devices].sort((a, b) => {
-      const ka = ipSortKey(a);
-      const kb = ipSortKey(b);
-      if (ka !== kb) return ka < kb ? -1 : 1;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
-  }
-  function deviceRow(info, onClass) {
-    const tr = document.createElement("tr");
-    const nameCell = document.createElement("td");
-    const icon = document.createElement("img");
-    icon.src = svgIcon(info.kind ?? "unknown");
-    icon.alt = "";
-    icon.width = 20;
-    icon.height = 20;
-    icon.className = "dev-icon";
-    nameCell.append(icon, document.createTextNode(displayName(info)));
-    const cell = (value) => {
-      const td = document.createElement("td");
-      td.textContent = value;
-      return td;
-    };
-    tr.append(
-      nameCell,
-      cell(info.ips.join(", ")),
-      cell(info.id),
-      cell(info.vendor)
-    );
-    const classCell = document.createElement("td");
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", `\u041A\u043B\u0430\u0441\u0441 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 ${info.id}`);
-    for (const [value, label] of CLASS_OPTIONS) {
-      const opt = new Option(label, value);
-      if (info.class === value) opt.selected = true;
-      select.append(opt);
-    }
-    select.addEventListener("change", () => onClass(info.id, select.value));
-    classCell.append(select);
-    tr.append(classCell);
-    const seen = lastSeenOf(info);
-    tr.append(cell(seen === null ? "\u2014" : seen.toLocaleString()));
-    tr.append(cell(sourcesOf(info)));
-    return tr;
-  }
-  function renderDevicesTable(tbody, devices, onClass) {
-    tbody.textContent = "";
-    if (devices.length === 0) {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
-      td.className = "empty";
-      td.colSpan = 7;
-      td.textContent = "\u0423\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435.";
-      tr.append(td);
-      tbody.append(tr);
-      return;
-    }
-    for (const d of sortDevicesByIP(devices)) {
-      tbody.append(deviceRow(d, onClass));
-    }
-  }
-  function renderAlerts(el9, alerts, onAck) {
-    el9.alertsList.textContent = "";
-    el9.badge.hidden = alerts.length === 0;
-    el9.badge.textContent = String(alerts.length);
-    for (const a of alerts) {
-      const item = document.createElement("div");
-      item.className = "alert-item";
-      const text3 = document.createElement("span");
-      text3.textContent = `\u041D\u043E\u0432\u043E\u0435 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E: ${a.device_id}`;
-      const ack = document.createElement("button");
-      ack.textContent = "\u0420\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C";
-      ack.addEventListener("click", () => onAck(a.id));
-      item.append(text3, ack);
-      el9.alertsList.append(item);
-    }
   }
 
   // src/main.ts
@@ -33798,19 +33941,30 @@ ${marks}`;
     }
   }
   function statusProvider() {
-    const map2 = statusesOf(signalsView);
+    const map2 = withGroupedDecisions(statusesOf(signalsView), signalsView.signals);
     return {
       status: (id2) => map2.get(id2) ?? { status: "online", decisions: 0 }
     };
   }
+  async function acceptAllGroup(deviceIds, klass) {
+    try {
+      for (const id2 of deviceIds) {
+        await api2.updateDevice(id2, { class: klass });
+      }
+    } catch (err) {
+      showNotice(errMessage(err), true);
+    }
+    await reload();
+  }
   function refreshAttention() {
     const panel = $2("attention-panel");
     renderAttentionPanel(panel, signalsView.signals, graph.nodes, {
-      onFocus: (deviceId) => focusNode(deviceId)
+      onFocus: (deviceId) => focusNode(deviceId),
+      onAcceptAll: (ids, klass) => void acceptAllGroup(ids, klass)
     });
     panel.hidden = !attentionOpen || signalsView.signals.length === 0;
     const count = $2("attention-count");
-    count.textContent = String(signalsView.signals.length);
+    count.textContent = String(attentionBadgeCount(signalsView.signals));
     count.hidden = signalsView.signals.length === 0;
   }
   function focusNode(deviceId) {

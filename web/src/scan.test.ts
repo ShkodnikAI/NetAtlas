@@ -215,6 +215,26 @@ describe('deviceRow', () => {
     expect(displayName({ ...base, hostname: '', names: [], vendor: '' })).toBe(base.id);
   });
 
+  it('шлюз без имени — «Роутер <IP>», как на карте и в карточке (NR-037 п.3)', () => {
+    const gw: DeviceInfo = {
+      ...base,
+      hostname: '',
+      names: [],
+      kind: 'router',
+      vendor: 'Huawei Technologies',
+    };
+    expect(displayName(gw)).toBe('Роутер 10.0.0.11');
+    // Имя устройства сильнее адреса.
+    const gwNamed: DeviceInfo = {
+      ...gw,
+      names: [{ source: 'dns', name: 'home-gw.local', seen: '2026-10-26T08:00:00Z' }],
+    };
+    expect(displayName(gwNamed)).toBe('home-gw.local');
+    // Правило не достаётся не-шлюзам: производитель остаётся.
+    const plain: DeviceInfo = { ...gw, kind: 'unknown' };
+    expect(displayName(plain)).toBe('Huawei Technologies');
+  });
+
   it('без наблюдений время — прочерк, источники пусты', () => {
     const tr = deviceRow({ ...base, observations: [] }, () => {});
     const tds = [...tr.querySelectorAll('td')];

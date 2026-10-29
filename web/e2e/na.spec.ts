@@ -592,11 +592,14 @@ test('у узла с оповещением виден бейдж внимани
   const a11y = await page.locator('#map-a11y li').allTextContents();
   expect(a11y.some((t) => t.includes('▲ внимание'))).toBe(true);
   // Панель «Требуют внимания»: список сигналов, клик фокусирует узел.
+  // NR-037 п.5: однотипные «новые устройства» свёрнуты в группу —
+  // берём первую строку верхнего уровня с устройством (строки
+  // группы скрыты внутри списка до раскрытия).
   await page.click('#btn-attention');
-  const rows = page.locator('#attention-panel .attention-row');
+  const rows = page.locator(
+    '#attention-panel > .attention-row[data-device-id]:not([data-device-id=""])',
+  );
   await expect(rows.first()).toBeVisible();
-  const count = await rows.count();
-  expect(count).toBeGreaterThan(0);
   // Клик по строке фокусирует узел (панель открывается, узел выбран).
   const deviceId = await rows.first().getAttribute('data-device-id');
   expect(deviceId).not.toBe('');
@@ -940,13 +943,32 @@ test('«Вписать в окно» показывает все узлы, «Ц�
   await shot(page, 'map-center');
 });
 
-test('на концах рёбер точки, на изломах — порт-узлы, в DOM есть фоновая сетка (NR-035 п.2)', async ({ page }) => {
+test('на концах рёбер точки, на изломах — порт-узлы, в DOM есть фоновая сетка (NR-035 п.2, NR-037 п.1)', async ({ page }) => {
   await openMap(page);
   const report = await page.evaluate(() => {
     const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
     const edges = cy.edges().toArray();
-    const plain = edges.every((e: { style: (k: string) => string }) =>
-      e.style('source-arrow-shape') === 'circle' && e.style('target-arrow-shape') === 'circle');
+    // NR-037 п.1: стрелок нет — точки соединений рисуют порт-узлы
+    // 6 px на стыке линии с диском (стрелка-«кружок» cytoscape при
+    // arrow-scale 4 имела диаметр ~35 px и закрывала подписи).
+    const noArrows = edges.every((e: { style: (k: string) => string }) =>
+      e.style('source-arrow-shape') === 'none' && e.style('target-arrow-shape') === 'none');
+    // Точки на концах: порт-узлы на sourceEndpoint/targetEndpoint.
+    const ends: string[] = [];
+    for (const e of edges) {
+      const se = e.sourceEndpoint() as { x: number; y: number };
+      const te = e.targetEndpoint() as { x: number; y: number };
+      const src = cy.getElementById(`bend:${e.id()}:src`).first();
+      const tgt = cy.getElementById(`bend:${e.id()}:tgt`).first();
+      if (src.nonempty()) {
+        const d = Math.hypot(src.position('x') - se.x, src.position('y') - se.y);
+        if (d > 1) ends.push(`${e.id()}: src-точка в ${d.toFixed(1)} px от стыка`);
+      } else ends.push(`${e.id()}: нет src-точки`);
+      if (tgt.nonempty()) {
+        const d = Math.hypot(tgt.position('x') - te.x, tgt.position('y') - te.y);
+        if (d > 1) ends.push(`${e.id()}: tgt-точка в ${d.toFixed(1)} px от стыка`);
+      } else ends.push(`${e.id()}: нет tgt-точки`);
+    }
     const layer = document.getElementById('map-grid');
     const show = document.getElementById('show-grid') as HTMLInputElement | null;
     const snap = document.getElementById('snap-grid') as HTMLInputElement | null;
@@ -956,7 +978,8 @@ test('на концах рёбер точки, на изломах — порт-
     const size = layer !== null ? layer.style.backgroundSize : '';
     return {
       edges: edges.length,
-      plain,
+      noArrows,
+      ends,
       gridOn,
       bgHasDots: bg.includes('radial-gradient'),
       size: size,
@@ -964,7 +987,8 @@ test('на концах рёбер точки, на изломах — порт-
     };
   });
   expect(report.edges).toBeGreaterThan(0);
-  expect(report.plain).toBe(true);
+  expect(report.noArrows).toBe(true);
+  expect(report.ends).toEqual([]);
   expect(report.gridOn).toBe(true);
   expect(report.bgHasDots).toBe(true);
   // Тайл сетки = шаг привязки × масштаб (100 × 120 при зуме 1).
@@ -1023,4 +1047,152 @@ test('глиф значка заполняет плашку по центру, �
   expect(report.total).toBeGreaterThan(0);
   expect(report.bad).toEqual([]);
   await shot(page, 'map-glyph');
+});
+
+// --- NR-037: лишние фиолетовые круги, линии поверх подписей ------------
+
+test('на карте нет круглых элементов крупнее 12 px, кроме узлов-устройств (NR-037 п.1, п.4а)', async ({ page }) => {
+  await openMap(page);
+  const report = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const bad: string[] = [];
+    // (а) Размер каждого порт-узла bend через cy: 6 px, не крупнее 12.
+    for (const n of cy.nodes('.bend').toArray()) {
+      if (n.width() > 12 || n.height() > 12) {
+        bad.push(`${n.id()}: ${n.width()}x${n.height()}`);
+      }
+    }
+    if (cy.nodes('.bend').length === 0) bad.push('порт-узлов нет');
+    // Причина «фиолетовых кругов» не возвращается: у рёбер нет
+    // стрелок (стрелка-«кружок» cytoscape при arrow-scale 4 —
+    // диск ~35 px, ложившийся на подписи).
+    for (const e of cy.edges().toArray()) {
+      if (e.style('source-arrow-shape') !== 'none' || e.style('target-arrow-shape') !== 'none') {
+        bad.push(`${e.id()}: стрелки возвращены`);
+      }
+    }
+    // Круглые (ellipse) элементы — только узлы-устройства (80 px)
+    // и порт-узлы: других круглых крупнее 12 px быть не должно.
+    for (const n of cy.nodes().toArray()) {
+      if (n.hasClass('bend') || n.isParent()) continue;
+      if (n.style('shape') === 'ellipse' && n.width() <= 12) {
+        bad.push(`${n.id()}: устройство размером ${n.width()}`);
+      }
+    }
+    return { bends: cy.nodes('.bend').length, bad };
+  });
+  expect(report.bends).toBeGreaterThan(0);
+  expect(report.bad).toEqual([]);
+  await shot(page, 'map-nr037-dots');
+});
+
+test('сегменты рёбер не пересекают прямоугольники подписей (NR-037 п.2, п.4б)', async ({ page }) => {
+  await openMap(page);
+  const report = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    // Прямоугольники подписей всех узлов (без тел узлов): подпись
+    // шлюза — над диском, остальных — под диском.
+    const labels = cy.nodes()
+      .filter((n: { isParent: () => boolean; hasClass: (c: string) => boolean }) =>
+        !n.isParent() && !n.hasClass('bend'))
+      .map((n: { id: () => string; boundingBox: (o: object) => { x1: number; y1: number; x2: number; y2: number } }) => ({
+        id: n.id(),
+        box: n.boundingBox({
+          includeNodes: false,
+          includeLabels: true,
+          includeEdges: false,
+          includeOverlays: false,
+        }),
+      }));
+    const hits: string[] = [];
+    const segRect = (
+      ax: number, ay: number, bx: number, by: number,
+      r: { x1: number; y1: number; x2: number; y2: number },
+    ): boolean => {
+      const x1 = Math.min(ax, bx);
+      const x2 = Math.max(ax, bx);
+      const y1 = Math.min(ay, by);
+      const y2 = Math.max(ay, by);
+      return Math.min(x2, r.x2) - Math.max(x1, r.x1) > 1 && Math.min(y2, r.y2) - Math.max(y1, r.y1) > 1;
+    };
+    for (const e of cy.edges().toArray()) {
+      const pts = [e.sourceEndpoint(), ...e.segmentPoints(), e.targetEndpoint()] as { x: number; y: number }[];
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1] as { x: number; y: number };
+        const b = pts[i] as { x: number; y: number };
+        for (const { id, box } of labels) {
+          if (segRect(a.x, a.y, b.x, b.y, box)) {
+            hits.push(`${e.id()}: сегмент ${i - 1}->${i} через подпись ${id}`);
+          }
+        }
+      }
+    }
+    return { labels: labels.length, hits };
+  });
+  expect(report.labels).toBe(15);
+  expect(report.hits).toEqual([]);
+  await shot(page, 'map-nr037-labels');
+});
+
+test('подпись шлюза — «Роутер <IP>», та же в таблице и карточке (NR-037 п.3, п.4в)', async ({ page }) => {
+  await openMap(page);
+  // (в) Подпись шлюза на карте: не длиннее 24 знаков, содержит IP.
+  const gw = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.nodes().filter((x: { data: (k: string) => string }) => x.data('kind') === 'router').first();
+    return { label: String(n.data('fullLabel') ?? ''), id: n.id() };
+  });
+  expect(gw.label.length).toBeLessThanOrEqual(24);
+  expect(gw.label).toMatch(/^(Роутер \d+\.\d+\.\d+\.\d+|.+192\.168\.100\.1|.+\d+\.\d+\.\d+\.\d+)/);
+  // Подпись шлюза над диском (к линии снизу не попадает).
+  const above = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.nodes().filter((x: { data: (k: string) => string }) => x.data('kind') === 'router').first();
+    return String(n.style('text-valign'));
+  });
+  expect(above).toBe('top');
+  // То же имя в таблице устройств (toContainText ждёт загрузку).
+  await page.click('nav .item[data-page="devices"]');
+  await expect(page.locator('#devices-table')).toContainText('Роутер 192.168.100.1');
+  // То же имя в карточке (панель → полная карточка).
+  await page.click('nav .item[data-page="map"]');
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const hook = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas;
+    const n = hook.cy.nodes().filter((x: { data: (k: string) => string }) => x.data('kind') === 'router').first();
+    n.emit('tap');
+  });
+  await expect(page.locator('#panel')).toHaveClass(/open/);
+  await page.click('#page-overview button:has-text("Открыть полную карточку")');
+  await expect(page.locator('#screen-card')).toBeVisible();
+  await expect(page.locator('#card-root h2')).toHaveText('Роутер 192.168.100.1');
+  await shot(page, 'map-nr037-gateway');
+});
+
+test('однотипные сигналы «новые устройства» свёрнуты в одну строку группы (NR-037 п.5)', async ({ page }) => {
+  await openMap(page);
+  await page.click('#btn-attention');
+  const head = page.locator('#attention-panel .attention-group-head');
+  await expect(head).toBeVisible();
+  const headText = await head.locator('.attention-head').textContent();
+  const n = Number.parseInt((headText ?? 'Новые устройства: 0').replace(/\D/g, ''), 10);
+  expect(n).toBeGreaterThanOrEqual(2);
+  // Отдельные строки группы скрыты; кнопки приёма тоже.
+  await expect(page.locator('#attention-panel .attention-group-list')).toBeHidden();
+  await expect(page.locator('#attention-panel .attention-group-actions')).toBeHidden();
+  // Счётчик на кнопке «Требуют внимания» считает группу одним сигналом.
+  const badge = await page.locator('#attention-count').textContent();
+  expect(Number.parseInt(badge ?? '0', 10)).toBeLessThan(30);
+  // Раскрытие показывает отдельные строки и кнопки приёма.
+  await head.click();
+  await expect(page.locator('#attention-panel .attention-group-list')).toBeVisible();
+  await expect(page.locator('#attention-panel .attention-group-actions')).toBeVisible();
+  const inner = await page.locator('#attention-panel .attention-group-list .attention-row').count();
+  expect(inner).toBe(n);
+  // Клик по строке внутри группы фокусирует узел (приём всей группы
+  // не нажимаем: он изменил бы классы устройств фикстуры).
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  await head.click();
+  await expect(page.locator('#attention-panel .attention-group-list')).toBeHidden();
+  await shot(page, 'attention-group');
 });
