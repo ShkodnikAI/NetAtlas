@@ -7,33 +7,84 @@
 export const NODE_SIZE = { width: 44, height: 34 } as const;
 
 // Подпись: text-max-width в стиле графа (px), высота строки при
-// font-size 11.
+// font-size 13 (NR-038 п.3): межстрочный интервал 1.25 → 13×1.25 ≈ 16.
 export const LABEL_MAX_WIDTH = 140;
-export const LABEL_LINE_HEIGHT = 14;
-// Знаков в строке при font-size 11 (system-ui) — оценка ширины.
-const CHAR_WIDTH = 6.4;
+export const LABEL_LINE_HEIGHT = 16;
+// Знаков в строке при font-size 13 (system-ui) — оценка ширины.
+const CHAR_WIDTH = 7.2;
 // Зазор между узлом и подписью (text-margin-y).
 export const LABEL_GAP = 6;
 // Минимальный зазор между габаритами разных узлов.
 export const NODE_GAP = 18;
 // Шаг сетки для узлов без связей: ширина подписи + поля.
 export const GRID_STEP_X = LABEL_MAX_WIDTH + 60;
-export const GRID_STEP_Y = NODE_SIZE.height + LABEL_GAP + LABEL_LINE_HEIGHT + 66;
+// Слот ряда раскладки (NR-038 п.2): ряды остаются слотами 100×120,
+// все координаты кратны мелкой сетке GRID_STEP (20).
+export const GRID_STEP_Y = 120;
 // Колонок в сетке одиночных узлов.
 export const GRID_COLUMNS = 5;
 
-// Шаг привязки к сетке при перетаскивании (NR-033 п.1): по X —
-// полшага раскладки (ряды ниже первого стоят на полшага со сдвигом,
-// колонка шлюза свободна), по Y — шаг рядов.
-export const SNAP_STEP_X = 100;
-export const SNAP_STEP_Y = GRID_STEP_Y;
+// Мелкая сетка привязки (NR-038 п.2): шаг точечной сетки фона и
+// привязки при перетаскивании узлов и точек изгиба. Константа в
+// одном месте: слоты раскладки (100×120) и автораскладка кратны ей.
+export const GRID_STEP = 20;
+// Слот ряда: полушаг смещения нижних рядов (NR-033 п.1) и клетка
+// занятости при раскладке; кратен GRID_STEP.
+export const SLOT_X = 100;
 
-// snapToGrid — ближайший узел сетки для позиции dragged-узла.
+// snapToGrid — ближайший узел мелкой сетки для позиции (узла или
+// точки изгиба).
 export function snapToGrid(x: number, y: number): { x: number; y: number } {
   return {
-    x: Math.round(x / SNAP_STEP_X) * SNAP_STEP_X,
-    y: Math.round(y / SNAP_STEP_Y) * SNAP_STEP_Y,
+    x: Math.round(x / GRID_STEP) * GRID_STEP + 0,
+    y: Math.round(y / GRID_STEP) * GRID_STEP + 0,
   };
+}
+
+// snapToGridStep — округление одного значения до кратного GRID_STEP.
+export function snapToGridStep(v: number): number {
+  return Math.round(v / GRID_STEP) * GRID_STEP;
+}
+
+// LABEL_CHARS_PER_LINE — знаков в строке подписи (оценка по ширине).
+export const LABEL_CHARS_PER_LINE = Math.max(1, Math.floor(LABEL_MAX_WIDTH / CHAR_WIDTH));
+// LABEL_MAX_LINES — строк в подписи на карте; длинное — перенос по
+// словам, у последней строки многоточие на границе слов (NR-038 п.3).
+export const LABEL_MAX_LINES = 2;
+
+// wrapLabel — подпись узла: не длиннее LABEL_MAX_LINES строк, перенос
+// по словам, «…» не режет слово посередине (в отличие от прежней
+// обрезки по числу знаков).
+export function wrapLabel(
+  text: string,
+  maxChars: number = LABEL_CHARS_PER_LINE,
+  maxLines: number = LABEL_MAX_LINES,
+): string {
+  const words = text.split(/\s+/).filter((w) => w !== '');
+  if (words.length === 0) return text;
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of words) {
+    const candidate = cur === '' ? word : `${cur} ${word}`;
+    if (candidate.length <= maxChars || cur === '') {
+      cur = candidate;
+    } else {
+      lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur !== '') lines.push(cur);
+  if (lines.length <= maxLines) return lines.join('\n');
+  // Не влезло: последняя строка — до maxLines−1 целиком, хвост —
+  // обрезается по словам с «…» на границе слова.
+  const head = lines.slice(0, maxLines - 1);
+  let tail = lines.slice(maxLines - 1).join(' ');
+  if (tail.length > maxChars) {
+    tail = tail.slice(0, Math.max(1, maxChars - 1));
+    const cut = tail.lastIndexOf(' ');
+    tail = (cut > 0 ? tail.slice(0, cut) : tail).replace(/\s+$/, '') + '…';
+  }
+  return [...head, tail].join('\n');
 }
 
 // LabelSize — оценка габаритов подписи после переноса по ширине.
@@ -241,14 +292,14 @@ export function arrangeGrid(
 
   // Клетки, занятые сохранёнными узлами (NR-035 п.1): новое
   // устройство встаёт в свободную клетку сетки своего ряда, а не
-  // поверх сдвинутого владельцем узла. Клетка — ближайший узел
-  // привязки (SNAP_STEP_X x SNAP_STEP_Y).
+  // поверх сдвинутого владельцем узла. Клетка — ближайший слот ряда
+  // (SLOT_X × GRID_STEP_Y, NR-038 п.2).
   const occupied = new Set<string>();
   for (const p of saved.values()) {
-    occupied.add(`${Math.round(p.x / SNAP_STEP_X)}:${Math.round(p.y / SNAP_STEP_Y)}`);
+    occupied.add(`${Math.round(p.x / SLOT_X)}:${Math.round(p.y / GRID_STEP_Y)}`);
   }
   const cellFree = (x: number, y: number): boolean =>
-    !occupied.has(`${Math.round(x / SNAP_STEP_X)}:${Math.round(y / SNAP_STEP_Y)}`);
+    !occupied.has(`${Math.round(x / SLOT_X)}:${Math.round(y / GRID_STEP_Y)}`);
 
   // Разбивка по рядам; внутри ряда — по id.
   const rows = new Map<number, GridKindNode[]>();
@@ -275,12 +326,14 @@ export function arrangeGrid(
     const rank = ranks[i];
     if (rank === undefined) continue;
     const row = rows.get(rank) ?? [];
-    // Шаг ряда: не меньше ширины самой длинной подписи в ряду.
+    // Шаг ряда: не меньше ширины самой длинной подписи в ряду;
+    // округляется вверх до кратного мелкой сетке (NR-038 п.2), чтобы
+    // все слоты стояли на узлах сетки 20×20.
     let widest = 0;
     for (const n of row) {
       widest = Math.max(widest, measureLabel(n.label).width);
     }
-    const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
+    const stepX = Math.ceil(Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2) / GRID_STEP) * GRID_STEP;
     // Колонок в строке: по ширине области карты, но не больше
     // длины ряда (иначе деление на бесконечность обнуляет перенос).
     const cols = Math.min(
@@ -291,8 +344,8 @@ export function arrangeGrid(
     const totalWidth = (cols - 1) * stepX;
     let x: number;
     if (i === 0) {
-      x = -totalWidth / 2;
-      lowerStart = x + SNAP_STEP_X;
+      x = snapToGridStep(-totalWidth / 2);
+      lowerStart = x + SLOT_X;
     } else {
       x = lowerStart;
     }

@@ -27,7 +27,7 @@ const pos = (id: string, x: number, y: number, label: string): Positioned => ({
 describe('measureLabel', () => {
   it('короткая подпись — одна строка', () => {
     const s = measureLabel('router-01');
-    expect(s.height).toBe(14);
+    expect(s.height).toBe(16);
     expect(s.width).toBeLessThanOrEqual(LABEL_MAX_WIDTH);
   });
 
@@ -35,7 +35,7 @@ describe('measureLabel', () => {
     const long = 'A'.repeat(60);
     const s = measureLabel(long);
     expect(s.width).toBe(LABEL_MAX_WIDTH);
-    expect(s.height).toBeGreaterThan(14);
+    expect(s.height).toBeGreaterThan(16);
   });
 });
 

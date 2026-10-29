@@ -34,6 +34,9 @@ type fakeStore struct {
 	agents        []store.Agent
 	positions     map[string][2]float64
 	positionOrder []string
+	// Точки изгиба связей (NR-038).
+	waypoints     map[string][]store.WaypointPoint
+	waypointOrder []string
 	// Сигналы внимания (NR-033): подставляемые данные.
 	signalDevices   []store.SignalDeviceRow
 	openAlerts      []store.OpenAlert
@@ -202,6 +205,43 @@ func (f *fakeStore) ClearPositions(ctx context.Context, actor string) error {
 	f.positions = map[string][2]float64{}
 	f.positionOrder = nil
 	return nil
+}
+
+func (f *fakeStore) Waypoints(ctx context.Context) ([]store.LinkWaypoint, error) {
+	out := []store.LinkWaypoint{}
+	for _, l := range f.waypointOrder {
+		for i, p := range f.waypoints[l] {
+			out = append(out, store.LinkWaypoint{Link: l, Idx: i, X: p.X, Y: p.Y})
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) SaveWaypoints(ctx context.Context, link string, pts []store.WaypointPoint, actor string) (int, error) {
+	if err := store.ValidLinkKey(link); err != nil {
+		return 0, err
+	}
+	if len(pts) > store.MaxWaypointsPerLink {
+		return 0, fmt.Errorf("точек изгиба %d больше лимита %d", len(pts), store.MaxWaypointsPerLink)
+	}
+	if f.waypoints == nil {
+		f.waypoints = map[string][]store.WaypointPoint{}
+	}
+	if _, seen := f.waypoints[link]; !seen {
+		f.waypointOrder = append(f.waypointOrder, link)
+	}
+	f.waypoints[link] = pts
+	return len(pts), nil
+}
+
+func (f *fakeStore) ClearWaypoints(ctx context.Context, actor string) (int, error) {
+	n := 0
+	for _, pts := range f.waypoints {
+		n += len(pts)
+	}
+	f.waypoints = map[string][]store.WaypointPoint{}
+	f.waypointOrder = nil
+	return n, nil
 }
 
 func (f *fakeStore) RecordVerification(ctx context.Context, id, actor string, alive bool, detail string) error {

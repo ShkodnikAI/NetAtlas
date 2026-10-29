@@ -32,7 +32,16 @@ import {
 import { renderLegend } from './legend';
 import { setupGridLayer } from './mapgrid';
 import { svgIcon } from './nodes';
-import { SNAP_STEP_X, SNAP_STEP_Y, snapToGrid } from './layout';
+import { GRID_STEP, snapToGrid } from './layout';
+import {
+  applyWaypoints,
+  clearAllWaypoints,
+  clearLinkWaypoints,
+  onWaypointsChanged,
+  removeWaypoint,
+  waypointsOf,
+  type WaypointState,
+} from './waypoints';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import { fillCard, type CardHandlers } from './card';
 import {
@@ -84,6 +93,12 @@ let savedPositions = new Map<string, { x: number; y: number }>();
 const pendingPositions = new Map<string, { x: number; y: number }>();
 let positionsTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Точки изгиба связей (NR-038 п.1): сохранённые на сервере (загрузка)
+// и несохранённые (изменения, дебаунс 500 мс, как у положений).
+let savedWaypoints: WaypointState = new Map();
+const pendingWaypoints = new Map<string, { x: number; y: number }[]>();
+let waypointsTimer: ReturnType<typeof setTimeout> | null = null;
+
 // flushPositions — пакетная запись накопленных положений. Пакет
 // собирается по всем сдвинутым узлам; при ошибке сети накопленные
 // остаются в очереди до следующей попытки (позиции косметические:
@@ -112,6 +127,52 @@ function queuePosition(id: string, x: number, y: number): void {
   pendingPositions.set(id, { x, y });
   if (positionsTimer !== null) clearTimeout(positionsTimer);
   positionsTimer = setTimeout(() => void flushPositions(), 500);
+}
+
+// flushWaypoints — запись изменённых связей: на каждую — один PUT
+// с полным списком точек (пустой — сброс). При ошибке сети накопленное
+// остаётся в очереди до следующей попытки (точки косметические:
+// интерфейс не роняем).
+async function flushWaypoints(): Promise<void> {
+  waypointsTimer = null;
+  if (pendingWaypoints.size === 0) return;
+  const batch = [...pendingWaypoints.entries()];
+  pendingWaypoints.clear();
+  for (const [link, points] of batch) {
+    try {
+      await api.saveWaypoints(link, points);
+    } catch {
+      // ошибка сети: очередь остаётся, повтор — после следующего изменения
+      pendingWaypoints.set(link, points);
+    }
+  }
+}
+
+// queueWaypoints — точки связей после изменения: локально (для
+// перезаливок карты) и в очередь отправки (500 мс после последнего
+// изменения, как у положений узлов). Состояние точек — реестр на
+// cy (waypoints.ts), он уже обновлён к моменту вызова.
+function queueWaypoints(dirty: string[]): void {
+  const current = waypointsOf(cy);
+  for (const link of dirty) {
+    const points = current.get(link) ?? [];
+    savedWaypoints.set(link, points.map((p) => ({ ...p })));
+    pendingWaypoints.set(link, points.map((p) => ({ ...p })));
+  }
+  if (waypointsTimer !== null) clearTimeout(waypointsTimer);
+  waypointsTimer = setTimeout(() => void flushWaypoints(), 500);
+}
+
+// groupWaypoints — ответ GET /api/map/waypoints в состояние:
+// ключ связи → точки по порядку idx.
+function groupWaypoints(waypoints: { link: string; idx: number; x: number; y: number }[]): WaypointState {
+  const out: WaypointState = new Map();
+  for (const w of [...waypoints].sort((a, b) => a.idx - b.idx)) {
+    const pts = out.get(w.link) ?? [];
+    pts.push({ x: w.x, y: w.y });
+    out.set(w.link, pts);
+  }
+  return out;
 }
 
 const addKinds: [string, string][] = [
@@ -159,6 +220,14 @@ async function reload(): Promise<void> {
     } catch {
       // без позиций — вся карта сеткой
     }
+    // Точки изгиба связей (NR-038 п.1): сервер помнит изгибы;
+    // сбой не мешает карте.
+    try {
+      const { waypoints } = await api.mapWaypoints();
+      savedWaypoints = groupWaypoints(waypoints);
+    } catch {
+      savedWaypoints = new Map();
+    }
     // Сигналы внимания (NR-033 п.4): сбой не мешает карте.
     try {
       signalsView = await api.signals();
@@ -166,6 +235,9 @@ async function reload(): Promise<void> {
       signalsView = { signals: [], statuses: [] };
     }
     setGraph(cy, graph, savedPositions, statusProvider());
+    // Точки изгиба (NR-038 п.1) наносятся после перезаливки графа:
+    // setGraph пересоздаёт элементы, связи находят по wpKey.
+    applyWaypoints(cy, savedWaypoints);
     // Первая загрузка (NR-035 п.3): карта вписывается в окно, но
     // значки не мельче 32 px; при переполнении — верхний левый
     // фрагмент, поле двигается перетаскиванием и клавишами.
@@ -271,6 +343,8 @@ const callbacks: GraphCallbacks = {
     void openCard(node.id);
   },
   onLinkSelect: (link, edgeId) => {
+    // «Сбросить изгибы связи» активна, пока выбрана линия (NR-038 п.1).
+    btn('btn-clear-bends').disabled = link === null || edgeId === null;
     if (link === null || edgeId === null) return;
     currentLink = link;
     currentLinkId = edgeId;
@@ -283,6 +357,10 @@ const callbacks: GraphCallbacks = {
 };
 
 const cy = createGraph($('graph'), callbacks);
+
+// Изменения точек изгиба (NR-038 п.1): локальное состояние + очередь
+// отправки на сервер с дебаунсом 500 мс.
+onWaypointsChanged(cy, queueWaypoints);
 
 // Фоновая сетка из точек (NR-035 п.2): слой над канвой с шагом
 // привязки; обновляется на pan/zoom и переключатели.
@@ -336,11 +414,21 @@ document.addEventListener('keydown', (ev) => {
     zoomStep(0.8);
     return;
   }
-  const dx = { ArrowLeft: -SNAP_STEP_X, ArrowRight: SNAP_STEP_X }[ev.key];
-  const dy = { ArrowUp: -SNAP_STEP_Y, ArrowDown: SNAP_STEP_Y }[ev.key];
-  if (dx === undefined && dy === undefined) return;
+  const dx = { ArrowLeft: -GRID_STEP, ArrowRight: GRID_STEP }[ev.key];
+  const dy = { ArrowUp: -GRID_STEP, ArrowDown: GRID_STEP }[ev.key];
+  if (dx === undefined && dy === undefined) {
+    // Delete/Backspace (NR-038 п.1): выбранная точка изгиба удаляется.
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
+      const wps = cy.nodes(`:selected.waypoint`);
+      if (wps.nonempty()) {
+        ev.preventDefault();
+        wps.forEach((w) => removeWaypoint(cy, w));
+      }
+    }
+    return;
+  }
   ev.preventDefault();
-  const selected = cy.nodes(':selected').filter((n) => !n.hasClass('bend'));
+  const selected = cy.nodes(':selected').filter((n) => !n.hasClass('bend') && !n.hasClass('waypoint'));
   if (selected.nonempty()) {
     // Выбранный узел двигается на шаг сетки; положение сохраняется.
     const n = selected.first() as NodeSingular;
@@ -360,8 +448,11 @@ document.addEventListener('keydown', (ev) => {
 
 // Перетаскивание узла запоминается на сервере (NR-032 п.4): позиция
 // переживёт перезагрузку страницы и не будет тронута раскладкой.
+// Точки изгиба обрабатываются отдельно (graph.ts): их двигает их
+// собственный обработчик с привязкой к мелкой сетке.
 cy.on('dragfree', 'node', (ev) => {
   const n = ev.target;
+  if (n.hasClass('waypoint')) return;
   // Привязка к сетке (NR-033 п.1): включена по умолчанию,
   // переключатель на панели карты.
   const snap = $('snap-grid') as HTMLInputElement;
@@ -374,10 +465,12 @@ cy.on('dragfree', 'node', (ev) => {
 });
 
 // «Выстроить сеткой» (NR-032 п.4): очистить сохранённые позиции и
-// заново выстроить карту детерминированной сеткой.
+// заново выстроить карту детерминированной сеткой; точки изгиба
+// связей сбрасываются тоже (NR-038 п.1).
 $('btn-arrange').addEventListener('click', async () => {
-  // Подтверждение (NR-035 п.1): сохранённые положения будут стёрты.
-  if (!window.confirm('Переставить все узлы по сетке? Сохранённые положения узлов будут очищены.')) {
+  // Подтверждение (NR-035 п.1): сохранённые положения и точки изгиба
+  // будут стёрты.
+  if (!window.confirm('Переставить все узлы по сетке? Сохранённые положения узлов и точки изгиба связей будут очищены.')) {
     return;
   }
   if (positionsTimer !== null) {
@@ -385,17 +478,37 @@ $('btn-arrange').addEventListener('click', async () => {
     positionsTimer = null;
   }
   pendingPositions.clear();
+  if (waypointsTimer !== null) {
+    clearTimeout(waypointsTimer);
+    waypointsTimer = null;
+  }
+  pendingWaypoints.clear();
   try {
     await api.clearPositions();
   } catch {
     // даже при ошибке сети выстроим локально
   }
+  try {
+    await api.clearWaypoints();
+  } catch {
+    // даже при ошибке сети сбросим точки локально
+  }
   savedPositions = new Map<string, { x: number; y: number }>();
+  savedWaypoints = new Map<string, { x: number; y: number }[]>();
+  clearAllWaypoints(cy);
   // rearrange: позиции канвы не учитываются — все узлы заново
   // выстраиваются детерминированной сеткой (NR-035 п.1).
   setGraph(cy, graph, savedPositions, statusProvider(), { rearrange: true });
   renderA11y(graph, statusProvider());
   renderLegend($('map-legend'), graph, statusProvider());
+});
+
+// «Сбросить изгибы связи» (NR-038 п.1): выбранная линия — её точки
+// изгиба стираются (локально и на сервере через очередь).
+$('btn-clear-bends').addEventListener('click', () => {
+  if (currentLinkId === null) return;
+  clearLinkWaypoints(cy, currentLinkId);
+  btn('btn-clear-bends').disabled = true;
 });
 
 function pushSelection(id: string): void {
@@ -1442,5 +1555,9 @@ void refreshAuditBadge();
 
 // Доступ к инстансу cytoscape для сквозных тестов интерфейса
 // (Playwright, NR-031): данные уже отрисованы на странице, хук даёт
-// только доступ к API карты для проверки раскладки.
-(window as unknown as { __netatlas?: { cy: unknown } }).__netatlas = { cy };
+// только доступ к API карты для проверки раскладки. waypoints —
+// снимок точек изгиба (NR-038) для проверок сохранения.
+(window as unknown as { __netatlas?: { cy: unknown; waypoints: () => WaypointState } }).__netatlas = {
+  cy,
+  waypoints: () => waypointsOf(cy),
+};

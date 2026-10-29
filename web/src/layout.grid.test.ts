@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  GRID_STEP,
   GRID_STEP_Y,
   NODE_GAP,
   NODE_SIZE,
@@ -17,9 +18,11 @@ function n(id: string, kind: string, label = id): GridKindNode {
   return { id, kind, label };
 }
 
-// stepOfLabel — шаг ряда, который arrangeGrid вычислит для подписи.
+// stepOfLabel — шаг ряда, который arrangeGrid вычислит для подписи:
+// округление вверх до кратного мелкой сетке (NR-038 п.2).
 function stepOfLabel(label: string): number {
-  return Math.max(NODE_SIZE.width + NODE_GAP, measureLabel(label).width + NODE_GAP * 2);
+  const raw = Math.max(NODE_SIZE.width + NODE_GAP, measureLabel(label).width + NODE_GAP * 2);
+  return Math.ceil(raw / GRID_STEP) * GRID_STEP;
 }
 
 describe('rowRank', () => {

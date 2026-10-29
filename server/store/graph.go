@@ -31,6 +31,12 @@ type LinkInfo struct {
 	model.Link
 	Manual   bool `json:"manual"`
 	Verified bool `json:"verified"`
+	// WpKey — устойчивый ключ связи для точек изгиба (NR-038 п.1):
+	// для связей из базы — «a|aPort|b|bPort», для предполагаемых —
+	// «assumed:<id устройства>»: предполагаемая связь в базу не
+	// пишется и пересчитывается при отдаче графа, а шлюз может
+	// смениться; ключ по устройству остаётся тем же.
+	WpKey string `json:"wp_key"`
 }
 
 // Graph — карта сети целиком: узлы по ID, связи по (A, APort, B, BPort).
@@ -103,6 +109,7 @@ func (s *Store) Topology(ctx context.Context) (Graph, error) {
 			Link:     model.Link{A: a, APort: aPort, B: b, BPort: bPort, Source: source},
 			Manual:   manual,
 			Verified: verified,
+			WpKey:    wpKeyOf(a, aPort, b, bPort),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -170,8 +177,18 @@ func (g *Graph) assumeLinks(ctx context.Context, s *Store) {
 	for _, l := range g.Links {
 		base = append(base, l.Link)
 	}
+	gatewaySet := make(map[string]bool, len(gatewayIDs))
+	for _, gw := range gatewayIDs {
+		gatewaySet[gw] = true
+	}
 	for _, l := range topology.AssumedLinks(deviceIDs, gatewayIDs, base) {
-		g.Links = append(g.Links, LinkInfo{Link: l})
+		// Устройство на конце предполагаемой связи — MAC-узел (не
+		// шлюз); ключ точек изгиба строится по нему (NR-038 п.1).
+		dev := l.B
+		if gatewaySet[dev] {
+			dev = l.A
+		}
+		g.Links = append(g.Links, LinkInfo{Link: l, WpKey: "assumed:" + dev})
 	}
 }
 
@@ -439,7 +456,7 @@ func (s *Store) ListDevices(ctx context.Context) ([]DeviceInfo, error) {
 	// kind — тип узла на карте (NR-037 п.3): таблица устройств
 	// называет шлюз «Роутер <IP>» тем же правилом, что и карта.
 	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, class, hostname, vendor, ssid,
-		manual, verified, last_seen FROM devices ORDER BY id`)
+                manual, verified, last_seen FROM devices ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("store: список устройств: %w", err)
 	}

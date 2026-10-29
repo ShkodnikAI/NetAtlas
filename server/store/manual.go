@@ -187,6 +187,11 @@ func (s *Store) DeleteManualDevice(ctx context.Context, id, actor string) error 
 		`DELETE FROM links WHERE a = ? OR b = ?`, id, id); err != nil {
 		return fmt.Errorf("store: удаление связей устройства %s: %w", id, err)
 	}
+	// Каскад NR-038 п.1: точки изгиба связей удалённого устройства
+	// стираются вместе с ним.
+	if err := deleteWaypointsForDeviceTx(ctx, tx, id); err != nil {
+		return err
+	}
 	if _, err := audit.Append(ctx, tx, audit.Entry{
 		Actor: actor, Action: "delete_device", Target: id, Result: "ok",
 	}); err != nil {
@@ -271,8 +276,18 @@ func (s *Store) DeleteManualLink(ctx context.Context, id, actor string) error {
 	if manual == 0 {
 		return fmt.Errorf("store: связь %s: %w", id, ErrNotManual)
 	}
+	var a, aPort, b, bPort string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT a, a_port, b, b_port FROM links WHERE id = ?`, id).
+		Scan(&a, &aPort, &b, &bPort); err != nil {
+		return fmt.Errorf("store: связь %s: %w", id, err)
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: удаление связи %s: %w", id, err)
+	}
+	// Каскад NR-038 п.1: точки изгиба удалённой связи стираются.
+	if err := deleteWaypointsForLinkTx(ctx, tx, a, aPort, b, bPort); err != nil {
+		return err
 	}
 	if _, err := audit.Append(ctx, tx, audit.Entry{
 		Actor: actor, Action: "delete_link", Target: id, Result: "ok",

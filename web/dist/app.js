@@ -118,6 +118,18 @@
     clearPositions() {
       return this.req("DELETE", "/api/map/positions");
     }
+    // Точки изгиба связей (NR-038 п.1): чтение всех, замена точек
+    // одной связи (клиент шлёт полный список после каждого изменения
+    // с дебаунсом), очистка всех — «Выстроить сеткой».
+    mapWaypoints() {
+      return this.req("GET", "/api/map/waypoints");
+    }
+    saveWaypoints(link, points) {
+      return this.req("PUT", "/api/map/waypoints", { link, points });
+    }
+    clearWaypoints() {
+      return this.req("DELETE", "/api/map/waypoints");
+    }
     deleteDevice(id2) {
       return this.req("DELETE", `/api/devices/${encodeURIComponent(id2)}`);
     }
@@ -31950,19 +31962,49 @@
   // src/layout.ts
   var NODE_SIZE = { width: 44, height: 34 };
   var LABEL_MAX_WIDTH = 140;
-  var LABEL_LINE_HEIGHT = 14;
-  var CHAR_WIDTH = 6.4;
+  var LABEL_LINE_HEIGHT = 16;
+  var CHAR_WIDTH = 7.2;
   var LABEL_GAP = 6;
   var NODE_GAP = 18;
   var GRID_STEP_X = LABEL_MAX_WIDTH + 60;
-  var GRID_STEP_Y = NODE_SIZE.height + LABEL_GAP + LABEL_LINE_HEIGHT + 66;
-  var SNAP_STEP_X = 100;
-  var SNAP_STEP_Y = GRID_STEP_Y;
+  var GRID_STEP_Y = 120;
+  var GRID_STEP = 20;
+  var SLOT_X = 100;
   function snapToGrid(x2, y2) {
     return {
-      x: Math.round(x2 / SNAP_STEP_X) * SNAP_STEP_X,
-      y: Math.round(y2 / SNAP_STEP_Y) * SNAP_STEP_Y
+      x: Math.round(x2 / GRID_STEP) * GRID_STEP + 0,
+      y: Math.round(y2 / GRID_STEP) * GRID_STEP + 0
     };
+  }
+  function snapToGridStep(v) {
+    return Math.round(v / GRID_STEP) * GRID_STEP;
+  }
+  var LABEL_CHARS_PER_LINE = Math.max(1, Math.floor(LABEL_MAX_WIDTH / CHAR_WIDTH));
+  var LABEL_MAX_LINES = 2;
+  function wrapLabel(text3, maxChars = LABEL_CHARS_PER_LINE, maxLines = LABEL_MAX_LINES) {
+    const words = text3.split(/\s+/).filter((w) => w !== "");
+    if (words.length === 0) return text3;
+    const lines = [];
+    let cur = "";
+    for (const word of words) {
+      const candidate = cur === "" ? word : `${cur} ${word}`;
+      if (candidate.length <= maxChars || cur === "") {
+        cur = candidate;
+      } else {
+        lines.push(cur);
+        cur = word;
+      }
+    }
+    if (cur !== "") lines.push(cur);
+    if (lines.length <= maxLines) return lines.join("\n");
+    const head = lines.slice(0, maxLines - 1);
+    let tail = lines.slice(maxLines - 1).join(" ");
+    if (tail.length > maxChars) {
+      tail = tail.slice(0, Math.max(1, maxChars - 1));
+      const cut = tail.lastIndexOf(" ");
+      tail = (cut > 0 ? tail.slice(0, cut) : tail).replace(/\s+$/, "") + "\u2026";
+    }
+    return [...head, tail].join("\n");
   }
   function measureLabel(text3) {
     const lines = text3.split("\n");
@@ -32043,9 +32085,9 @@
     if (auto.length === 0) return out;
     const occupied = /* @__PURE__ */ new Set();
     for (const p2 of saved.values()) {
-      occupied.add(`${Math.round(p2.x / SNAP_STEP_X)}:${Math.round(p2.y / SNAP_STEP_Y)}`);
+      occupied.add(`${Math.round(p2.x / SLOT_X)}:${Math.round(p2.y / GRID_STEP_Y)}`);
     }
-    const cellFree = (x2, y3) => !occupied.has(`${Math.round(x2 / SNAP_STEP_X)}:${Math.round(y3 / SNAP_STEP_Y)}`);
+    const cellFree = (x2, y3) => !occupied.has(`${Math.round(x2 / SLOT_X)}:${Math.round(y3 / GRID_STEP_Y)}`);
     const rows = /* @__PURE__ */ new Map();
     for (const n of auto) {
       const rank = rowRank(n.kind);
@@ -32067,7 +32109,7 @@
       for (const n of row) {
         widest = Math.max(widest, measureLabel(n.label).width);
       }
-      const stepX = Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2);
+      const stepX = Math.ceil(Math.max(NODE_SIZE.width + NODE_GAP, widest + NODE_GAP * 2) / GRID_STEP) * GRID_STEP;
       const cols = Math.min(
         Math.max(1, Math.floor(maxWidth / stepX)),
         row.length
@@ -32075,8 +32117,8 @@
       const totalWidth = (cols - 1) * stepX;
       let x2;
       if (i2 === 0) {
-        x2 = -totalWidth / 2;
-        lowerStart = x2 + SNAP_STEP_X;
+        x2 = snapToGridStep(-totalWidth / 2);
+        lowerStart = x2 + SLOT_X;
       } else {
         x2 = lowerStart;
       }
@@ -32099,6 +32141,226 @@
     return out;
   }
 
+  // src/waypoints.ts
+  function orthogonalPolyline(src, dst, waypoints) {
+    const anchors = [src, ...waypoints, dst];
+    const out = [{ ...src }];
+    for (let i2 = 0; i2 < anchors.length - 1; i2++) {
+      const a = anchors[i2];
+      const b = anchors[i2 + 1];
+      if (a.x !== b.x && a.y !== b.y) {
+        out.push({ x: a.x, y: b.y });
+      }
+      out.push({ ...b });
+    }
+    return dedupPoints(out);
+  }
+  function dedupPoints(pts2) {
+    const out = [];
+    for (const p2 of pts2) {
+      const last2 = out[out.length - 1];
+      if (last2 !== void 0 && Math.abs(last2.x - p2.x) < 1e-9 && Math.abs(last2.y - p2.y) < 1e-9) {
+        continue;
+      }
+      out.push({ x: p2.x, y: p2.y });
+    }
+    return out;
+  }
+  function toWeightsDistances(src, dst, inner) {
+    const dx = dst.x - src.x;
+    const dy = dst.y - src.y;
+    const len2 = dx * dx + dy * dy;
+    const wts = [];
+    const dss = [];
+    if (len2 < 1e-12) return { wts, dss };
+    for (const p2 of inner) {
+      const px = p2.x - src.x;
+      const py = p2.y - src.y;
+      wts.push((px * dx + py * dy) / len2);
+      dss.push((py * dx - px * dy) / Math.sqrt(len2));
+    }
+    return { wts, dss };
+  }
+  var CY_STATE = /* @__PURE__ */ new WeakMap();
+  function stateOf(cy2) {
+    let st = CY_STATE.get(cy2);
+    if (st === void 0) {
+      st = { points: /* @__PURE__ */ new Map(), onChange: null };
+      CY_STATE.set(cy2, st);
+    }
+    return st;
+  }
+  function onWaypointsChanged(cy2, cb) {
+    stateOf(cy2).onChange = cb;
+  }
+  function waypointsOf(cy2) {
+    const out = /* @__PURE__ */ new Map();
+    for (const [key, pts2] of stateOf(cy2).points) {
+      out.set(key, pts2.map((p2) => ({ ...p2 })));
+    }
+    return out;
+  }
+  var waypointPrefix = "wp:";
+  function waypointId(linkKey, idx) {
+    return `${waypointPrefix}${linkKey}:${idx}`;
+  }
+  function applyWaypoints(cy2, wps) {
+    const st = stateOf(cy2);
+    st.points = /* @__PURE__ */ new Map();
+    cy2.nodes(`.${WAYPOINT_CLASS}`).remove();
+    const edgeByKey = /* @__PURE__ */ new Map();
+    cy2.edges().forEach((e) => {
+      const key = String(e.data("wpKey") ?? "");
+      if (key !== "") edgeByKey.set(key, e);
+    });
+    for (const [key, pts2] of wps) {
+      const e = edgeByKey.get(key);
+      if (e === void 0 || e.removed()) continue;
+      st.points.set(key, pts2.map((p2) => ({ ...p2 })));
+      rebuildWaypointNodes(cy2, e, key, st.points.get(key));
+    }
+    recomputeWaypointEdges(cy2);
+  }
+  function clearAllWaypoints(cy2) {
+    const st = stateOf(cy2);
+    st.points = /* @__PURE__ */ new Map();
+    cy2.nodes(`.${WAYPOINT_CLASS}`).remove();
+    cy2.edges().forEach((e) => {
+      if (e.data("haswp") !== void 0) {
+        e.removeData("haswp");
+        e.removeData("wts");
+        e.removeData("dss");
+      }
+    });
+  }
+  function clearLinkWaypoints(cy2, edgeId2) {
+    const st = stateOf(cy2);
+    const e = cy2.getElementById(edgeId2).first();
+    const key = e.nonempty() ? String(e.data("wpKey") ?? "") : edgeId2;
+    if (key === "" || !st.points.has(key)) return;
+    st.points.delete(key);
+    cy2.nodes(`.${WAYPOINT_CLASS}`).forEach((n) => {
+      if (String(n.data("wpLink")) === key) n.remove();
+    });
+    if (e.nonempty()) {
+      e.removeData("haswp");
+      e.removeData("wts");
+      e.removeData("dss");
+    }
+    st.onChange?.([key]);
+  }
+  function addWaypoint(cy2, e, pos) {
+    const key = String(e.data("wpKey") ?? "");
+    if (key === "") return;
+    const st = stateOf(cy2);
+    const pts2 = st.points.get(key) ?? [];
+    const snapped = snapPoint(pos);
+    if (pts2.length >= MAX_WAYPOINTS_PER_LINK) return;
+    pts2.push(snapped);
+    st.points.set(key, pts2);
+    rebuildWaypointNodes(cy2, e, key, pts2);
+    recomputeWaypointEdges(cy2);
+    st.onChange?.([key]);
+  }
+  function removeWaypoint(cy2, n) {
+    const key = String(n.data("wpLink") ?? "");
+    if (key === "") return;
+    const st = stateOf(cy2);
+    const pts2 = st.points.get(key);
+    if (pts2 === void 0) return;
+    const idx = Number(n.data("wpIdx"));
+    if (!Number.isInteger(idx) || idx < 0 || idx >= pts2.length) return;
+    pts2.splice(idx, 1);
+    if (pts2.length === 0) st.points.delete(key);
+    const e = edgeByKeyOf(cy2, key);
+    if (e !== void 0 && e.inside()) {
+      rebuildWaypointNodes(cy2, e, key, pts2);
+    } else {
+      cy2.nodes(`.${WAYPOINT_CLASS}`).forEach((w) => {
+        if (String(w.data("wpLink")) === key) w.remove();
+      });
+    }
+    recomputeWaypointEdges(cy2);
+    st.onChange?.([key]);
+  }
+  function moveWaypoint(cy2, n, snapOn) {
+    if (snapOn) {
+      const p2 = n.position();
+      n.position(snapPoint(p2));
+    }
+    syncWaypointNodes(cy2);
+    recomputeWaypointEdges(cy2);
+    const key = String(n.data("wpLink") ?? "");
+    if (key !== "") stateOf(cy2).onChange?.([key]);
+  }
+  var MAX_WAYPOINTS_PER_LINK = 64;
+  var WAYPOINT_CLASS = "waypoint";
+  function snapPoint(p2) {
+    return snapToGrid(p2.x, p2.y);
+  }
+  function rebuildWaypointNodes(cy2, e, key, pts2) {
+    cy2.nodes(`.${WAYPOINT_CLASS}`).forEach((n) => {
+      if (String(n.data("wpLink")) === key) n.remove();
+    });
+    const color = String(e.data("color") ?? "#7C8798");
+    pts2.forEach((p2, i2) => {
+      cy2.add({
+        group: "nodes",
+        data: {
+          id: waypointId(key, i2),
+          wpLink: key,
+          wpIdx: i2,
+          color
+        },
+        position: { x: p2.x, y: p2.y },
+        classes: WAYPOINT_CLASS
+      });
+    });
+  }
+  function edgeByKeyOf(cy2, key) {
+    let found;
+    cy2.edges().forEach((e) => {
+      if (String(e.data("wpKey") ?? "") === key) found = e;
+    });
+    return found;
+  }
+  function syncWaypointNodes(cy2) {
+    const st = stateOf(cy2);
+    cy2.nodes(`.${WAYPOINT_CLASS}`).forEach((n) => {
+      const key = String(n.data("wpLink") ?? "");
+      const idx = Number(n.data("wpIdx"));
+      const pts2 = st.points.get(key);
+      if (pts2 === void 0 || !Number.isInteger(idx) || idx < 0 || idx >= pts2.length) return;
+      pts2[idx] = { x: n.position("x"), y: n.position("y") };
+    });
+  }
+  function recomputeWaypointEdges(cy2) {
+    const st = stateOf(cy2);
+    if (st.points.size === 0) return;
+    cy2.edges().forEach((e) => {
+      const key = String(e.data("wpKey") ?? "");
+      const pts2 = key === "" ? void 0 : st.points.get(key);
+      if (pts2 === void 0 || pts2.length === 0) {
+        if (e.data("haswp") !== void 0) {
+          e.removeData("haswp");
+          e.removeData("wts");
+          e.removeData("dss");
+        }
+        return;
+      }
+      const src = e.source().position();
+      const dst = e.target().position();
+      const line = orthogonalPolyline(src, dst, pts2);
+      const inner = line.slice(1, -1);
+      if (inner.length === 0) return;
+      const { wts, dss } = toWeightsDistances(src, dst, inner);
+      if (wts.length === 0) return;
+      e.data("haswp", "true");
+      e.data("wts", wts);
+      e.data("dss", dss);
+    });
+  }
+
   // src/graph.ts
   var STROKE = {
     lldp: "#7C8798",
@@ -32107,13 +32369,11 @@
     assumed: "#B48FE8",
     manual: "#F5B83D"
   };
-  var LABEL_MAX_CHARS = 28;
+  var LABEL_FONT_SIZE = 13;
+  var LABEL_MIN_SCREEN_ZOOM = 0.7;
+  var LABEL_MIN_SCREEN_SIZE = 11;
   var MIN_ICON_ZOOM = 0.8;
   var FIT_PADDING = 90;
-  function truncateLabel(text3, max5 = LABEL_MAX_CHARS) {
-    if (text3.length <= max5) return text3;
-    return text3.slice(0, Math.max(1, max5 - 1)) + "\u2026";
-  }
   function createGraph(container2, cb) {
     const cy2 = cytoscape({
       container: container2,
@@ -32137,18 +32397,24 @@
             // узла не нужна — выделение не перекрашивает статус.
             "border-width": 0,
             color: "#E6EAF0",
-            "font-size": 11,
+            // NR-038 п.3: подпись читается — 13 px при масштабе 100%,
+            // насыщенность 500, фон цвета поля с отступом 3 px;
+            // при малом масштабе шрифт догоняется до 11 px экранных
+            // (syncLabelZoom).
+            "font-size": LABEL_FONT_SIZE,
+            "font-weight": 500,
             "font-family": "system-ui, sans-serif",
             "text-valign": "bottom",
             "text-margin-y": 6,
             "text-wrap": "wrap",
             "text-max-width": "140",
             // NR-037 п.2: подпись читается поверх линий — фон под цвет
-            // поля с отступом 2 px; узлы с подписями рисуются выше
-            // рёбер сами (z-index-compare в cytoscape).
+            // поля с отступом 3 px (NR-038 п.3); узлы с подписями
+            // рисуются выше рёбер сами (z-index-compare в cytoscape).
             "text-background-color": "#0E1116",
             "text-background-opacity": 1,
-            "text-background-padding": "2",
+            "text-background-padding": "3",
+            "text-background-shape": "roundrectangle",
             width: String(BADGE_NODE),
             height: String(BADGE_NODE),
             label: "data(label)"
@@ -32236,6 +32502,46 @@
             // z-index-compare всегда рисует узлы над рёбрами.
             "z-index": -1
           }
+        },
+        {
+          // Связь с пользовательскими точками изгиба (NR-038 п.1):
+          // ломаная из сегментов через точки по порядку, всегда
+          // ортогонально. Точки пересчитываются в wts/dss относительно
+          // оси источник→цель (edge-distances: node-position — от
+          // центров узлов) при каждом изменении позиций.
+          selector: "edge[haswp]",
+          style: {
+            "curve-style": "segments",
+            "edge-distances": "node-position",
+            "segment-weights": "data(wts)",
+            "segment-distances": "data(dss)"
+          }
+        },
+        {
+          // Пользовательская точка изгиба (NR-038 п.1): 10 px, обводка
+          // цветом фона 2 px, события и перетаскивание включены —
+          // отличается от автоматических точек излома 6 px; при
+          // выделении обводка подсвечивается.
+          selector: "node.waypoint",
+          style: {
+            width: 10,
+            height: 10,
+            shape: "ellipse",
+            "background-color": "data(color)",
+            "background-opacity": 1,
+            "border-width": 2,
+            "border-color": "#0E1116",
+            "border-style": "solid",
+            label: "",
+            "z-index": 2
+          }
+        },
+        {
+          selector: "node.waypoint:selected",
+          style: {
+            "border-width": 3,
+            "border-color": "#5AA9FF"
+          }
         }
       ],
       layout: { name: "cose", animate: false, randomize: false },
@@ -32243,24 +32549,37 @@
       minZoom: 0.05,
       maxZoom: 3
     });
-    let bendScheduled = 0;
-    const scheduleBendSync = () => {
-      if (bendScheduled !== 0) return;
-      bendScheduled = requestAnimationFrame(() => {
-        bendScheduled = 0;
-        syncBendDots(cy2);
+    let mapSyncScheduled = 0;
+    const scheduleMapSync = () => {
+      if (mapSyncScheduled !== 0) return;
+      mapSyncScheduled = requestAnimationFrame(() => {
+        mapSyncScheduled = 0;
+        syncMap(cy2);
       });
     };
     cy2.on("position", "node", (ev) => {
       const t = ev.target;
       if (t.hasClass("bend")) return;
-      scheduleBendSync();
+      scheduleMapSync();
     });
-    cy2.on("pan zoom resize", () => scheduleBendSync());
+    cy2.on("pan zoom resize", () => scheduleMapSync());
     let lastTapId = "";
     let lastTapAt = 0;
     cy2.on("tap", "node", (ev) => {
       const n = ev.target;
+      if (n.hasClass(WAYPOINT_CLASS)) {
+        const wpId = n.id();
+        const now2 = Date.now();
+        if (wpId === lastTapId && now2 - lastTapAt < 400) {
+          lastTapId = "";
+          lastTapAt = 0;
+          removeWaypoint(cy2, n);
+        } else {
+          lastTapId = wpId;
+          lastTapAt = now2;
+        }
+        return;
+      }
       const info = nodeInfoOf(n);
       const now = Date.now();
       if (info.id === lastTapId && now - lastTapAt < 400) {
@@ -32274,8 +32593,20 @@
       cb.onNodeSelect(info);
       cb.onLinkSelect(null, null);
     });
+    let lastEdgeTapId = "";
+    let lastEdgeTapAt = 0;
     cy2.on("tap", "edge", (ev) => {
       const e = ev.target;
+      const now = Date.now();
+      if (e.id() === lastEdgeTapId && now - lastEdgeTapAt < 400) {
+        lastEdgeTapId = "";
+        lastEdgeTapAt = 0;
+        const p2 = ev.position;
+        if (p2 !== void 0) addWaypoint(cy2, e, p2);
+        return;
+      }
+      lastEdgeTapId = e.id();
+      lastEdgeTapAt = now;
       cb.onLinkSelect(linkInfoOf(e), e.id());
     });
     cy2.on("tap", (ev) => {
@@ -32284,8 +32615,40 @@
         cb.onLinkSelect(null, null);
       }
     });
+    cy2.on("dragfree", `node.${WAYPOINT_CLASS}`, (ev) => {
+      const n = ev.target;
+      const snap = document.getElementById("snap-grid");
+      moveWaypoint(cy2, n, snap === null ? true : snap.checked);
+    });
+    setupWaypointMenu(cy2);
     setupTooltip(cy2, container2);
     return cy2;
+  }
+  function setupWaypointMenu(cy2) {
+    const menu = document.getElementById("wp-menu");
+    const item = document.getElementById("wp-menu-delete");
+    if (menu === null || item === null) return;
+    let target = null;
+    const hide2 = () => {
+      menu.hidden = true;
+      target = null;
+    };
+    cy2.on("cxttap", `node.${WAYPOINT_CLASS}`, (ev) => {
+      target = ev.target;
+      const rect = cy2.container().getBoundingClientRect();
+      const pos = ev.target.renderedPosition();
+      menu.style.left = `${Math.min(pos.x + rect.left + 6, Math.max(0, rect.right - 170))}px`;
+      menu.style.top = `${Math.min(pos.y + rect.top + 6, Math.max(0, rect.bottom - 60))}px`;
+      menu.hidden = false;
+    });
+    cy2.on("drag pan zoom", () => hide2());
+    item.addEventListener("click", () => {
+      if (target !== null) removeWaypoint(cy2, target);
+      hide2();
+    });
+    document.addEventListener("click", (ev) => {
+      if (!menu.hidden && !menu.contains(ev.target)) hide2();
+    });
   }
   function setupTooltip(cy2, container2) {
     const tip = document.getElementById("graph-tooltip");
@@ -32339,7 +32702,7 @@ ${marks}`;
     const positions2 = /* @__PURE__ */ new Map();
     if (opts?.rearrange !== true) {
       cy2.nodes().forEach((n) => {
-        if (n.hasClass("bend")) return;
+        if (n.hasClass("bend") || n.hasClass(WAYPOINT_CLASS)) return;
         positions2.set(n.id(), n.position());
       });
     }
@@ -32424,7 +32787,10 @@ ${marks}`;
           bPort: l.bPort,
           src: l.source,
           manual: l.manual,
-          verified: l.verified
+          verified: l.verified,
+          // Устойчивый ключ связи для точек изгиба (NR-038 п.1):
+          // сервер отдаёт «a|aPort|b|bPort» либо «assumed:<id>».
+          wpKey: l.wp_key ?? edgeId(l)
         }
       });
     }
@@ -32450,7 +32816,7 @@ ${marks}`;
   function arrangeMap(cy2, g, placed, saved) {
     const nodeEls = [];
     cy2.nodes().forEach((n) => {
-      if (!n.isParent() && !n.hasClass("bend")) nodeEls.push(n);
+      if (!n.isParent() && !n.hasClass("bend") && !n.hasClass(WAYPOINT_CLASS)) nodeEls.push(n);
     });
     const arranging = nodeEls.filter((n) => !placed.has(n.id()));
     if (arranging.length === 0) return;
@@ -32495,7 +32861,26 @@ ${marks}`;
       }
     }
   }
+  function syncMap(cy2) {
+    syncWaypointNodes(cy2);
+    recomputeWaypointEdges(cy2);
+    syncBendDots(cy2);
+    syncLabelZoom(cy2);
+  }
+  var lastLabelZoom = /* @__PURE__ */ new WeakMap();
+  function syncLabelZoom(cy2, force = false) {
+    const z = cy2.zoom();
+    if (!force && lastLabelZoom.get(cy2) === z) return;
+    lastLabelZoom.set(cy2, z);
+    const fs = z >= LABEL_MIN_SCREEN_ZOOM ? LABEL_FONT_SIZE : Math.round(LABEL_MIN_SCREEN_SIZE / z * 100) / 100;
+    cy2.nodes().filter((n) => !n.hasClass("bend") && !n.hasClass(WAYPOINT_CLASS) && !n.isParent()).style("font-size", fs);
+  }
   function syncBendDots(cy2) {
+    const userPoints = [];
+    cy2.nodes(`.${WAYPOINT_CLASS}`).forEach((n) => {
+      userPoints.push(n.position());
+    });
+    const atWaypoint = (p2) => userPoints.some((w) => Math.abs(w.x - p2.x) < 1 && Math.abs(w.y - p2.y) < 1);
     const seen = /* @__PURE__ */ new Set();
     cy2.edges().forEach((e) => {
       const places = [];
@@ -32509,7 +32894,7 @@ ${marks}`;
         { suffix: "tgt", p: e.targetEndpoint() }
       );
       for (const { suffix, p: p2 } of places) {
-        if (p2 === void 0) continue;
+        if (p2 === void 0 || atWaypoint(p2)) continue;
         const id2 = `bend:${e.id()}:${suffix}`;
         seen.add(id2);
         const existing = cy2.$id(id2).first();
@@ -32570,7 +32955,7 @@ ${marks}`;
     }
   }
   function nodeLabel(n) {
-    const base = truncateLabel(n.label || n.id);
+    const base = wrapLabel(n.label || n.id);
     const marks = nodeMarks(n).filter((m) => m !== "\u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D");
     if (marks.length > 0) return `${base}
 (${marks.join(", ")})`;
@@ -32710,10 +33095,14 @@ ${marks}`;
   }
 
   // src/mapgrid.ts
+  var GRID_RARE_ZOOM = 0.6;
+  var GRID_RARE_FACTOR = 5;
   function gridPaint(zoom2, pan2) {
+    const factor = zoom2 < GRID_RARE_ZOOM ? GRID_RARE_FACTOR : 1;
+    const step3 = GRID_STEP * factor;
     return {
-      sizeX: SNAP_STEP_X * zoom2,
-      sizeY: SNAP_STEP_Y * zoom2,
+      sizeX: step3 * zoom2,
+      sizeY: step3 * zoom2,
       posX: pan2.x,
       posY: pan2.y
     };
@@ -33859,6 +34248,9 @@ ${marks}`;
   var savedPositions = /* @__PURE__ */ new Map();
   var pendingPositions = /* @__PURE__ */ new Map();
   var positionsTimer = null;
+  var savedWaypoints = /* @__PURE__ */ new Map();
+  var pendingWaypoints = /* @__PURE__ */ new Map();
+  var waypointsTimer = null;
   async function flushPositions() {
     positionsTimer = null;
     if (pendingPositions.size === 0) return;
@@ -33879,6 +34271,38 @@ ${marks}`;
     pendingPositions.set(id2, { x: x2, y: y2 });
     if (positionsTimer !== null) clearTimeout(positionsTimer);
     positionsTimer = setTimeout(() => void flushPositions(), 500);
+  }
+  async function flushWaypoints() {
+    waypointsTimer = null;
+    if (pendingWaypoints.size === 0) return;
+    const batch2 = [...pendingWaypoints.entries()];
+    pendingWaypoints.clear();
+    for (const [link, points] of batch2) {
+      try {
+        await api2.saveWaypoints(link, points);
+      } catch {
+        pendingWaypoints.set(link, points);
+      }
+    }
+  }
+  function queueWaypoints(dirty) {
+    const current2 = waypointsOf(cy);
+    for (const link of dirty) {
+      const points = current2.get(link) ?? [];
+      savedWaypoints.set(link, points.map((p2) => ({ ...p2 })));
+      pendingWaypoints.set(link, points.map((p2) => ({ ...p2 })));
+    }
+    if (waypointsTimer !== null) clearTimeout(waypointsTimer);
+    waypointsTimer = setTimeout(() => void flushWaypoints(), 500);
+  }
+  function groupWaypoints(waypoints) {
+    const out = /* @__PURE__ */ new Map();
+    for (const w of [...waypoints].sort((a, b) => a.idx - b.idx)) {
+      const pts2 = out.get(w.link) ?? [];
+      pts2.push({ x: w.x, y: w.y });
+      out.set(w.link, pts2);
+    }
+    return out;
   }
   var addKinds = [
     ["internet", "\u0418\u043D\u0442\u0435\u0440\u043D\u0435\u0442"],
@@ -33915,11 +34339,18 @@ ${marks}`;
       } catch {
       }
       try {
+        const { waypoints } = await api2.mapWaypoints();
+        savedWaypoints = groupWaypoints(waypoints);
+      } catch {
+        savedWaypoints = /* @__PURE__ */ new Map();
+      }
+      try {
         signalsView = await api2.signals();
       } catch {
         signalsView = { signals: [], statuses: [] };
       }
       setGraph(cy, graph, savedPositions, statusProvider());
+      applyWaypoints(cy, savedWaypoints);
       if (firstMapFit) {
         firstMapFit = false;
         initialFit(cy);
@@ -34003,6 +34434,7 @@ ${marks}`;
       void openCard(node.id);
     },
     onLinkSelect: (link, edgeId2) => {
+      btn("btn-clear-bends").disabled = link === null || edgeId2 === null;
       if (link === null || edgeId2 === null) return;
       currentLink = link;
       currentLinkId = edgeId2;
@@ -34012,6 +34444,7 @@ ${marks}`;
     }
   };
   var cy = createGraph($2("graph"), callbacks);
+  onWaypointsChanged(cy, queueWaypoints);
   gridUpdate = setupGridLayer(cy);
   for (const id2 of ["show-grid", "snap-grid"]) {
     $2(id2).addEventListener("change", () => gridUpdate());
@@ -34054,11 +34487,20 @@ ${marks}`;
       zoomStep(0.8);
       return;
     }
-    const dx = { ArrowLeft: -SNAP_STEP_X, ArrowRight: SNAP_STEP_X }[ev.key];
-    const dy = { ArrowUp: -SNAP_STEP_Y, ArrowDown: SNAP_STEP_Y }[ev.key];
-    if (dx === void 0 && dy === void 0) return;
+    const dx = { ArrowLeft: -GRID_STEP, ArrowRight: GRID_STEP }[ev.key];
+    const dy = { ArrowUp: -GRID_STEP, ArrowDown: GRID_STEP }[ev.key];
+    if (dx === void 0 && dy === void 0) {
+      if (ev.key === "Delete" || ev.key === "Backspace") {
+        const wps = cy.nodes(`:selected.waypoint`);
+        if (wps.nonempty()) {
+          ev.preventDefault();
+          wps.forEach((w) => removeWaypoint(cy, w));
+        }
+      }
+      return;
+    }
     ev.preventDefault();
-    const selected = cy.nodes(":selected").filter((n) => !n.hasClass("bend"));
+    const selected = cy.nodes(":selected").filter((n) => !n.hasClass("bend") && !n.hasClass("waypoint"));
     if (selected.nonempty()) {
       const n = selected.first();
       const x2 = n.position("x") + (dx ?? 0);
@@ -34075,6 +34517,7 @@ ${marks}`;
   });
   cy.on("dragfree", "node", (ev) => {
     const n = ev.target;
+    if (n.hasClass("waypoint")) return;
     const snap = $2("snap-grid");
     if (snap.checked) {
       const snapped = snapToGrid(n.position("x"), n.position("y"));
@@ -34083,7 +34526,7 @@ ${marks}`;
     queuePosition(n.id(), n.position("x"), n.position("y"));
   });
   $2("btn-arrange").addEventListener("click", async () => {
-    if (!window.confirm("\u041F\u0435\u0440\u0435\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0432\u0441\u0435 \u0443\u0437\u043B\u044B \u043F\u043E \u0441\u0435\u0442\u043A\u0435? \u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0443\u0437\u043B\u043E\u0432 \u0431\u0443\u0434\u0443\u0442 \u043E\u0447\u0438\u0449\u0435\u043D\u044B.")) {
+    if (!window.confirm("\u041F\u0435\u0440\u0435\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0432\u0441\u0435 \u0443\u0437\u043B\u044B \u043F\u043E \u0441\u0435\u0442\u043A\u0435? \u0421\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0443\u0437\u043B\u043E\u0432 \u0438 \u0442\u043E\u0447\u043A\u0438 \u0438\u0437\u0433\u0438\u0431\u0430 \u0441\u0432\u044F\u0437\u0435\u0439 \u0431\u0443\u0434\u0443\u0442 \u043E\u0447\u0438\u0449\u0435\u043D\u044B.")) {
       return;
     }
     if (positionsTimer !== null) {
@@ -34091,14 +34534,30 @@ ${marks}`;
       positionsTimer = null;
     }
     pendingPositions.clear();
+    if (waypointsTimer !== null) {
+      clearTimeout(waypointsTimer);
+      waypointsTimer = null;
+    }
+    pendingWaypoints.clear();
     try {
       await api2.clearPositions();
     } catch {
     }
+    try {
+      await api2.clearWaypoints();
+    } catch {
+    }
     savedPositions = /* @__PURE__ */ new Map();
+    savedWaypoints = /* @__PURE__ */ new Map();
+    clearAllWaypoints(cy);
     setGraph(cy, graph, savedPositions, statusProvider(), { rearrange: true });
     renderA11y(graph, statusProvider());
     renderLegend($2("map-legend"), graph, statusProvider());
+  });
+  $2("btn-clear-bends").addEventListener("click", () => {
+    if (currentLinkId === null) return;
+    clearLinkWaypoints(cy, currentLinkId);
+    btn("btn-clear-bends").disabled = true;
   });
   function pushSelection(id2) {
     if (!selectedIds.includes(id2)) selectedIds.push(id2);
@@ -35013,5 +35472,8 @@ ${marks}`;
   setupAddDialog();
   void refreshAlertBadge();
   void refreshAuditBadge();
-  window.__netatlas = { cy };
+  window.__netatlas = {
+    cy,
+    waypoints: () => waypointsOf(cy)
+  };
 })();

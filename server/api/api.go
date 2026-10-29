@@ -50,6 +50,10 @@ type Store interface {
 	SavePosition(ctx context.Context, id string, x, y float64, actor string) error
 	SavePositions(ctx context.Context, pos []store.NodePosition, actor string) (int, error)
 	ClearPositions(ctx context.Context, actor string) error
+	// Точки изгиба связей карты (NR-038 п.1).
+	Waypoints(ctx context.Context) ([]store.LinkWaypoint, error)
+	SaveWaypoints(ctx context.Context, link string, pts []store.WaypointPoint, actor string) (int, error)
+	ClearWaypoints(ctx context.Context, actor string) (int, error)
 	RecordVerification(ctx context.Context, id, actor string, alive bool, detail string) error
 	ListDevices(ctx context.Context) ([]store.DeviceInfo, error)
 	ListDevicesByClass(ctx context.Context, class model.Class) ([]store.DeviceInfo, error)
@@ -179,6 +183,11 @@ func New(st Store, token string, scope *scanner.Scope, limiter *scanner.Limiter,
 	mux.HandleFunc("PUT /api/map/positions", a.handlePositionsSaveBatch)
 	mux.HandleFunc("DELETE /api/map/positions", a.handlePositionsClear)
 	mux.HandleFunc("DELETE /api/positions", a.handlePositionsClear)
+	// Точки изгиба связей карты (NR-038 п.1): чтение всех, замена
+	// точек одной связи, очистка всех («Выстроить сеткой»).
+	mux.HandleFunc("GET /api/map/waypoints", a.handleWaypointsList)
+	mux.HandleFunc("PUT /api/map/waypoints", a.handleWaypointsSave)
+	mux.HandleFunc("DELETE /api/map/waypoints", a.handleWaypointsClear)
 	mux.HandleFunc("POST /api/devices/{id}/verify", a.handleVerify)
 	mux.HandleFunc("GET /api/audit", a.handleAudit)
 	mux.HandleFunc("GET /api/audit/verify", a.handleAuditVerify)
@@ -726,4 +735,59 @@ func (a *API) handlePositionsClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// mapWaypointsBody — тело PUT /api/map/waypoints (NR-038 п.1):
+// полный список точек одной связи; пустой список стирает изгибы.
+type mapWaypointsBody struct {
+	Link   string                `json:"link"`
+	Points []store.WaypointPoint `json:"points"`
+}
+
+// handleWaypointsList — GET /api/map/waypoints: все сохранённые
+// точки изгиба, по ключу связи и порядку на линии.
+func (a *API) handleWaypointsList(w http.ResponseWriter, r *http.Request) {
+	waypoints, err := a.store.Waypoints(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"waypoints": waypoints})
+}
+
+// handleWaypointsSave — PUT /api/map/waypoints: заменить точки
+// изгиба одной связи (клиент отправляет полный список после каждого
+// изменения; пустой список — сброс изгибов связи).
+func (a *API) handleWaypointsSave(w http.ResponseWriter, r *http.Request) {
+	var body mapWaypointsBody
+	if err := decodeJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		return
+	}
+	if len(body.Points) > store.MaxWaypointsPerLink {
+		writeJSON(w, http.StatusRequestEntityTooLarge, errorBody{"точек изгиба больше лимита"})
+		return
+	}
+	// Кривой ключ связи — ошибка клиента (400), а не сбой хранилища.
+	if err := store.ValidLinkKey(body.Link); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
+		return
+	}
+	saved, err := a.store.SaveWaypoints(r.Context(), body.Link, body.Points, ActorOwner)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": saved})
+}
+
+// handleWaypointsClear — DELETE /api/map/waypoints: «Выстроить
+// сеткой» сбрасывает и точки изгиба (NR-038 п.1).
+func (a *API) handleWaypointsClear(w http.ResponseWriter, r *http.Request) {
+	cleared, err := a.store.ClearWaypoints(r.Context(), ActorOwner)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cleared": cleared})
 }
