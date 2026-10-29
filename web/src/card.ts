@@ -8,6 +8,7 @@
 
 import type { DeviceInfo, Graph, MapSignal } from './api';
 import { className, CLASSES, KIND_OPTIONS, kindIcon } from './panels';
+import { displayName } from './scan';
 import { KIND_LABELS } from './nodes';
 
 export interface CardHandlers {
@@ -95,8 +96,9 @@ export function fillCard(
   const head = el('div', 'card-head');
   const title = el('h2');
   // hostname может отсутствовать в ответе (omitempty): undefined
-  // превращается в пустую строку — подставляем MAC.
-  text(title, info.hostname ? info.hostname : info.id);
+  // превращается в пустую строку. NR-037 п.3: имя карточки — то же,
+  // что в таблице и на карте: у шлюза без имени — «Роутер <IP>».
+  text(title, info.hostname ? info.hostname : displayName(info));
   const marks = el('p', 'card-marks');
   const badge = (cls: string, label: string): void => {
     const b = el('span', `badge ${cls}`);

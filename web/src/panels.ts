@@ -121,7 +121,9 @@ export function fillOverview(
   typeRow.append(dt, dd);
   dl.append(typeRow);
   row('ID', info.id);
-  if (info.hostname !== '') row('Имя', info.hostname);
+  // hostname опционален на проводе (omitempty): truthy-проверка —
+  // сравнение !== '' показывало «undefined» (NR-037).
+  if (info.hostname) row('Имя', info.hostname);
   row('IP', info.ips.length > 0 ? info.ips.join(', ') : '—');
   if (info.vendor !== '') row('Производитель', info.vendor);
   row('Класс', className(info.class));

@@ -9,6 +9,13 @@
 // NR-033: связи ортогональные (curve-style taxi, излом под прямым
 // углом в зазоре между рядами), двойной клик открывает полную
 // карточку, значки несут маркер статуса и счётчик решений.
+// NR-037: точки соединений — порт-узлы 6 px на стыке линии с диском
+// (syncBendDots), а не стрелки cytoscape: размер «кружка» считается
+// как max(pow(w×13.37, 0.9), 29) × arrow-scale — при линии 1.6 и
+// scale 4 это диск ~35 px, закрывавший подписи («фиолетовые круги»
+// со скриншота владельца). Подписи читаются поверх линий: фон под
+// цвет поля; магистраль — в нижней половине зазора между рядами,
+// под подписями верхнего ряда; подпись шлюза — над диском.
 // NR-036: значки — вариант В «Цвет по роли»: круглый диск 74 px с
 // цветом по роли и белым глифом, кольцо статуса внутри SVG; рамка
 // узла cytoscape не рисуется, выделение — яркая внешняя обводка
@@ -85,6 +92,12 @@ export function createGraph(
           'text-margin-y': 6,
           'text-wrap': 'wrap',
           'text-max-width': '140',
+          // NR-037 п.2: подпись читается поверх линий — фон под цвет
+          // поля с отступом 2 px; узлы с подписями рисуются выше
+          // рёбер сами (z-index-compare в cytoscape).
+          'text-background-color': '#0E1116',
+          'text-background-opacity': 1,
+          'text-background-padding': '2',
           width: String(BADGE_NODE),
           height: String(BADGE_NODE),
           label: 'data(label)',
@@ -106,22 +119,31 @@ export function createGraph(
         style: {
           width: 1.6,
           'line-color': 'data(color)',
-          'source-arrow-shape': 'circle',
-          'target-arrow-shape': 'circle',
-          'source-arrow-color': 'data(color)',
-          'target-arrow-color': 'data(color)',
-          // Точка соединения 6-8 px (NR-035 п.2): 1.6 x 4 = 6.4 px.
-          'arrow-scale': 4,
+          // NR-037 п.1: стрелок нет — точки соединений рисуют
+          // порт-узлы 6 px на стыке линии с диском (syncBendDots).
+          // Стрелка-«кружок» cytoscape при линии 1.6 и arrow-scale 4
+          // имеет диаметр ~35 px (min база 29 в формуле размера) и
+          // ложилась ровно на подписи узлов и шлюза.
+          'source-arrow-shape': 'none',
+          'target-arrow-shape': 'none',
+          // scale 1 держит отступ линии от диска (gap) 3.2 px — его
+          // закрывает точка на границе; при scale 4 отступ 12.8 px
+          // оставлял бы видимую щель.
+          'arrow-scale': 1,
           // Ортогональные связи (NR-033 п.1): ломаная под прямыми
           // углами. taxi-direction vertical: вертикальный участок у
-          // источника, горизонталь в зазоре между рядами. NR-036:
-          // значок-диск 80 px, шаг ряда 120 — зазор 40 px. ВАЖНО:
-          // cytoscape считает taxi-turn от границы узла, а не от
-          // центра: 20 px от границы = 60 px от центра — середина
-          // зазора между рядами.
+          // источника, горизонталь в зазоре между рядами. NR-037 п.2:
+          // cytoscape считает taxi-turn от границы узла: 10 px от
+          // границы = 50 px от центра — нижняя половина зазора между
+          // рядами (шаг ряда 120, диск 80). Раньше 20 px = 60 px от
+          // центра — ровно по нижнему краю подписей верхнего ряда
+          // (подпись висит на 6..20 px ниже диска, до y−60), и
+          // магистраль перечёркивала подписи. Теперь между подписью
+          // (до y−60) и диском (от y−40) свободная полоса y−60..y−40,
+          // магистраль — на y−50, посередине.
           'curve-style': 'taxi',
           'taxi-direction': 'vertical',
-          'taxi-turn': '20px',
+          'taxi-turn': '10px',
           'taxi-turn-min-distance': 8,
           color: '#9AA6B5',
           'font-size': 10,
@@ -158,6 +180,10 @@ export function createGraph(
           'border-width': 0,
           label: '',
           events: 'no',
+          // NR-037 п.1: точки ниже узлов и их подписей (среди узлов
+          // порядок по z-index, затем по добавлению), но выше линий —
+          // z-index-compare всегда рисует узлы над рёбрами.
+          'z-index': -1,
         },
       },
     ],
@@ -340,7 +366,18 @@ export function setGraph(
       // (владелец двигал, отправка ещё не прошла) сильнее серверной;
       // серверная — сильнее раскладки; без всего — раскладка.
       position: positions.get(n.id) ?? saved?.get(n.id) ?? { x: 0, y: 0 },
-      style: { shape: st.shape, width: String(st.width), height: String(st.height) },
+      style: {
+        shape: st.shape,
+        width: String(st.width),
+        height: String(st.height),
+        // NR-037 п.1: подпись шлюза — НАД диском. Звезда связей
+        // подходит к роутеру снизу, точка соединения — на нижней
+        // кромке диска; подпись под диском попадала бы под линию
+        // и под точку («у Huawei подпись наезжает на точку и линию»).
+        ...(n.kind === 'router'
+          ? { 'text-valign': 'top', 'text-margin-y': '-6' }
+          : {}),
+      },
       classes: [n.manual ? 'manual' : '', n.verified ? '' : 'unverified']
         .filter(Boolean)
         .join(' '),
@@ -480,18 +517,32 @@ function arrangeMap(
   }
 }
 
-// syncBendDots — точки на изломах ортогональных линий (NR-035 п.2):
-// порт-узел в каждой сегментной точке ребра, цветом линии. Позиции
+// syncBendDots — точки на изломах и концах ортогональных линий
+// (NR-035 п.2, NR-037 п.1): порт-узел в каждой сегментной точке ребра
+// и на стыке линии с диском узла (sourceEndpoint/targetEndpoint —
+// верх диска у устройства, низ у шлюза), цветом линии. Позиции
 // пересчитываются при перемещении узлов и смене масштаба; устаревшие
-// точки удаляются. Точки не попадают в раскладку и не ловят события.
+// точки удаляются. Точки не попадают в раскладку, не ловят события
+// и рисуются ниже узлов и подписей (z-index: -1).
 export function syncBendDots(cy: Core): void {
   const seen = new Set<string>();
   cy.edges().forEach((e) => {
-    const pts = e.segmentPoints() as { x: number; y: number }[];
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
+    // Точки изломов нумеруются по индексу сегментной точки; точки на
+    // стыках с дисками имеют явные суффиксы src/tgt — число изломов
+    // может меняться при перемещении узлов, стыки — стабильны.
+    const places: { suffix: string; p: { x: number; y: number } }[] = [];
+    const segs = e.segmentPoints() as { x: number; y: number }[];
+    for (let i = 0; i < segs.length; i++) {
+      const p = segs[i];
+      if (p !== undefined) places.push({ suffix: String(i), p });
+    }
+    places.push(
+      { suffix: 'src', p: e.sourceEndpoint() as { x: number; y: number } },
+      { suffix: 'tgt', p: e.targetEndpoint() as { x: number; y: number } },
+    );
+    for (const { suffix, p } of places) {
       if (p === undefined) continue;
-      const id = `bend:${e.id()}:${i}`;
+      const id = `bend:${e.id()}:${suffix}`;
       seen.add(id);
       const existing = cy.$id(id).first() as NodeSingular | undefined;
       if (existing !== undefined && existing.nonempty()) {

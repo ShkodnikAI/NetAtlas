@@ -153,12 +153,18 @@ export function ipSortKey(info: DeviceInfo): number {
   return key;
 }
 
-// displayName — имя или производитель (NR-031 п.3): hostname, первое
-// имя, производитель, идентификатор (MAC).
+// displayName — имя или производитель (NR-031 п.3, NR-037 п.3):
+// hostname, первое имя, для шлюза «Роутер <IP>» (то же имя, что на
+// карте и в карточке), производитель, идентификатор (MAC).
 export function displayName(info: DeviceInfo): string {
-  if (info.hostname !== '') return info.hostname;
+  // hostname опционален на проводе (omitempty): undefined — тоже «нет
+  // имени» (truthy-проверка; сравнение !== '' возвращало undefined).
+  if (info.hostname) return info.hostname;
   const first = info.names[0];
   if (first !== undefined && first.name !== '') return first.name;
+  // NR-037 п.3: шлюз без имени называется по адресу — подпись
+  // «HUAWEI TECHNOLOGIES CO.,LTD…» не читается.
+  if (info.kind === 'router' && info.ips.length > 0) return `Роутер ${info.ips[0]}`;
   if (info.vendor !== '') return info.vendor;
   return info.id;
 }

@@ -35,7 +35,13 @@ import { svgIcon } from './nodes';
 import { SNAP_STEP_X, SNAP_STEP_Y, snapToGrid } from './layout';
 import { fillEdit, fillNet, fillOverview, setObservations, type PanelHandlers } from './panels';
 import { fillCard, type CardHandlers } from './card';
-import { renderAttentionPanel, statusesOf, type SignalStatus } from './signals';
+import {
+  attentionBadgeCount,
+  renderAttentionPanel,
+  statusesOf,
+  withGroupedDecisions,
+  type SignalStatus,
+} from './signals';
 import type { SignalsView } from './api';
 import type { NodeSingular } from 'cytoscape';
 import {
@@ -186,8 +192,10 @@ async function reload(): Promise<void> {
 
 // statusProvider — сводный статус узла: ■ > ▲ > ○ из сигналов;
 // ◇ не проверен и ● в сети подставляются в setGraph/renderA11y.
+// NR-037 п.5: у узлов, чьи решения — только сгруппированные «новые
+// устройства», счётчик на значке не показывается (маркер ▲ остаётся).
 function statusProvider(): GraphStatuses {
-  const map = statusesOf(signalsView);
+  const map = withGroupedDecisions(statusesOf(signalsView), signalsView.signals);
   return {
     status: (id: string): SignalStatus =>
       map.get(id) ?? { status: 'online', decisions: 0 },
@@ -195,14 +203,29 @@ function statusProvider(): GraphStatuses {
 }
 
 // refreshAttention — панель «Требуют внимания» и счётчик на кнопке.
+// NR-037 п.5: группа однотипных сигналов «новое устройство» считается
+// одним сигналом; «Принять все» меняет класс всей группы (по одному
+// PATCH на устройство — существующий API), затем карта перезаливается.
+async function acceptAllGroup(deviceIds: string[], klass: string): Promise<void> {
+  try {
+    for (const id of deviceIds) {
+      await api.updateDevice(id, { class: klass });
+    }
+  } catch (err) {
+    showNotice(errMessage(err), true);
+  }
+  await reload();
+}
+
 function refreshAttention(): void {
   const panel = $('attention-panel');
   renderAttentionPanel(panel, signalsView.signals, graph.nodes, {
     onFocus: (deviceId) => focusNode(deviceId),
+    onAcceptAll: (ids, klass) => void acceptAllGroup(ids, klass),
   });
   panel.hidden = !attentionOpen || signalsView.signals.length === 0;
   const count = $('attention-count');
-  count.textContent = String(signalsView.signals.length);
+  count.textContent = String(attentionBadgeCount(signalsView.signals));
   count.hidden = signalsView.signals.length === 0;
 }
 
