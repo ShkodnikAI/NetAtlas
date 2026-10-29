@@ -67,7 +67,7 @@ func scanFix(t *testing.T, now time.Time, mac, ip, name string) ScanResult {
 	}
 }
 
-// Миграции на пустой базе: версия 17 (NR-033 signal_snoozes), повторный запуск ничего не меняет.
+// Миграции на пустой базе: версия 18 (NR-038 link_waypoints), повторный запуск ничего не меняет.
 func TestMigrationsEmptyAndRepeat(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "netatlas.db")
@@ -77,8 +77,8 @@ func TestMigrationsEmptyAndRepeat(t *testing.T) {
 	}
 	ctx := context.Background()
 	v, err := s.SchemaVersion(ctx)
-	if err != nil || v != 17 {
-		t.Fatalf("версия = %d (err %v), хочу 17", v, err)
+	if err != nil || v != 18 {
+		t.Fatalf("версия = %d (err %v), хочу 18", v, err)
 	}
 	if _, err := s.AddManualDevice(ctx, model.NodeKindDevice, "ручной", "owner"); err != nil {
 		t.Fatalf("ручной элемент: %v", err)
@@ -91,8 +91,8 @@ func TestMigrationsEmptyAndRepeat(t *testing.T) {
 		t.Fatalf("повторное открытие: %v", err)
 	}
 	defer s2.Close()
-	if v, err := s2.SchemaVersion(ctx); err != nil || v != 17 {
-		t.Fatalf("версия после повтора = %d (err %v), хочу 17", v, err)
+	if v, err := s2.SchemaVersion(ctx); err != nil || v != 18 {
+		t.Fatalf("версия после повтора = %d (err %v), хочу 18", v, err)
 	}
 	devs, err := s2.ListDevices(ctx)
 	if err != nil || len(devs) != 1 {

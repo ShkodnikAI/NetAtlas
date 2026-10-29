@@ -20,12 +20,28 @@
 // цветом по роли и белым глифом, кольцо статуса внутри SVG; рамка
 // узла cytoscape не рисуется, выделение — яркая внешняя обводка
 // #E6EAF0 (подложка под узлом), не меняющая цвет статуса.
+// NR-038: точки изгиба на линиях — двойной клик по связи ставит
+// узловую точку на мелкой сетке 20×20, перетаскивание двигает её,
+// двойной клик/Delete/контекстное меню удаляют; линия всегда
+// ортогональна (ломаная сегментами через точки, NR-033); точки
+// хранятся на сервере (wpKey связи — из данных графа). Подписи:
+// шрифт 13 px при масштабе 100% и не мельче 11 px экранных,
+// перенос по словам без «…» посередине (syncLabelZoom, wrapLabel).
 
 import cytoscape from 'cytoscape';
 import type { Core, ElementDefinition, EventObject, NodeSingular } from 'cytoscape';
 import type { Graph, LinkInfo, NodeInfo } from './api';
 import { BADGE_NODE, nodeStyle, STATUS_STYLES, type NodeStatusKind } from './nodes';
-import { arrangeGrid, deoverlap, measureLabel, type Positioned } from './layout';
+import { arrangeGrid, deoverlap, measureLabel, wrapLabel, type Positioned } from './layout';
+import {
+  addWaypoint,
+  moveWaypoint,
+  recomputeWaypointEdges,
+  removeWaypoint,
+  syncWaypointNodes,
+  WAYPOINT_CLASS,
+  type Point,
+} from './waypoints';
 
 export interface GraphCallbacks {
   // Клик по узлу (или выбор с клавиатуры).
@@ -44,9 +60,13 @@ const STROKE: Record<string, string> = {
   manual: '#F5B83D',
 };
 
-// Подпись узла длиннее этого числа знаков обрезается многоточием;
-// полная подпись остаётся в data(fullLabel) для подсказки.
-const LABEL_MAX_CHARS = 28;
+// Шрифт подписи узла (NR-038 п.3): 13 px при масштабе 100% —
+// минимум; насыщенность 500.
+export const LABEL_FONT_SIZE = 13;
+// Экранный минимум подписи при малом масштабе: ниже 0.7 подписи не
+// мельче 11 px экранных (шрифт в модельных единицах растёт).
+export const LABEL_MIN_SCREEN_ZOOM = 0.7;
+export const LABEL_MIN_SCREEN_SIZE = 11;
 
 // Минимальный масштаб по умолчанию (NR-034 п.2, пересчёт NR-036):
 // значок-диск 74 px модели при зуме 0.8 отрисовывается не мельче
@@ -55,7 +75,7 @@ export const MIN_ICON_ZOOM = 0.8;
 // Поля вокруг карты при подгонке и расчёте переноса ряда (px).
 const FIT_PADDING = 90;
 
-export function truncateLabel(text: string, max = LABEL_MAX_CHARS): string {
+export function truncateLabel(text: string, max = 28): string {
   if (text.length <= max) return text;
   return text.slice(0, Math.max(1, max - 1)) + '…';
 }
@@ -86,18 +106,24 @@ export function createGraph(
           // узла не нужна — выделение не перекрашивает статус.
           'border-width': 0,
           color: '#E6EAF0',
-          'font-size': 11,
+          // NR-038 п.3: подпись читается — 13 px при масштабе 100%,
+          // насыщенность 500, фон цвета поля с отступом 3 px;
+          // при малом масштабе шрифт догоняется до 11 px экранных
+          // (syncLabelZoom).
+          'font-size': LABEL_FONT_SIZE,
+          'font-weight': 500,
           'font-family': 'system-ui, sans-serif',
           'text-valign': 'bottom',
           'text-margin-y': 6,
           'text-wrap': 'wrap',
           'text-max-width': '140',
           // NR-037 п.2: подпись читается поверх линий — фон под цвет
-          // поля с отступом 2 px; узлы с подписями рисуются выше
-          // рёбер сами (z-index-compare в cytoscape).
+          // поля с отступом 3 px (NR-038 п.3); узлы с подписями
+          // рисуются выше рёбер сами (z-index-compare в cytoscape).
           'text-background-color': '#0E1116',
           'text-background-opacity': 1,
-          'text-background-padding': '2',
+          'text-background-padding': '3',
+          'text-background-shape': 'roundrectangle',
           width: String(BADGE_NODE),
           height: String(BADGE_NODE),
           label: 'data(label)',
@@ -186,6 +212,46 @@ export function createGraph(
           'z-index': -1,
         },
       },
+      {
+        // Связь с пользовательскими точками изгиба (NR-038 п.1):
+        // ломаная из сегментов через точки по порядку, всегда
+        // ортогонально. Точки пересчитываются в wts/dss относительно
+        // оси источник→цель (edge-distances: node-position — от
+        // центров узлов) при каждом изменении позиций.
+        selector: 'edge[haswp]',
+        style: {
+          'curve-style': 'segments',
+          'edge-distances': 'node-position',
+          'segment-weights': 'data(wts)',
+          'segment-distances': 'data(dss)',
+        },
+      },
+      {
+        // Пользовательская точка изгиба (NR-038 п.1): 10 px, обводка
+        // цветом фона 2 px, события и перетаскивание включены —
+        // отличается от автоматических точек излома 6 px; при
+        // выделении обводка подсвечивается.
+        selector: 'node.waypoint',
+        style: {
+          width: 10,
+          height: 10,
+          shape: 'ellipse',
+          'background-color': 'data(color)',
+          'background-opacity': 1,
+          'border-width': 2,
+          'border-color': '#0E1116',
+          'border-style': 'solid',
+          label: '',
+          'z-index': 2,
+        },
+      },
+      {
+        selector: 'node.waypoint:selected',
+        style: {
+          'border-width': 3,
+          'border-color': '#5AA9FF',
+        },
+      },
     ],
     layout: { name: 'cose', animate: false, randomize: false },
     wheelSensitivity: 0.2,
@@ -193,31 +259,46 @@ export function createGraph(
     maxZoom: 3,
   });
 
-  // Пересчёт точек изломов (NR-035 п.2): позиции сегментных точек
-  // зависят от положения узлов и от масштаба (taxi-turn в px),
-  // поэтому пересчитываются на перемещение узлов, зуме и панели —
-  // с throttling через requestAnimationFrame.
-  let bendScheduled = 0;
-  const scheduleBendSync = (): void => {
-    if (bendScheduled !== 0) return;
-    bendScheduled = requestAnimationFrame(() => {
-      bendScheduled = 0;
-      syncBendDots(cy);
+  // Пересчёт точек изломов (NR-035 п.2) и ломаных связей с точками
+  // изгиба (NR-038 п.1), шрифт подписей при малом масштабе (NR-038
+  // п.3): позиции зависят от положения узлов и масштаба, поэтому
+  // пересчитываются на перемещение узлов, зуме и панели — с
+  // throttling через requestAnimationFrame.
+  let mapSyncScheduled = 0;
+  const scheduleMapSync = (): void => {
+    if (mapSyncScheduled !== 0) return;
+    mapSyncScheduled = requestAnimationFrame(() => {
+      mapSyncScheduled = 0;
+      syncMap(cy);
     });
   };
   cy.on('position', 'node', (ev: EventObject) => {
     const t = ev.target as NodeSingular;
     if (t.hasClass('bend')) return;
-    scheduleBendSync();
+    scheduleMapSync();
   });
-  cy.on('pan zoom resize', () => scheduleBendSync());
+  cy.on('pan zoom resize', () => scheduleMapSync());
 
   // Двойной клик (NR-033 п.3): cytoscape не умеет dblclick — два
   // быстрых tap по одному узлу в пределах 400 мс открывают карточку.
+  // Точки изгиба (NR-038 п.1): два tap по точке — удалить её.
   let lastTapId = '';
   let lastTapAt = 0;
   cy.on('tap', 'node', (ev: EventObject) => {
     const n = ev.target as NodeSingular;
+    if (n.hasClass(WAYPOINT_CLASS)) {
+      const wpId = n.id();
+      const now = Date.now();
+      if (wpId === lastTapId && now - lastTapAt < 400) {
+        lastTapId = '';
+        lastTapAt = 0;
+        removeWaypoint(cy, n);
+      } else {
+        lastTapId = wpId;
+        lastTapAt = now;
+      }
+      return;
+    }
     const info = nodeInfoOf(n);
     const now = Date.now();
     if (info.id === lastTapId && now - lastTapAt < 400) {
@@ -231,8 +312,23 @@ export function createGraph(
     cb.onNodeSelect(info);
     cb.onLinkSelect(null, null);
   });
+  // Двойной клик по связи (NR-038 п.1): узловая точка в месте клика;
+  // одиночный клик — выбор связи. Клик по точке изгиба не мешает:
+  // события точек не доходят до ребра (узел перехватывает tap).
+  let lastEdgeTapId = '';
+  let lastEdgeTapAt = 0;
   cy.on('tap', 'edge', (ev: EventObject) => {
     const e = ev.target;
+    const now = Date.now();
+    if (e.id() === lastEdgeTapId && now - lastEdgeTapAt < 400) {
+      lastEdgeTapId = '';
+      lastEdgeTapAt = 0;
+      const p = ev.position as Point | undefined;
+      if (p !== undefined) addWaypoint(cy, e, p);
+      return;
+    }
+    lastEdgeTapId = e.id();
+    lastEdgeTapAt = now;
     cb.onLinkSelect(linkInfoOf(e), e.id());
   });
   cy.on('tap', (ev: EventObject) => {
@@ -242,8 +338,50 @@ export function createGraph(
     }
   });
 
+  // Перетаскивание точки изгиба (NR-038 п.1): линия следует за
+  // точкой (rAF-цикл), после отпускания — привязка к мелкой сетке
+  // при включённой «Привязке к сетке» и сохранение на сервере.
+  cy.on('dragfree', `node.${WAYPOINT_CLASS}`, (ev: EventObject) => {
+    const n = ev.target as NodeSingular;
+    const snap = document.getElementById('snap-grid') as HTMLInputElement | null;
+    moveWaypoint(cy, n, snap === null ? true : snap.checked);
+  });
+
+  // Контекстное меню точки изгиба (NR-038 п.1): правый клик —
+  // меню «Удалить точку» у курсора.
+  setupWaypointMenu(cy);
   setupTooltip(cy, container);
   return cy;
+}
+
+// setupWaypointMenu — контекстное меню точки изгиба: правый клик по
+// точке открывает меню «Удалить точку»; клик мимо меню закрывает его.
+// Ненадёжный текст в DOM не попадает: только статические строки.
+function setupWaypointMenu(cy: Core): void {
+  const menu = document.getElementById('wp-menu');
+  const item = document.getElementById('wp-menu-delete');
+  if (menu === null || item === null) return;
+  let target: NodeSingular | null = null;
+  const hide = (): void => {
+    menu.hidden = true;
+    target = null;
+  };
+  cy.on('cxttap', `node.${WAYPOINT_CLASS}`, (ev: EventObject) => {
+    target = ev.target as NodeSingular;
+    const rect = (cy.container() as HTMLElement).getBoundingClientRect();
+    const pos = (ev.target as NodeSingular).renderedPosition();
+    menu.style.left = `${Math.min(pos.x + rect.left + 6, Math.max(0, rect.right - 170))}px`;
+    menu.style.top = `${Math.min(pos.y + rect.top + 6, Math.max(0, rect.bottom - 60))}px`;
+    menu.hidden = false;
+  });
+  cy.on('drag pan zoom', () => hide());
+  item.addEventListener('click', () => {
+    if (target !== null) removeWaypoint(cy, target);
+    hide();
+  });
+  document.addEventListener('click', (ev) => {
+    if (!menu.hidden && !menu.contains(ev.target as Node)) hide();
+  });
 }
 
 // setupTooltip — всплывающая подсказка с полной подписью узла
@@ -326,7 +464,7 @@ export function setGraph(
   const positions = new Map<string, { x: number; y: number }>();
   if (opts?.rearrange !== true) {
     cy.nodes().forEach((n) => {
-      if (n.hasClass('bend')) return;
+      if (n.hasClass('bend') || n.hasClass(WAYPOINT_CLASS)) return;
       positions.set(n.id(), n.position());
     });
   }
@@ -415,6 +553,9 @@ export function setGraph(
         // полные поля для панели и callbacks
         a: l.a, aPort: l.aPort, b: l.b, bPort: l.bPort,
         src: l.source, manual: l.manual, verified: l.verified,
+        // Устойчивый ключ связи для точек изгиба (NR-038 п.1):
+        // сервер отдаёт «a|aPort|b|bPort» либо «assumed:<id>».
+        wpKey: l.wp_key ?? edgeId(l),
       },
     });
   }
@@ -459,7 +600,7 @@ function arrangeMap(
 ): void {
   const nodeEls: NodeSingular[] = [];
   cy.nodes().forEach((n) => {
-    if (!n.isParent() && !n.hasClass('bend')) nodeEls.push(n);
+    if (!n.isParent() && !n.hasClass('bend') && !n.hasClass(WAYPOINT_CLASS)) nodeEls.push(n);
   });
   // Расставляются узлы БЕЗ явного положения (placed — узлы с
   // положением: текущим на канве или серверным, NR-035 п.1).
@@ -517,14 +658,53 @@ function arrangeMap(
   }
 }
 
+// syncMap — перерисовка производных элементов карты: точки изгиба
+// подтягиваются из перетаскиваемых узлов, ломаные связей
+// пересчитываются, автоматические точки изломов следуют за
+// сегментами, шрифт подписей догоняется до экранных минимумов.
+export function syncMap(cy: Core): void {
+  syncWaypointNodes(cy);
+  recomputeWaypointEdges(cy);
+  syncBendDots(cy);
+  syncLabelZoom(cy);
+}
+
+// lastLabelZoom — масштаб, при котором шрифт подписей применён
+// последний раз (WeakMap: карт на странице может быть несколько).
+const lastLabelZoom = new WeakMap<Core, number>();
+
+// syncLabelZoom — шрифт подписей при малом масштабе (NR-038 п.3):
+// ниже 0.7 шрифт в модельных единицах растёт так, чтобы на экране
+// подпись была не мельче 11 px; выше — базовые 13 px (стиль узла).
+export function syncLabelZoom(cy: Core, force = false): void {
+  const z = cy.zoom();
+  if (!force && lastLabelZoom.get(cy) === z) return;
+  lastLabelZoom.set(cy, z);
+  const fs =
+    z >= LABEL_MIN_SCREEN_ZOOM
+      ? LABEL_FONT_SIZE
+      : Math.round((LABEL_MIN_SCREEN_SIZE / z) * 100) / 100;
+  cy.nodes()
+    .filter((n) => !n.hasClass('bend') && !n.hasClass(WAYPOINT_CLASS) && !n.isParent())
+    .style('font-size', fs);
+}
+
 // syncBendDots — точки на изломах и концах ортогональных линий
 // (NR-035 п.2, NR-037 п.1): порт-узел в каждой сегментной точке ребра
 // и на стыке линии с диском узла (sourceEndpoint/targetEndpoint —
 // верх диска у устройства, низ у шлюза), цветом линии. Позиции
 // пересчитываются при перемещении узлов и смене масштаба; устаревшие
 // точки удаляются. Точки не попадают в раскладку, не ловят события
-// и рисуются ниже узлов и подписей (z-index: -1).
+// и рисуются ниже узлов и подписей (z-index: -1). Пользовательские
+// точки изгиба (NR-038 п.1) рисуются отдельно — на их местах
+// автоматические точки не ставятся.
 export function syncBendDots(cy: Core): void {
+  const userPoints: { x: number; y: number }[] = [];
+  cy.nodes(`.${WAYPOINT_CLASS}`).forEach((n) => {
+    userPoints.push(n.position());
+  });
+  const atWaypoint = (p: { x: number; y: number }): boolean =>
+    userPoints.some((w) => Math.abs(w.x - p.x) < 1 && Math.abs(w.y - p.y) < 1);
   const seen = new Set<string>();
   cy.edges().forEach((e) => {
     // Точки изломов нумеруются по индексу сегментной точки; точки на
@@ -541,7 +721,7 @@ export function syncBendDots(cy: Core): void {
       { suffix: 'tgt', p: e.targetEndpoint() as { x: number; y: number } },
     );
     for (const { suffix, p } of places) {
-      if (p === undefined) continue;
+      if (p === undefined || atWaypoint(p)) continue;
       const id = `bend:${e.id()}:${suffix}`;
       seen.add(id);
       const existing = cy.$id(id).first() as NodeSingular | undefined;
@@ -624,11 +804,12 @@ export function renderA11y(g: Graph, statuses?: GraphStatuses): void {
   }
 }
 
-// nodeLabel — короткая подпись узла: длинный текст обрезается
-// многоточием (полный — в data(fullLabel)); «не проверен» в подпись
+// nodeLabel — короткая подпись узла (NR-038 п.3): перенос по словам
+// не длиннее двух строк, «…» не режет слово посередине; полный текст
+// остаётся в data(fullLabel) для подсказки. «не проверен» в подпись
 // не попадает (маркер на узле).
 function nodeLabel(n: NodeInfo): string {
-  const base = truncateLabel(n.label || n.id);
+  const base = wrapLabel(n.label || n.id);
   const marks = nodeMarks(n).filter((m) => m !== 'не проверен');
   if (marks.length > 0) return `${base}\n(${marks.join(', ')})`;
   return base;

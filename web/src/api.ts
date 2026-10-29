@@ -22,6 +22,9 @@ export interface LinkInfo {
   source: string;
   manual: boolean;
   verified: boolean;
+  // wp_key — устойчивый ключ связи для точек изгиба (NR-038 п.1):
+  // «a|aPort|b|bPort» либо «assumed:<id устройства>».
+  wp_key?: string;
 }
 
 export interface Graph {
@@ -263,6 +266,15 @@ export interface NodePositionView {
   y: number;
 }
 
+// LinkWaypointView — сохранённая точка изгиба связи (NR-038 п.1):
+// ключ связи, порядковый номер на линии, модельные координаты.
+export interface LinkWaypointView {
+  link: string;
+  idx: number;
+  x: number;
+  y: number;
+}
+
 export class NetatlasApi {
   private token = '';
   // Вызывается при 401: интерфейс снова запрашивает токен.
@@ -369,6 +381,21 @@ export class NetatlasApi {
 
   clearPositions(): Promise<{ ok: boolean }> {
     return this.req('DELETE', '/api/map/positions');
+  }
+
+  // Точки изгиба связей (NR-038 п.1): чтение всех, замена точек
+  // одной связи (клиент шлёт полный список после каждого изменения
+  // с дебаунсом), очистка всех — «Выстроить сеткой».
+  mapWaypoints(): Promise<{ waypoints: LinkWaypointView[] }> {
+    return this.req('GET', '/api/map/waypoints');
+  }
+
+  saveWaypoints(link: string, points: { x: number; y: number }[]): Promise<{ ok: boolean; saved: number }> {
+    return this.req('PUT', '/api/map/waypoints', { link, points });
+  }
+
+  clearWaypoints(): Promise<{ ok: boolean; cleared: number }> {
+    return this.req('DELETE', '/api/map/waypoints');
   }
 
   deleteDevice(id: string): Promise<{ ok: boolean }> {

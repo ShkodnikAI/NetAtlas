@@ -500,6 +500,11 @@ test('перетаскивание узла привязывает его к с�
     const n = cy.nodes().filter((x: { data: (k: string) => string }) => x.data('kind') === 'device').first();
     return n.id();
   });
+  const before = await page.evaluate((id: string) => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.getElementById(id).first();
+    return { x: n.position('x'), y: n.position('y') };
+  }, nodeId);
   const start = await canvasPoint(page, nodeByKind('device'));
   // Сдвиг на не кратные шагу смещения: +37, +43.
   await page.mouse.move(start.x, start.y);
@@ -512,8 +517,10 @@ test('перетаскивание узла привязывает его к с�
     const n = cy.getElementById(id).first();
     return { x: n.position('x'), y: n.position('y') };
   }, nodeId);
-  expect(Math.abs(pos.x % 100)).toBe(0);
-  expect(Math.abs(pos.y % 120)).toBe(0);
+  // NR-038 п.2: привязка к мелкой сетке 20×20 — ровно к ближайшему
+  // узлу от исходного положения плюс смещение мыши.
+  expect(pos.x).toBe(Math.round((before.x + 37) / 20) * 20);
+  expect(pos.y).toBe(Math.round((before.y + 43) / 20) * 20);
   // Позиция пережила привязку и ушла на сервер (обе координаты изменились).
   expect(pos.x !== 0 || pos.y !== 0).toBe(true);
   await shot(page, 'map-snap');
@@ -991,9 +998,9 @@ test('на концах рёбер точки, на изломах — порт-
   expect(report.ends).toEqual([]);
   expect(report.gridOn).toBe(true);
   expect(report.bgHasDots).toBe(true);
-  // Тайл сетки = шаг привязки × масштаб (100 × 120 при зуме 1).
+  // Тайл сетки = мелкая сетка × масштаб (20×20 при зуме 1, NR-038 п.2).
   const sizeX = Number.parseFloat(report.size.split('px')[0] ?? '0');
-  expect(sizeX).toBeCloseTo(100 * report.zoom, 1);
+  expect(sizeX).toBeCloseTo(20 * report.zoom, 1);
   // Точки изломов: порт-узлы класса bend.
   const bends = await bendCount(page);
   expect(bends).toBeGreaterThan(0);
@@ -1195,4 +1202,336 @@ test('однотипные сигналы «новые устройства» с
   await head.click();
   await expect(page.locator('#attention-panel .attention-group-list')).toBeHidden();
   await shot(page, 'attention-group');
+});
+
+// === NR-038: точки изгиба на линиях, мелкая сетка, читаемые подписи ===
+
+// edgeHit — страница-координаты точки на середине самого длинного
+// сегмента какой-нибудь связи (модель → канва → страница). Связи
+// звезды перекрываются на общем стволе: какая именно связь примет
+// клик — проверяем по созданной точке (wpLink), а не по id заранее.
+async function edgeHit(page: Page): Promise<{ x: number; y: number }> {
+  return page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    let best = 0;
+    let px = 0;
+    let py = 0;
+    cy.edges().forEach((e: { sourceEndpoint: () => { x: number; y: number }; targetEndpoint: () => { x: number; y: number }; segmentPoints: () => { x: number; y: number }[] }) => {
+      const pts = [e.sourceEndpoint(), ...e.segmentPoints(), e.targetEndpoint()] as { x: number; y: number }[];
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1] as { x: number; y: number };
+        const b = pts[i] as { x: number; y: number };
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len > best) {
+          best = len;
+          px = (a.x + b.x) / 2;
+          py = (a.y + b.y) / 2;
+        }
+      }
+    });
+    if (best === 0) throw new Error('нет связей');
+    const z = cy.zoom();
+    const pan = cy.pan();
+    const rect = document.getElementById('graph')?.getBoundingClientRect();
+    return {
+      x: (rect?.left ?? 0) + px * z + pan.x,
+      y: (rect?.top ?? 0) + py * z + pan.y,
+    };
+  });
+}
+
+// freshMap — чистый старт: точки изгиба стираются на сервере, затем
+// карта открывается заново (тесты NR-038 разделяют общую базу).
+async function freshMap(page: Page): Promise<void> {
+  await page.request.delete('/api/map/waypoints', { headers: { Authorization: `Bearer ${TOKEN}` } });
+  await openMap(page);
+}
+
+async function waypointCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return cy.nodes('.waypoint').length;
+  });
+}
+
+// allEdgesOrthogonal — все связи (включая сегментные с точками
+// изгиба) состоят из горизонтальных и вертикальных сегментов.
+async function allEdgesOrthogonal(page: Page): Promise<{ ok: boolean; bad: string[] }> {
+  return page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const bad: string[] = [];
+    cy.edges().forEach((e: { id: () => string; sourceEndpoint: () => { x: number; y: number }; targetEndpoint: () => { x: number; y: number }; segmentPoints: () => { x: number; y: number }[] }) => {
+      const pts = [e.sourceEndpoint(), ...e.segmentPoints(), e.targetEndpoint()] as { x: number; y: number }[];
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1] as { x: number; y: number };
+        const b = pts[i] as { x: number; y: number };
+        if (Math.abs(a.x - b.x) > 0.5 && Math.abs(a.y - b.y) > 0.5) bad.push(`${e.id()}: сегмент ${i - 1}->${i} наклонный`);
+      }
+    });
+    return { ok: bad.length === 0, bad };
+  });
+}
+
+// waypointView — данные первой точки изгиба: связь, координаты,
+// размер, позиция на странице (для мыши).
+async function waypointView(page: Page): Promise<{
+  id: string; link: string; x: number; y: number; size: number; pageX: number; pageY: number;
+}> {
+  return page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const n = cy.nodes('.waypoint').first();
+    const rect = document.getElementById('graph')?.getBoundingClientRect();
+    const p = n.renderedPosition();
+    return {
+      id: n.id(),
+      link: String(n.data('wpLink') ?? ''),
+      x: n.position('x'),
+      y: n.position('y'),
+      size: n.width(),
+      pageX: (rect?.left ?? 0) + p.x,
+      pageY: (rect?.top ?? 0) + p.y,
+    };
+  });
+}
+
+test('двойной клик по линии создаёт узловую точку на сетке (NR-038 п.1, п.4а)', async ({ page }) => {
+  await freshMap(page);
+  const before = await waypointCount(page);
+  const hit = await edgeHit(page);
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(before + 1);
+  // Точка стоит на узле мелкой сетки 20×20, размер 10 px — отличается
+  // от автоматических точек излома 6 px (NR-038 п.1).
+  const wp = await waypointView(page);
+  expect(Math.abs(wp.x % 20)).toBe(0);
+  expect(Math.abs(wp.y % 20)).toBe(0);
+  expect(wp.size).toBe(10);
+  expect(wp.link).not.toBe('');
+  // Линия с точкой перешла на сегменты; вся карта остаётся
+  // ортогональной.
+  const style = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const link = String(cy.nodes('.waypoint').first().data('wpLink'));
+    return cy.edges().filter((e: { data: (k: string) => string }) => e.data('wpKey') === link).first().style('curve-style');
+  });
+  expect(style).toBe('segments');
+  expect((await allEdgesOrthogonal(page)).ok).toBe(true);
+  await shot(page, 'map-waypoint-added');
+});
+
+test('перетаскивание точки ставит её на узел сетки, ортогональность сохраняется (NR-038 п.1б, п.4б)', async ({ page }) => {
+  await freshMap(page);
+  const hit = await edgeHit(page);
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(1);
+  const devicePositions = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const out: Record<string, { x: number; y: number }> = {};
+    cy.nodes().forEach((n: { hasClass: (c: string) => boolean; id: () => string; position: () => { x: number; y: number } }) => {
+      if (!n.hasClass('bend') && !n.hasClass('waypoint')) out[n.id()] = n.position();
+    });
+    return out;
+  });
+  const wp = await waypointView(page);
+  await page.mouse.move(wp.pageX, wp.pageY);
+  await page.mouse.down();
+  await page.mouse.move(wp.pageX + 33, wp.pageY - 47, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const moved = await waypointView(page);
+  // Привязка к мелкой сетке 20×20.
+  expect(Math.abs(moved.x % 20)).toBe(0);
+  expect(Math.abs(moved.y % 20)).toBe(0);
+  // Ортогональность всех линий сохранена.
+  expect(await allEdgesOrthogonal(page)).toEqual({ ok: true, bad: [] });
+  // Перетаскивание точки не двигает устройства.
+  const after = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const out: Record<string, { x: number; y: number }> = {};
+    cy.nodes().forEach((n: { hasClass: (c: string) => boolean; id: () => string; position: () => { x: number; y: number } }) => {
+      if (!n.hasClass('bend') && !n.hasClass('waypoint')) out[n.id()] = n.position();
+    });
+    return out;
+  });
+  expect(after).toEqual(devicePositions);
+  await shot(page, 'map-waypoint-dragged');
+});
+
+test('точка удаляется двойным кликом, Delete и из меню (NR-038 п.1в, п.4в)', async ({ page }) => {
+  await freshMap(page);
+
+  // Двойной клик по точке удаляет её.
+  let hit = await edgeHit(page);
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(1);
+  let wp = await waypointView(page);
+  await page.mouse.dblclick(wp.pageX, wp.pageY);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(0);
+
+  // Выбрать и нажать Delete.
+  hit = await edgeHit(page);
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(1);
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.nodes('.waypoint').first().select();
+  });
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(0);
+
+  // Контекстное меню по правому клику: «Удалить точку».
+  hit = await edgeHit(page);
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(1);
+  wp = await waypointView(page);
+  await page.mouse.click(wp.pageX, wp.pageY, { button: 'right' });
+  await expect(page.locator('#wp-menu')).toBeVisible();
+  await page.click('#wp-menu-delete');
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(0);
+  await expect(page.locator('#wp-menu')).toBeHidden();
+});
+
+test('точка изгиба переживает перезагрузку страницы (NR-038 п.1г, п.4г)', async ({ page }) => {
+  await freshMap(page);
+  const hit = await edgeHit(page);
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  const created = await waypointView(page);
+  // Дебаунс сохранения 500 мс + запас.
+  await page.waitForTimeout(900);
+  await page.reload();
+  await login(page);
+  await page.click('nav .item[data-page="map"]');
+  await page.waitForFunction(() => {
+    const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
+  });
+  await page.waitForTimeout(600);
+  expect(await waypointCount(page)).toBe(1);
+  const restored = await waypointView(page);
+  expect(restored.link).toBe(created.link);
+  expect(restored.x).toBe(created.x);
+  expect(restored.y).toBe(created.y);
+  // Уборка: «Выстроить сеткой» стирает и точки (и положения).
+  page.on('dialog', (d) => void d.accept());
+  await page.click('#btn-arrange');
+  await page.waitForTimeout(400);
+  expect(await waypointCount(page)).toBe(0);
+});
+
+test('шаг сетки 20: тайл фона 20×масштаб, редкая сетка при зуме < 0.6 (NR-038 п.2, п.4д)', async ({ page }) => {
+  await openMap(page);
+  // Обычная плотность: тайл 20 × зум.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.zoom(1);
+    cy.pan({ x: 0, y: 0 });
+  });
+  await page.waitForTimeout(200);
+  const tile = await page.evaluate(() => {
+    const layer = document.getElementById('map-grid');
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    return { size: layer?.style.backgroundSize ?? '', zoom: cy.zoom() };
+  });
+  expect(Number.parseFloat(tile.size.split('px')[0] ?? '0')).toBeCloseTo(20 * tile.zoom, 1);
+  // При зуме 0.5 — каждая пятая точка: тайл 100 × зум.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.zoom(0.5);
+  });
+  await page.waitForTimeout(200);
+  const rare = await page.evaluate(() => {
+    const layer = document.getElementById('map-grid');
+    return layer?.style.backgroundSize ?? '';
+  });
+  expect(Number.parseFloat(rare.split('px')[0] ?? '0')).toBeCloseTo(100 * 0.5, 1);
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.zoom(1);
+  });
+});
+
+test('подписи читаются: 13 px при 100%, фон непрозрачен, контраст ≥ 4.5:1 (NR-038 п.3, п.4е)', async ({ page }) => {
+  await freshMap(page);
+  const report = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const node = cy.nodes().filter((n: { isParent: () => boolean; hasClass: (c: string) => boolean }) =>
+      !n.isParent() && !n.hasClass('bend') && !n.hasClass('waypoint')).first();
+    // Контраст подписи к фону поля: #E6EAF0 на #0E1116 (WCAG).
+    const lum = (hex: string): number => {
+      const v = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+      return 0.2126 * (v[0] ?? 0) + 0.7152 * (v[1] ?? 0) + 0.0722 * (v[2] ?? 0);
+    };
+    const l1 = lum('#E6EAF0');
+    const l2 = lum('#0E1116');
+    return {
+      fs: node.style('font-size'),
+      bgOpacity: node.style('text-background-opacity'),
+      bgShape: node.style('text-background-shape'),
+      padding: node.style('text-background-padding'),
+      weight: node.style('font-weight'),
+      contrast: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05),
+    };
+  });
+  expect(Number.parseFloat(String(report.fs))).toBeGreaterThanOrEqual(13);
+  expect(Number(report.bgOpacity)).toBe(1);
+  expect(report.contrast).toBeGreaterThanOrEqual(4.5);
+  expect(Number(report.weight)).toBeGreaterThanOrEqual(500);
+  // Фон подписи: отступ 3 px, скруглённый (halo, NR-038 п.3).
+  expect(Number.parseFloat(String(report.padding))).toBe(3);
+  expect(String(report.bgShape)).toContain('round');
+  // При малом масштабе подпись не мельче 11 px экранных.
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.zoom(0.5);
+  });
+  await page.waitForTimeout(250);
+  const tiny = await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    const node = cy.nodes().filter((n: { isParent: () => boolean; hasClass: (c: string) => boolean }) =>
+      !n.isParent() && !n.hasClass('bend') && !n.hasClass('waypoint')).first();
+    return { zoom: cy.zoom(), fs: node.style('font-size') };
+  });
+  expect(Number.parseFloat(String(tiny.fs)) * tiny.zoom).toBeGreaterThanOrEqual(11);
+  await page.evaluate(() => {
+    const cy = (window as unknown as { __netatlas: { cy: import('cytoscape').default } }).__netatlas.cy;
+    cy.zoom(1);
+  });
+  await shot(page, 'map-nr038-labels');
+});
+
+test('кнопка «Сбросить изгибы связи» стирает точки выбранной линии (NR-038 п.1)', async ({ page }) => {
+  await freshMap(page);
+  // Кнопка неактивна, пока линия не выбрана.
+  await expect(page.locator('#btn-clear-bends')).toBeDisabled();
+  const hit = await edgeHit(page);
+  // Двойной клик создаёт точку И выбирает линию, к которой она
+  // относится.
+  await page.mouse.dblclick(hit.x, hit.y);
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(1);
+  await expect(page.locator('#btn-clear-bends')).toBeEnabled();
+  await page.click('#btn-clear-bends');
+  await page.waitForTimeout(250);
+  expect(await waypointCount(page)).toBe(0);
+  // Точек нет и на сервере: перезагрузка не возвращает изгибы.
+  await page.waitForTimeout(900);
+  await page.reload();
+  await login(page);
+  await page.click('nav .item[data-page="map"]');
+  await page.waitForFunction(() => {
+    const hook = (window as unknown as { __netatlas?: { cy: { nodes: () => { length: number } } } }).__netatlas;
+    return hook !== undefined && hook.cy.nodes().length >= 15;
+  });
+  await page.waitForTimeout(500);
+  expect(await waypointCount(page)).toBe(0);
 });
