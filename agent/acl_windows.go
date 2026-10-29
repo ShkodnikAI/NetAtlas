@@ -11,7 +11,7 @@ import (
 )
 
 // restrictACLWindows снимает наследование и выдаёт доступ только
-// SYSTEM и BUILTIN\Administrators. Для каталога флаги наследования
+// SYSTEM (*S-1-5-18) и Administrators (*S-1-5-32-544); SID, а не имена: на локализованной Windows имя группы другое. Для каталога флаги наследования
 // (OI)(CI), для файла — просто F.
 func restrictACLWindows(path string, isDir bool) error {
 	grant := "F"
@@ -19,8 +19,8 @@ func restrictACLWindows(path string, isDir bool) error {
 		grant = "(OI)(CI)F"
 	}
 	cmd := exec.Command("icacls", path, "/inheritance:r",
-		"/grant:r", "SYSTEM:"+grant,
-		"/grant:r", "BUILTIN\\Administrators:"+grant)
+		"/grant:r", "*S-1-5-18:"+grant,
+		"/grant:r", "*S-1-5-32-544:"+grant)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("agent: icacls %s: %w: %s", path, err, tailOf(out))

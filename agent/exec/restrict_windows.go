@@ -15,8 +15,8 @@ import (
 // BUILTIN\Administrators.
 func restrict(path string) error {
 	cmd := exec.Command("icacls", path, "/inheritance:r",
-		"/grant:r", "SYSTEM:F",
-		"/grant:r", "BUILTIN\\Administrators:F")
+		"/grant:r", "*S-1-5-18:F",
+		"/grant:r", "*S-1-5-32-544:F")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		tail := string(out)
