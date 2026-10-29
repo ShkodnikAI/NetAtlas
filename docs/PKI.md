@@ -31,10 +31,15 @@ ed25519. Новых зависимостей нет.
 каталог от других пользователей вручную:
 
 ```bat
-icacls "%NETATLAS_KEYDIR%" /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F" /remove "BUILTIN\Users" "Everyone"
+icacls "%NETATLAS_KEYDIR%" /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F" /remove *S-1-1-0 *S-1-5-32-545
 ```
 
-После этого доступ к каталогу имеет только текущий пользователь.
+Учётки — по SID, не по именам: well-known имена групп локализованы
+(на русской Windows это «Пользователи» и «Все»), `/remove` с именами
+падает с ошибкой 1332 — как в PR #86 с агентом. SID локали не зависят:
+`*S-1-1-0` — Все (Everyone), `*S-1-5-32-545` — Пользователи
+(BUILTIN\Users). После этого доступ к каталогу имеет только текущий
+пользователь.
 Проверка: `icacls "%NETATLAS_KEYDIR%"`.
 
 ## Резервная копия ключей

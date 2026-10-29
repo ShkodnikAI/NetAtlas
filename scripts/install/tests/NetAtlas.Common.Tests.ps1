@@ -1,4 +1,5 @@
-﻿# Pester-тесты чистых функций NetAtlas.Common (NR-028).
+﻿# Pester-тесты чистых функций NetAtlas.Common (NR-028) и страж
+# локальной независимости команд icacls (issue #87).
 # Запуск: Invoke-Pester -Path scripts/install/tests/NetAtlas.Common.Tests.ps1 -CI
 # Только CI: Pester и PSScriptAnalyzer не устанавливаются на ПК владельца.
 
@@ -147,5 +148,70 @@ Describe 'Save-OwnerToken (повторный запуск ничего не м�
         # -RotateToken: токен меняется
         Save-OwnerToken -Dir $dir -Rotate | Should -BeTrue
         (Get-Content -LiteralPath $path -TotalCount 1).Trim() | Should -Not -Be $first
+    }
+}
+
+Describe 'Команды icacls: только SID, %USERNAME% и переменные (issue #87)' {
+    # Страж локальной независимости: имена well-known учёток
+    # локализованы (на русской Windows «Все», «Пользователи»,
+    # «Администраторы»), поэтому /grant и /remove с именами падают
+    # с ошибкой 1332 (PR #86 — агент, issue #87 — инструкция PKI.md).
+    # Разрешены только SID (*S-1-…), подстановка %USERNAME% и
+    # переменные PowerShell. Сканируются установочные скрипты
+    # (без каталога tests: там имена допустимы в regex-проверках)
+    # и команда из docs/PKI.md, которую владелец выполняет вручную.
+    BeforeAll {
+        $naRoot = (Get-Item (Join-Path $PSScriptRoot '..\..\..')).FullName
+        $targets = @(Get-ChildItem -Path (Join-Path $naRoot 'scripts\install') -Recurse -Include *.ps1, *.psm1 -File |
+            Where-Object { $_.FullName -notmatch '\\tests\\' })
+        $pkiDoc = Join-Path $naRoot 'docs\PKI.md'
+        if (Test-Path -LiteralPath $pkiDoc) { $targets += (Get-Item -LiteralPath $pkiDoc) }
+    }
+
+    It 'страж находит файлы для проверки (не ослеп)' {
+        $targets.Count | Should -BeGreaterThan 0
+    }
+
+    It 'Protect-NetAtlasDir выдаёт права по SID S-1-5-18 и S-1-5-32-544' {
+        $src = Get-Content -LiteralPath (Join-Path $naRoot 'scripts\install\NetAtlas.Common.psm1') -Raw
+        ($src -match [regex]::Escape('*S-1-5-18:(OI)(CI)F')) | Should -BeTrue
+        ($src -match [regex]::Escape('*S-1-5-32-544:(OI)(CI)F')) | Should -BeTrue
+        # Имена групп в /grant и /remove не возвращаются.
+        ($src -match 'icacls[^\r\n]*"(Everyone|BUILTIN\\(Users|Administrators))"') | Should -BeFalse
+    }
+
+    It 'в командах icacls скриптов и docs/PKI.md нет локализуемых имён учёток' {
+        # Сегменты после /grant /deny /remove /replace — до следующего
+        # флага, пайпа или конца строки. icacls учитывается только в
+        # позиции команды (начало строки, после &, после пробела):
+        # упоминания в строках-ошибках («icacls /grant не прошёл»)
+        # проверять не нужно.
+        $flagRe = '(?i)/(grant|deny|remove|replace)(?::[rgb])?(?<seg>.*?)(?=\s/|\s*\||$)'
+        $icaclsRe = '(?i)(^|[\s&])icacls\s'
+        $bad = @()
+        foreach ($f in $targets) {
+            $inHelp = $false
+            $ln = 0
+            foreach ($line in (Get-Content -LiteralPath $f.FullName)) {
+                $ln++
+                $t = $line.Trim()
+                if ($t -match '^<#') { $inHelp = $true }
+                if ($inHelp) { if ($t -match '#>') { $inHelp = $false }; continue }
+                if ($t.StartsWith('#')) { continue }
+                if ($line -notmatch $icaclsRe) { continue }
+                foreach ($m in [regex]::Matches($line, $flagRe)) {
+                    foreach ($tok in ($m.Groups['seg'].Value -split '\s+')) {
+                        if ($tok -eq '') { continue }
+                        $v = $tok.Trim("'`"")
+                        if ($v -eq '') { continue }
+                        $acct = ($v -split ':')[0]
+                        $ok = ($acct -match '^\*?S-1-\d+(-\d+)*$') -or ($acct -ieq '%USERNAME%') -or ($acct.StartsWith('$'))
+                        if (-not $ok) { $bad += ('{0}:{1}: {2}' -f $f.Name, $ln, $tok) }
+                    }
+                }
+            }
+        }
+        if ($bad.Count -gt 0) { $bad | ForEach-Object { Write-Host "  НАРУШЕНИЕ: $_" } }
+        $bad.Count | Should -Be 0
     }
 }
